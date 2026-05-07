@@ -1,0 +1,144 @@
+[03/05/2026 02:55:00] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 04:58:49] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 05:02:38] WARNING django.request: Not Found: /favicon.ico
+[03/05/2026 07:17:04] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 07:19:12] WARNING django.request: Not Found: /favicon.ico
+[03/05/2026 07:19:12] WARNING django.request: Not Found: /favicon.ico
+[03/05/2026 07:21:02] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:21:02] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:21:04] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:21:04] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:21:16] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:21:16] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:28:49] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:28:49] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:28:50] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:28:50] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:31:00] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:31:00] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 07:31:03] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:31:03] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 07:44:11] WARNING django.request: Bad Request: /api/auth/login/
+[03/05/2026 07:44:15] WARNING django.request: Bad Request: /api/auth/login/
+[03/05/2026 07:44:45] WARNING django.request: Bad Request: /api/auth/login/
+[03/05/2026 08:00:30] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 08:00:30] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 08:00:31] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 08:00:31] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 08:01:15] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 08:01:15] WARNING django.request: Not Found: /api/finance/expenditures/
+[03/05/2026 08:02:14] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 08:02:14] WARNING django.request: Not Found: /api/finance/revenues/
+[03/05/2026 09:08:08] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build/backend/apps/reports/views.py changed, reloading.
+[03/05/2026 09:08:09] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 09:09:43] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build/backend/apps/inventory/models.py changed, reloading.
+[03/05/2026 09:09:44] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 09:19:28] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build/backend/apps/inventory/views.py changed, reloading.
+[03/05/2026 09:19:29] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 09:19:29] WARNING django.request: Bad Request: /api/trucks/
+[03/05/2026 09:19:40] WARNING django.request: Bad Request: /api/trucks/
+[03/05/2026 09:22:34] WARNING django.request: Unauthorized: /api/inventory/closing-stock/
+[03/05/2026 09:23:00] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build/backend/apps/inventory/services.py changed, reloading.
+[03/05/2026 09:23:00] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 09:26:38] WARNING django.request: Unauthorized: /api/inventory/closing-stock/
+[03/05/2026 09:37:52] WARNING django.request: Bad Request: /api/inventory/items/
+[03/05/2026 09:44:43] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build/backend/apps/inventory/services.py changed, reloading.
+[03/05/2026 09:44:43] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[03/05/2026 10:00:00] WARNING django.request: Bad Request: /api/trucks/1/
+[03/05/2026 10:00:58] WARNING django.request: Bad Request: /api/drivers/
+[03/05/2026 10:01:07] WARNING django.request: Bad Request: /api/drivers/
+[03/05/2026 10:15:24] WARNING django.request: Not Found: /api/reports/fuel/
+[03/05/2026 10:15:24] WARNING django.request: Not Found: /favicon.ico
+[03/05/2026 10:15:36] WARNING django.request: Not Found: /api/reports/stock/
+[03/05/2026 10:15:37] WARNING django.request: Not Found: /api/reports/stock/
+[03/05/2026 10:15:40] WARNING django.request: Not Found: /api/reports/stock/
+[04/05/2026 07:09:50] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[04/05/2026 07:10:17] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[04/05/2026 07:22:09] WARNING django.request: Not Found: /api/reports/spare-parts/
+[04/05/2026 07:24:46] WARNING django.request: Bad Request: /api/users/
+[04/05/2026 07:47:35] WARNING django.request: Not Found: /api/reports/revenue-expenditure/
+[04/05/2026 07:47:41] WARNING django.request: Not Found: /api/reports/revenue-expenditure/
+[04/05/2026 07:48:22] WARNING django.request: Not Found: /favicon.ico
+[04/05/2026 07:48:25] WARNING django.request: Not Found: /api/reports/revenue-expenditure/
+[04/05/2026 07:48:28] WARNING django.request: Not Found: /api/reports/revenue-expenditure/
+[04/05/2026 07:48:31] WARNING django.request: Not Found: /api/reports/revenue-expenditure/
+[04/05/2026 08:03:22] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build 8/backend/apps/invoicing/views.py changed, reloading.
+[04/05/2026 08:03:23] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[04/05/2026 08:04:57] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build 8/backend/apps/finance/views.py changed, reloading.
+[04/05/2026 08:04:58] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[04/05/2026 08:11:57] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:11:57] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:11:57] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:11:57] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:12:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:15:38] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:15:38] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:15:38] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:15:38] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:16:49] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:16:49] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:16:49] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:16:49] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:17:49] WARNING django.request: Not Found: /favicon.ico
+[04/05/2026 08:18:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:18:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:18:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:18:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:18:59] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:18:59] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:21:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:21:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:21:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 08:21:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:23:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:23:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:23:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:23:41] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:10] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:10] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:10] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:10] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:12] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:12] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:12] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:12] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:14] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:14] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:14] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:14] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:16] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:16] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:16] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:16] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:21] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:21] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:21] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:27:21] WARNING django.request: Not Found: /api/invoicing/invoices/
+[04/05/2026 09:48:50] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build 8/backend/apps/finance/models.py changed, reloading.
+[04/05/2026 09:48:51] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[04/05/2026 09:49:45] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_build 8/backend/apps/reports/urls.py changed, reloading.
+[04/05/2026 09:49:46] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[05/05/2026 02:21:47] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[05/05/2026 02:23:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:23:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:23:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:23:32] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:24:27] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:24:27] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:24:28] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:24:28] WARNING django.request: Not Found: /api/invoicing/invoices/
+[05/05/2026 02:28:08] WARNING django.request: Bad Request: /api/trucks/
+[05/05/2026 02:28:32] WARNING django.request: Bad Request: /api/trucks/
+[05/05/2026 08:50:13] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_fixed 3/backend/config/settings.py changed, reloading.
+[05/05/2026 08:50:14] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[05/05/2026 08:58:34] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_fixed 3/backend/config/settings.py changed, reloading.
+[05/05/2026 08:58:35] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[05/05/2026 09:05:29] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_fixed 3/backend/config/settings.py changed, reloading.
+[05/05/2026 09:05:30] INFO django.utils.autoreload: Watching for file changes with StatReloader
+[05/05/2026 09:13:45] INFO django.utils.autoreload: /Users/sandilya179/Downloads/taurus_fixed 3/backend/config/settings.py changed, reloading.
+[05/05/2026 09:13:46] INFO django.utils.autoreload: Watching for file changes with StatReloader

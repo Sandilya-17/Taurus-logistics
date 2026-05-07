@@ -1,0 +1,14 @@
+Django==4.2.7
+setuptools
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.0
+django-cors-headers==4.3.0
+PyMySQL==1.1.0
+cryptography==42.0.8
+Pillow==10.4.0
+reportlab==4.0.7
+openpyxl==3.1.2
+django-filter==23.3
+python-decouple==3.8
+gunicorn==21.2.0
+whitenoise==6.6.0
