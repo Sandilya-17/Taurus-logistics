@@ -2,7 +2,7 @@
 nixPkgs = ["python311", "libmysqlclient"]
 
 [phases.build]
-cmds = ["pip install -r requirements.txt", "python manage.py migrate", "python manage.py shell -c \"from apps.users.models import User; User.objects.filter(email='admin@taurus.com').exists() or User.objects.create_superuser(email='admin@taurus.com', password='admin1234', first_name='Admin', last_name='User')\""]
+cmds = ["pip install -r requirements.txt", "python manage.py migrate"]
 
 [start]
-cmd = "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT"
+cmd = "python manage.py shell -c \"from apps.users.models import User; User.objects.filter(email='admin@taurus.com').exists() or User.objects.create_superuser(email='admin@taurus.com', password='admin1234', first_name='Admin', last_name='User')\" && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT"
