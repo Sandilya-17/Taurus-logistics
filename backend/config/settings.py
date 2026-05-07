@@ -3,7 +3,7 @@ Taurus Trade & Logistics ERP – Django Settings
 """
 import os
 import pymysql
-pymysql.install_as_MySQLdb()   # Makes Django use PyMySQL instead of mysqlclient
+pymysql.install_as_MySQLdb()
 
 from pathlib import Path
 from datetime import timedelta
@@ -138,14 +138,9 @@ SIMPLE_JWT = {
 }
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
- CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-     default='http://localhost:3000,http://localhost:5173'
- ).split(',')
- CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default='False') == 'True'
- CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True          # Railway: allow any frontend origin
-CORS_EXPOSE_HEADERS    = [             # ← FIX: lets browser read download headers
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = [
     'Content-Disposition',
     'Content-Type',
     'Content-Length',
@@ -183,5 +178,3 @@ LOGGING = {
     },
     'root': {'handlers': ['console', 'file'], 'level': 'INFO'},
 }
-import pymysql
-pymysql.install_as_MySQLdb()
