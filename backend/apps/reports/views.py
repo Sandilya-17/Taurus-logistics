@@ -552,31 +552,31 @@ class SparePartsReportView(APIView):
 class MaintenanceReportView(APIView):
     """Service history and maintenance costs."""
     def get(self, request):
-        from apps.maintenance.models import MaintenanceRecord
+        from apps.maintenance.models import MaintenanceLog          # ✅ FIX: MaintenanceRecord → MaintenanceLog
         date_from, date_to = _parse_date_range(request)
 
         records = (
-            MaintenanceRecord.objects
+            MaintenanceLog.objects                                  # ✅ FIX: MaintenanceRecord → MaintenanceLog
             .select_related('truck')
-            .filter(date__range=[date_from, date_to])
-            .order_by('-date')
+            .filter(service_date__range=[date_from, date_to])      # ✅ FIX: date → service_date
+            .order_by('-service_date')                             # ✅ FIX: -date → -service_date
         )
 
-        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH₵)', 'Vendor', 'Next Due']
+        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH₵)', 'Status', 'Next Service']
         rows = []
         total_cost = Decimal('0')
 
         for rec in records:
             rows.append([
-                str(rec.date),
+                str(rec.service_date),                             # ✅ FIX: rec.date → rec.service_date
                 rec.truck.truck_number,
-                rec.maintenance_type if hasattr(rec, 'maintenance_type') else '—',
+                rec.maintenance_type,                              # ✅ FIX: removed hasattr guard — field always exists
                 rec.description[:60] if rec.description else '—',
-                float(rec.cost or 0),
-                rec.vendor.name if hasattr(rec, 'vendor') and rec.vendor else '—',
-                str(rec.next_due_date) if hasattr(rec, 'next_due_date') and rec.next_due_date else '—',
+                float(rec.total_cost or 0),                        # ✅ FIX: rec.cost → rec.total_cost
+                rec.status,                                        # ✅ FIX: removed vendor, replaced with rec.status
+                str(rec.next_service_date) if rec.next_service_date else '—',  # ✅ FIX: next_due_date → next_service_date
             ])
-            total_cost += rec.cost or 0
+            total_cost += rec.total_cost or 0                      # ✅ FIX: rec.cost → rec.total_cost
 
         summary = {'Total Maintenance Cost (GH₵)': float(total_cost)}
 
