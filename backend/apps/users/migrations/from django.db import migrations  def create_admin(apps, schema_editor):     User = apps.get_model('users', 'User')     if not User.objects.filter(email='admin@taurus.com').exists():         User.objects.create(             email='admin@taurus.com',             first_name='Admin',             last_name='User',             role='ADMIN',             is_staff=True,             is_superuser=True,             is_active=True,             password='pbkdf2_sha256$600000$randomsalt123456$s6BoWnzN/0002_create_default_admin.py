@@ -11,7 +11,7 @@ def create_admin(apps, schema_editor):
             is_staff=True,
             is_superuser=True,
             is_active=True,
-            password='pbkdf2_sha256$600000$randomsalt123456$s6BoWnzN/TJ5OUV9xfUF968dsy+0WrX6U3+nUMdYA2U=',
+            password='pbkdf2_sha256$1200000$5Okwk6TsbOO6QcdET2YRzT$rvIID3EQuBFk3KeBL46XHnGHiwW7W1QiWsM1HAG6hq4=',
         )
 
 class Migration(migrations.Migration):
