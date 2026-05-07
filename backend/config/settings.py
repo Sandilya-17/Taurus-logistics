@@ -138,11 +138,12 @@ SIMPLE_JWT = {
 }
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config(
+ CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173'
-).split(',')
-CORS_ALLOW_CREDENTIALS = True
+     default='http://localhost:3000,http://localhost:5173'
+ ).split(',')
+ CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default='False') == 'True'
+ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = True          # Railway: allow any frontend origin
 CORS_EXPOSE_HEADERS    = [             # ← FIX: lets browser read download headers
     'Content-Disposition',
