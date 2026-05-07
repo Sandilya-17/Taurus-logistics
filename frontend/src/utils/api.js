@@ -1,7 +1,7 @@
 // src/utils/api.js  – Axios instance with JWT auto-refresh | Taurus ERP
 import axios from 'axios';
 
-const BASE = process.env.REACT_APP_API_URL || '/api';
++ const BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 const api = axios.create({ baseURL: BASE, headers: { 'Content-Type': 'application/json' } });
 
