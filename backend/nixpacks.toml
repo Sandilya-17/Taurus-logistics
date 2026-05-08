@@ -1,14 +1,11 @@
 [phases.setup]
-nixPkgs = ["python311", "libmysqlclient", "nodejs_20", "nodePackages.npm"]
+nixPkgs = ["python311", "libmysqlclient"]
 
 [phases.build]
 cmds = [
   "pip install -r requirements.txt",
-  "cd ../frontend && npm install && npm run build",
-  "cp -r ../frontend/build ./frontend_build",
-  "python manage.py collectstatic --noinput",
-  "python manage.py migrate --noinput"
+  "python manage.py collectstatic --noinput"
 ]
 
 [start]
-cmd = "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+cmd = "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
