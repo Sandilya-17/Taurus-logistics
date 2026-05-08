@@ -30,7 +30,7 @@ export default function TyresPage() {
   const onSubmit = async (data) => {
     setSaving(true);
     try {
-      const payload = { ...data, unit_cost: parseFloat(data.unit_cost || 0) };
+      const payload = { ...data, unit_price: parseFloat(data.unit_price || 0) };
       if (editing) {
         await api.patch(`/tyres/${editing}/`, payload);
         toast.success('Tyre updated.');
@@ -67,7 +67,7 @@ export default function TyresPage() {
   const fitted     = tyres.filter(t => t.status === 'FITTED').length;
   const workshop   = tyres.filter(t => t.status === 'WORKSHOP').length;
   const condemned  = tyres.filter(t => t.status === 'CONDEMNED').length;
-  const totalValue = tyres.filter(t => t.status !== 'CONDEMNED').reduce((s, t) => s + parseFloat(t.unit_cost || 0), 0);
+  const totalValue = tyres.filter(t => t.status !== 'CONDEMNED').reduce((s, t) => s + parseFloat(t.unit_price || 0), 0);
 
   return (
     <div>
@@ -130,7 +130,7 @@ export default function TyresPage() {
               </div>
               <div className="fg">
                 <label>Unit Cost (GH₵) *</label>
-                <input type="number" step="0.01" min="0" placeholder="0.00" {...register('unit_cost', { required: true })} />
+                <input type="number" step="0.01" min="0" placeholder="0.00" {...register('unit_price', { required: true })} />
               </div>
               <div className="fg">
                 <label>Status</label>
@@ -165,7 +165,7 @@ export default function TyresPage() {
                     <td>{t.brand}</td>
                     <td style={{ fontSize: 11, color: 'var(--muted)' }}>{t.model || '—'}</td>
                     <td><span className="badge b-gray">{t.size}</span></td>
-                    <td className="ced">{fmtGHS(t.unit_cost)}</td>
+                    <td className="ced">{fmtGHS(t.unit_price)}</td>
                     <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
                     <td style={{ fontSize: 11 }}>
                       {t.current_assignment ? `${t.current_assignment.truck_number} / ${t.current_assignment.position}` : '—'}
