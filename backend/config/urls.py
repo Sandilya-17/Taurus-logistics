@@ -1,9 +1,8 @@
 """Taurus Trade & Logistics – Root URL Configuration"""
 from django.contrib import admin
-from django.urls import path, include, re_path
+from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.generic import TemplateView
 from rest_framework_simplejwt.views import TokenRefreshView
 from apps.users.views import LoginView, LogoutView
 
@@ -27,10 +26,6 @@ urlpatterns = [
     path('api/finance/',     include('apps.finance.urls')),
     path('api/invoicing/',   include('apps.invoicing.urls')),
     path('api/reports/',     include('apps.reports.urls')),
-
-    # SPA catch-all — must be LAST. Skips api/, admin/, static/, media/
-    re_path(r'^(?!api/|admin/|static/|media/).*$',
-            TemplateView.as_view(template_name='index.html')),
 ]
 
 if settings.DEBUG:
