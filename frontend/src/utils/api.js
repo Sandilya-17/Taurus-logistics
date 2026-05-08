@@ -1,7 +1,7 @@
 // src/utils/api.js  – Axios instance with JWT auto-refresh | Taurus ERP
 import axios from 'axios';
 
-const BASE = 'https://taurus-logistics-production.up.railway.app/api';
+const BASE = window.API_BASE_URL || 'https://taurus-logistics-production.up.railway.app/api';
 
 const api = axios.create({ baseURL: BASE, headers: { 'Content-Type': 'application/json' } });
 
@@ -146,5 +146,5 @@ export const fmtDateTime = d => {
 /** Today's date as YYYY-MM-DD (Ghana time) */
 export const todayGH = () => {
   const now = new Date();
-  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }); // en-CA gives YYYY-MM-DD
+  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
 };
