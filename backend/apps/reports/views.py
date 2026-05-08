@@ -517,10 +517,10 @@ class SparePartsReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 qty,
-                float(entry.unit_cost or 0),
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
-                entry.reference or '—',
+                entry.remark or '—',
             ])
             if entry.quantity > 0:
                 total_in += entry.final_amount or 0
@@ -552,31 +552,31 @@ class SparePartsReportView(APIView):
 class MaintenanceReportView(APIView):
     """Service history and maintenance costs."""
     def get(self, request):
-        from apps.maintenance.models import MaintenanceLog          # ✅ FIX: MaintenanceRecord → MaintenanceLog
+        from apps.maintenance.models import MaintenanceLog as MaintenanceRecord
         date_from, date_to = _parse_date_range(request)
 
         records = (
-            MaintenanceLog.objects                                  # ✅ FIX: MaintenanceRecord → MaintenanceLog
+            MaintenanceRecord.objects
             .select_related('truck')
-            .filter(service_date__range=[date_from, date_to])      # ✅ FIX: date → service_date
-            .order_by('-service_date')                             # ✅ FIX: -date → -service_date
+            .filter(service_date__range=[date_from, date_to])
+            .order_by('-service_date')
         )
 
-        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH₵)', 'Status', 'Next Service']
+        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH₵)', 'Vendor', 'Next Due']
         rows = []
         total_cost = Decimal('0')
 
         for rec in records:
             rows.append([
-                str(rec.service_date),                             # ✅ FIX: rec.date → rec.service_date
+                str(rec.service_date),
                 rec.truck.truck_number,
-                rec.maintenance_type,                              # ✅ FIX: removed hasattr guard — field always exists
+                rec.maintenance_type if hasattr(rec, 'maintenance_type') else '—',
                 rec.description[:60] if rec.description else '—',
-                float(rec.total_cost or 0),                        # ✅ FIX: rec.cost → rec.total_cost
-                rec.status,                                        # ✅ FIX: removed vendor, replaced with rec.status
-                str(rec.next_service_date) if rec.next_service_date else '—',  # ✅ FIX: next_due_date → next_service_date
+                float(rec.total_cost or 0),
+                rec.mechanic if hasattr(rec, 'mechanic') and rec.mechanic else '—',
+                str(rec.next_service_date) if hasattr(rec, 'next_service_date') and rec.next_service_date else '—',
             ])
-            total_cost += rec.total_cost or 0                      # ✅ FIX: rec.cost → rec.total_cost
+            total_cost += rec.total_cost or 0
 
         summary = {'Total Maintenance Cost (GH₵)': float(total_cost)}
 
@@ -605,7 +605,7 @@ class VATReportView(APIView):
 
         invoices = (
             Invoice.objects
-            .filter(invoice_date__range=[date_from, date_to], vat_enabled=True)
+            .filter(invoice_date__range=[date_from, date_to], vat_applicable=True)
             .order_by('-invoice_date')
         )
 
@@ -619,7 +619,7 @@ class VATReportView(APIView):
                 str(inv.invoice_date),
                 inv.client_name,
                 float(inv.subtotal),
-                float(inv.vat_percent or 0),
+                float(inv.vat_percentage or 0),
                 float(inv.vat_amount),
                 float(inv.total_amount),
                 inv.status,
@@ -671,7 +671,7 @@ class TyreReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
-                float(entry.unit_cost or 0),
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
             ])
@@ -724,10 +724,10 @@ class LubricantReportView(APIView):
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
                 entry.item.unit,
-                float(entry.unit_cost or 0),
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
-                entry.reference or '—',
+                entry.remark or '—',
             ])
             if entry.quantity > 0:
                 total_in  += entry.final_amount or 0
