@@ -150,6 +150,12 @@ CORS_EXPOSE_HEADERS = [
     'Content-Length',
 ]
 
+# ── CSRF ──────────────────────────────────────────────────────────────────────
+CSRF_TRUSTED_ORIGINS = [
+    'https://taurus-logistics-production.up.railway.app',
+    'https://taurus-logistics-production-0a15.up.railway.app',
+]
+
 # ── BUSINESS CONSTANTS ────────────────────────────────────────────────────────
 CURRENCY_SYMBOL   = 'GH₵'
 DEFAULT_VAT_PCT   = 15.0
