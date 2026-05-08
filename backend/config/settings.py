@@ -58,7 +58,6 @@ ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [{
     'BACKEND': 'django.template.backends.django.DjangoTemplates',
-    # frontend_build added so Django can locate React's index.html for the SPA catch-all
     'DIRS': [BASE_DIR / 'templates', BASE_DIR / 'frontend_build'],
     'APP_DIRS': True,
     'OPTIONS': {'context_processors': [
@@ -71,14 +70,14 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# ── DATABASE — MySQL via PyMySQL (no C compilation required) ─────────────────
+# ── DATABASE — MySQL via PyMySQL ──────────────────────────────────────────────
 DATABASES = {
     'default': {
         'ENGINE':   'django.db.backends.mysql',
-        'NAME':     config('DB_NAME',     default='taurus_erp'),
+        'NAME':     config('DB_NAME',     default='railway'),
         'USER':     config('DB_USER',     default='root'),
         'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST':     config('DB_HOST',     default='127.0.0.1'),
+        'HOST':     config('DB_HOST',     default='localhost'),
         'PORT':     config('DB_PORT',     default='3306'),
         'OPTIONS': {
             'charset':  'utf8mb4',
@@ -106,7 +105,6 @@ DATETIME_FORMAT = 'd/m/Y H:i'
 STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Only include frontend_build/static if it exists (gets created during build)
 _frontend_static = BASE_DIR / 'frontend_build' / 'static'
 STATICFILES_DIRS = [_frontend_static] if _frontend_static.exists() else []
 
