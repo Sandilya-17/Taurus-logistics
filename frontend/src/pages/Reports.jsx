@@ -51,6 +51,7 @@ export default function ReportsPage() {
     }
   };
 
+  // ── FIXED: check if blob is actually an error JSON before downloading ──
   const doDownload = async (fmt) => {
     setDownloading(fmt);
     try {
@@ -58,24 +59,41 @@ export default function ReportsPage() {
       const mime = fmt === 'pdf'
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
       const resp = await api.get(`/reports/${active}/`, {
         params: { date_from: dateFrom, date_to: dateTo, format: fmt },
-        responseType: 'arraybuffer',   // ← FIX: arraybuffer is more reliable than blob across browsers
+        responseType: 'blob',
       });
+
+      // Check if the server returned an error JSON instead of a file
+      const contentType = resp.headers['content-type'] || '';
+      if (contentType.includes('application/json')) {
+        // Read the blob as text to get the error message
+        const text = await resp.data.text();
+        let errMsg = 'Export failed.';
+        try {
+          const parsed = JSON.parse(text);
+          errMsg = parsed.detail || parsed.error || parsed.message || errMsg;
+        } catch (_) {}
+        toast.error(errMsg);
+        return;
+      }
+
       const blob = new Blob([resp.data], { type: mime });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
       a.download = `taurus_${active.replace(/-/g, '_')}_${dateTo}.${ext}`;
-      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       toast.success(`${current.label} exported as ${fmt.toUpperCase()}.`);
     } catch (e) {
       let msg = 'Export failed. Please try again.';
       if (e.response?.status === 404) msg = 'Report endpoint not found.';
       else if (e.response?.status === 500) msg = 'Server error during export. Check backend logs.';
+      else if (e.response?.status === 401) msg = 'Session expired. Please log in again.';
       toast.error(msg);
     } finally {
       setDownloading('');
@@ -106,7 +124,6 @@ export default function ReportsPage() {
            k?.includes('units') || k?.includes('litres') || k?.includes('kg');
   };
 
-  // Colour-code cell values in revenue/expenditure report
   const getCellStyle = (header, value, rowIndex) => {
     if (typeof value !== 'number') return {};
     const h = header?.toLowerCase() || '';
@@ -296,11 +313,9 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {/* Revenue by source breakdown (shown for revenue-expenditure report) */}
+        {/* Revenue by source breakdown */}
         {data?.revenue_by_source && (
-          <div style={{
-            marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)',
-          }}>
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.04em' }}>
               Revenue by Source
             </div>
