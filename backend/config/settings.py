@@ -58,7 +58,8 @@ ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [{
     'BACKEND': 'django.template.backends.django.DjangoTemplates',
-    'DIRS': [BASE_DIR / 'templates'],
+    # Added frontend_build so Django can locate React's index.html for the SPA catch-all
+    'DIRS': [BASE_DIR / 'templates', BASE_DIR / 'frontend_build'],
     'APP_DIRS': True,
     'OPTIONS': {'context_processors': [
         'django.template.context_processors.debug',
@@ -104,6 +105,8 @@ DATETIME_FORMAT = 'd/m/Y H:i'
 
 STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Serve React's compiled JS/CSS alongside Django's own static files
+STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static']
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL  = '/media/'
