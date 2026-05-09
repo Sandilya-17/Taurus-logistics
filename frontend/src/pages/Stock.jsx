@@ -79,7 +79,7 @@ export default function StockPage() {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const ext = fmt === 'pdf' ? 'pdf' : 'xlsx';
-      const r = await api.get(`/reports/stock/?format=${fmt}`, { responseType: 'blob' });
+      const r = await api.get(`/reports/stock/?export=${fmt}`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([r.data], { type: mime }));
       const a = document.createElement('a');
       a.href = url;
