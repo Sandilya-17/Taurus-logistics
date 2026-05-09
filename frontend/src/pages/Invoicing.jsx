@@ -166,7 +166,7 @@ export default function InvoicingPage() {
 
   const downloadExcel = async (id, number) => {
     try {
-      const resp = await api.get(`/reports/invoices/?invoice_id=${id}&format=excel`, { responseType: 'blob' });
+      const resp = await api.get(`/reports/invoices/?invoice_id=${id}&export=excel`, { responseType: 'blob' });
       const url  = URL.createObjectURL(new Blob([resp.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const a    = document.createElement('a');
       a.href = url;
