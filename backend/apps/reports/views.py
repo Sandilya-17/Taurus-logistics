@@ -351,7 +351,8 @@ class StockReportView(APIView):
     def get(self, request):
         from apps.inventory.models import Item
 
-        items = Item.objects.filter(is_deleted=False).order_by('item_type', 'name')
+        # FIX: is_deleted is a property not a DB field — use deleted_at__isnull=True
+        items = Item.objects.filter(deleted_at__isnull=True).order_by('item_type', 'name')
 
         headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH\u20b5)', 'Reorder Level', 'Status']
         rows = []
@@ -703,8 +704,8 @@ class DashboardSummaryView(APIView):
                     .aggregate(litres=Sum('litres'),
                                excess_events=Count('id', filter=Q(excess_fuel__gt=0))))
 
-        # FIX: compute stock value per item using available_value() (handles +/- ledger correctly)
-        items = Item.objects.filter(is_deleted=False)
+        # FIX: is_deleted is a property not a DB field — use deleted_at__isnull=True
+        items = Item.objects.filter(deleted_at__isnull=True)
         stock_value = sum(item.available_value() for item in items)
         stock_items_count = items.count()
 
