@@ -38,7 +38,7 @@ export default function ReportsPage() {
     setData(null);
     try {
       const resp = await api.get(`/reports/${active}/`, {
-        params: { date_from: dateFrom, date_to: dateTo, format: 'json' }
+        params: { date_from: dateFrom, date_to: dateTo, export: 'json' }
       });
       setData(resp.data);
       if (!resp.data?.rows?.length && !resp.data?.summary) {
@@ -59,7 +59,7 @@ export default function ReportsPage() {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const resp = await api.get(`/reports/${active}/`, {
-        params: { date_from: dateFrom, date_to: dateTo, format: fmt },
+        params: { date_from: dateFrom, date_to: dateTo, export: fmt },
         responseType: 'blob',
       });
       const blob = new Blob([resp.data], { type: mime });
