@@ -219,7 +219,7 @@ class RevenueExpenditureReportView(APIView):
             'Net Profit / Loss (GH\u20b5)': float(net),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Revenue vs Expenditure  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -278,7 +278,7 @@ class FuelReportView(APIView):
             'Excess Incidents':       excess_events,
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Fuel Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -332,7 +332,7 @@ class TripReportView(APIView):
             'Total Revenue (GH\u20b5)': float(total_revenue),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Trip Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -378,7 +378,7 @@ class StockReportView(APIView):
             'Total Stock Value (GH\u20b5)': float(total_value),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Stock Report \u2014 as of {date.today()}'
 
         if fmt == 'excel':
@@ -430,7 +430,7 @@ class InvoiceReportView(APIView):
             'Outstanding (GH\u20b5)':    float(total_invoiced - total_paid),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Invoice Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -482,7 +482,7 @@ class SparePartsReportView(APIView):
             'Total Issued Value (GH\u20b5)': float(total_out),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Spare Parts Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -526,7 +526,7 @@ class MaintenanceReportView(APIView):
 
         summary = {'Total Maintenance Cost (GH\u20b5)': float(total_cost)}
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Maintenance Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -571,7 +571,7 @@ class VATReportView(APIView):
 
         summary = {'Total VAT Collected (GH\u20b5)': float(total_vat)}
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'VAT Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -615,7 +615,7 @@ class TyreReportView(APIView):
 
         summary = {'Total Tyre Value (GH\u20b5)': float(total_value)}
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Tyre Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
@@ -668,7 +668,7 @@ class LubricantReportView(APIView):
             'Total Issued Value (GH\u20b5)':    float(total_out),
         }
 
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         report_title = f'Lubricant Report  {date_from} \u2192 {date_to}'
 
         if fmt == 'excel':
