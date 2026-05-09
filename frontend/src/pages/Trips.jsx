@@ -106,14 +106,14 @@ export default function TripsPage() {
             <div className="fgrid">
               <div className="fg">
                 <label>Truck *</label>
-                <select {...register('truck_id', { required: true })}>
+                <select {...register('truck', { required: true })}>
                   <option value="">— Select Truck —</option>
                   {trucks.map(t => <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>)}
                 </select>
               </div>
               <div className="fg">
                 <label>Driver *</label>
-                <select {...register('driver_id', { required: true })}>
+                <select {...register('driver', { required: true })}>
                   <option value="">— Select Driver —</option>
                   {drivers.map(d => (
                     <option key={d.id} value={d.id} disabled={!d.can_be_assigned}>
