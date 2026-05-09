@@ -19,14 +19,12 @@ const StatCard = ({ label, value, color, sub, icon, pct }) => (
 export default function Dashboard() {
   const [kpis,    setKpis]    = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
 
   useEffect(() => {
     api.get('/reports/dashboard/')
-      .then(r => setKpis(r.data))
-      .catch(err => {
-        // ✅ FIX: was .catch(() => {}) — errors were silently swallowed, dashboard stayed blank
-        console.error('[Dashboard] Failed to load KPIs:', err?.response?.data || err?.message);
-      })
+      .then(r => { setKpis(r.data); setError(null); })
+      .catch(e => setError(e.response?.data?.detail || 'Dashboard data failed to load.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -40,6 +38,14 @@ export default function Dashboard() {
 
   return (
     <div>
+      {error && (
+        <div className="alert alert-warn mb16" style={{ borderRadius: 10, fontWeight: 500, color: 'var(--red)', background: '#fff5f5', borderColor: 'var(--red)' }}>
+          ⚠️&nbsp; <strong>Dashboard error:</strong> {error}
+        </div>
+      )}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>Loading dashboard…</div>
+      )}
       {alerts.length > 0 && (
         <div className="alert alert-warn mb16" style={{ borderRadius: 10, fontWeight: 500 }}>
           ⚠️&nbsp; <strong>{alerts.length} document{alerts.length > 1 ? 's' : ''} expiring soon:</strong>&nbsp;
@@ -100,7 +106,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── Month at a Glance ── */}
+        {/* ── Month at a Glance — no Net Profit ── */}
         <div className="card">
           <div className="card-title"><span className="card-title-ic">📊</span>Month at a Glance</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -122,10 +128,10 @@ export default function Dashboard() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
 
             {[
-              { label: 'Trips Completed',    val: month.trips ?? '—' },
-              { label: 'Fuel Consumed',      val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
+              { label: 'Trips Completed', val: month.trips ?? '—' },
+              { label: 'Fuel Consumed',   val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
               { label: 'Fuel Excess Events', val: month.fuel_excess_events ?? '0' },
-              { label: 'Stock Items',        val: kpis?.stock_items ?? '—' },
+              { label: 'Stock Items',     val: kpis?.stock_items ?? '—' },
             ].map((row, i) => (
               <div key={i} className="flex justify-between" style={{ fontSize: 12.5 }}>
                 <span style={{ color: 'var(--muted)' }}>{row.label}</span>
@@ -139,12 +145,12 @@ export default function Dashboard() {
       {/* ── Quick Links ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 10, marginTop: 16 }}>
         {[
-          { icon: '🚛', label: 'Add Truck',      href: '/trucks'    },
-          { icon: '🗺️', label: 'New Trip',       href: '/trips'     },
-          { icon: '📥', label: 'Purchase Stock',  href: '/purchase'  },
-          { icon: '🧾', label: 'New Invoice',     href: '/invoicing' },
-          { icon: '⛽', label: 'Log Fuel',        href: '/fuel'      },
-          { icon: '📊', label: 'View Reports',    href: '/reports'   },
+          { icon: '🚛', label: 'Add Truck',     href: '/trucks'      },
+          { icon: '🗺️', label: 'New Trip',      href: '/trips'       },
+          { icon: '📥', label: 'Purchase Stock', href: '/purchase'    },
+          { icon: '🧾', label: 'New Invoice',    href: '/invoicing'   },
+          { icon: '⛽', label: 'Log Fuel',       href: '/fuel'        },
+          { icon: '📊', label: 'View Reports',   href: '/reports'     },
         ].map((q, i) => (
           <Link key={i} to={q.href} style={{ textDecoration: 'none' }}>
             <div style={{
