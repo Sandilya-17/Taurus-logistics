@@ -56,12 +56,17 @@ class Truck(SoftDeleteModel):
             'Permit':    self.permit_expiry,
             'VIT':       self.vit_next_due_date,
         }
-        for name, date in fields.items():
-            if not date: continue
-            days = (date - today).days
+        for name, expiry_date in fields.items():
+            if not expiry_date: continue
+            days = (expiry_date - today).days
             if days <= 30:
-                alerts.append({'name': name, 'date': date, 'days_remaining': days,
-                                'level': 'DANGER' if days <= 7 else 'WARNING'})
+                alerts.append({
+                    'truck_number':  self.truck_number,   # FIX: include truck_number
+                    'name':          name,
+                    'date':          str(expiry_date),    # FIX: str() so JSON serializable
+                    'days_remaining': days,
+                    'level':         'DANGER' if days <= 7 else 'WARNING',
+                })
         return alerts
 
 
