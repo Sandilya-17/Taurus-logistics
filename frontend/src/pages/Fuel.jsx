@@ -21,7 +21,7 @@ export default function FuelPage() {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const ext = fmt === 'pdf' ? 'pdf' : 'xlsx';
-      const resp = await api.get(`/reports/fuel/?format=${fmt}`, { responseType: 'blob' });
+      const resp = await api.get(`/reports/fuel/?export=${fmt}`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([resp.data], { type: mime }));
       const a = document.createElement('a');
       a.href = url;
