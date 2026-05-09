@@ -260,7 +260,7 @@ export default function RevenuePage() {
   const downloadReport = async (fmt) => {
     setDlRev(fmt);
     try {
-      const params = { format: fmt };
+      const params = { export: fmt };
       if (filterSource) params.source = filterSource;
       const r = await api.get('/reports/revenue-expenditure/', { params, responseType: 'blob' });
       const ext  = fmt === 'pdf' ? 'pdf' : 'xlsx';
