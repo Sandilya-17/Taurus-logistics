@@ -114,7 +114,7 @@ export default function MaintenancePage() {
   const downloadReport = async (fmt) => {
     setDlMaint(fmt);
     try {
-      const r = await api.get('/reports/maintenance/', { params: { format: fmt }, responseType: 'blob' });
+      const r = await api.get('/reports/maintenance/', { params: { export: fmt }, responseType: 'blob' });
       const ext  = fmt === 'pdf' ? 'pdf' : 'xlsx';
       const mime = fmt === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const url = URL.createObjectURL(new Blob([r.data], { type: mime }));
