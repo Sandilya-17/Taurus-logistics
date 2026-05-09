@@ -2,6 +2,7 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from .models import Trip
 from .serializers import TripSerializer, TripPreviewSerializer
 
@@ -14,7 +15,10 @@ class TripListCreate(generics.ListCreateAPIView):
     ordering_fields  = ('loading_time', 'status')
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        try:
+            serializer.save(created_by=self.request.user)
+        except ValueError as e:
+            raise ValidationError({'error': str(e)})
 
 
 class TripDetail(generics.RetrieveUpdateDestroyAPIView):
