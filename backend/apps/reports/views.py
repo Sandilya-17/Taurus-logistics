@@ -517,10 +517,10 @@ class SparePartsReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 qty,
-                float(entry.unit_price or 0),
+                float(entry.unit_cost or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
-                entry.remark or '—',
+                entry.reference or '—',
             ])
             if entry.quantity > 0:
                 total_in += entry.final_amount or 0
@@ -552,14 +552,14 @@ class SparePartsReportView(APIView):
 class MaintenanceReportView(APIView):
     """Service history and maintenance costs."""
     def get(self, request):
-        from apps.maintenance.models import MaintenanceLog as MaintenanceRecord
+        from apps.maintenance.models import MaintenanceRecord
         date_from, date_to = _parse_date_range(request)
 
         records = (
             MaintenanceRecord.objects
             .select_related('truck')
-            .filter(service_date__range=[date_from, date_to])
-            .order_by('-service_date')
+            .filter(date__range=[date_from, date_to])
+            .order_by('-date')
         )
 
         headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH₵)', 'Vendor', 'Next Due']
@@ -568,15 +568,15 @@ class MaintenanceReportView(APIView):
 
         for rec in records:
             rows.append([
-                str(rec.service_date),
+                str(rec.date),
                 rec.truck.truck_number,
                 rec.maintenance_type if hasattr(rec, 'maintenance_type') else '—',
                 rec.description[:60] if rec.description else '—',
-                float(rec.total_cost or 0),
-                rec.mechanic if hasattr(rec, 'mechanic') and rec.mechanic else '—',
-                str(rec.next_service_date) if hasattr(rec, 'next_service_date') and rec.next_service_date else '—',
+                float(rec.cost or 0),
+                rec.vendor.name if hasattr(rec, 'vendor') and rec.vendor else '—',
+                str(rec.next_due_date) if hasattr(rec, 'next_due_date') and rec.next_due_date else '—',
             ])
-            total_cost += rec.total_cost or 0
+            total_cost += rec.cost or 0
 
         summary = {'Total Maintenance Cost (GH₵)': float(total_cost)}
 
@@ -605,7 +605,7 @@ class VATReportView(APIView):
 
         invoices = (
             Invoice.objects
-            .filter(invoice_date__range=[date_from, date_to], vat_applicable=True)
+            .filter(invoice_date__range=[date_from, date_to], vat_enabled=True)
             .order_by('-invoice_date')
         )
 
@@ -619,7 +619,7 @@ class VATReportView(APIView):
                 str(inv.invoice_date),
                 inv.client_name,
                 float(inv.subtotal),
-                float(inv.vat_percentage or 0),
+                float(inv.vat_percent or 0),
                 float(inv.vat_amount),
                 float(inv.total_amount),
                 inv.status,
@@ -671,7 +671,7 @@ class TyreReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
-                float(entry.unit_price or 0),
+                float(entry.unit_cost or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
             ])
@@ -724,10 +724,10 @@ class LubricantReportView(APIView):
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
                 entry.item.unit,
-                float(entry.unit_price or 0),
+                float(entry.unit_cost or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
-                entry.remark or '—',
+                entry.reference or '—',
             ])
             if entry.quantity > 0:
                 total_in  += entry.final_amount or 0
@@ -757,7 +757,7 @@ class LubricantReportView(APIView):
 
 
 # ================================================================
-# DASHBOARD — FIXED (was missing fuel, trips, stock, alerts)
+# DASHBOARD — FIXED (was missing truck_number in expiry alerts)
 # ================================================================
 
 class DashboardSummaryView(APIView):
@@ -774,7 +774,7 @@ class DashboardSummaryView(APIView):
         today       = timezone.now().date()
         month_start = today.replace(day=1)
 
-        # ── Fuel this month ── ✅ FIXED: Q imported at top, no more __import__ hack
+        # ── Fuel this month ──
         fuel_agg = (
             FuelLog.objects
             .filter(date__gte=month_start)
@@ -793,6 +793,8 @@ class DashboardSummaryView(APIView):
         expiry_alerts = []
         for truck in trucks:
             for alert in truck.expiry_alerts():
+                alert['truck_number'] = truck.truck_number  # ✅ FIX: was missing, caused JS crash on Dashboard
+                alert['truck_id']     = truck.pk
                 expiry_alerts.append(alert)
         expiry_alerts.sort(key=lambda a: a['days_remaining'])
 
