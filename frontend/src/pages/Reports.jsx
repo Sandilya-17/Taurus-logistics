@@ -45,13 +45,15 @@ export default function ReportsPage() {
         toast('No data found for the selected period.', { icon: 'ℹ️' });
       }
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Report generation failed.');
+      // ✅ FIX: improved error message with status code
+      const status = e.response?.status;
+      const detail = e.response?.data?.detail || e.response?.data?.error;
+      toast.error(detail || `Report generation failed${status ? ` (${status})` : ''}. Check the backend logs.`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ── FIXED: check if blob is actually an error JSON before downloading ──
   const doDownload = async (fmt) => {
     setDownloading(fmt);
     try {
@@ -59,26 +61,10 @@ export default function ReportsPage() {
       const mime = fmt === 'pdf'
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
       const resp = await api.get(`/reports/${active}/`, {
         params: { date_from: dateFrom, date_to: dateTo, format: fmt },
         responseType: 'blob',
       });
-
-      // Check if the server returned an error JSON instead of a file
-      const contentType = resp.headers['content-type'] || '';
-      if (contentType.includes('application/json')) {
-        // Read the blob as text to get the error message
-        const text = await resp.data.text();
-        let errMsg = 'Export failed.';
-        try {
-          const parsed = JSON.parse(text);
-          errMsg = parsed.detail || parsed.error || parsed.message || errMsg;
-        } catch (_) {}
-        toast.error(errMsg);
-        return;
-      }
-
       const blob = new Blob([resp.data], { type: mime });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
@@ -90,10 +76,13 @@ export default function ReportsPage() {
       URL.revokeObjectURL(url);
       toast.success(`${current.label} exported as ${fmt.toUpperCase()}.`);
     } catch (e) {
-      let msg = 'Export failed. Please try again.';
-      if (e.response?.status === 404) msg = 'Report endpoint not found.';
-      else if (e.response?.status === 500) msg = 'Server error during export. Check backend logs.';
-      else if (e.response?.status === 401) msg = 'Session expired. Please log in again.';
+      // ✅ FIX: distinguish 404 vs 500 vs network error
+      const status = e.response?.status;
+      const msg = status === 404
+        ? `Export failed: report endpoint /reports/${active}/ not found.`
+        : status === 500
+        ? 'Server error — check backend has openpyxl and reportlab installed.'
+        : `Export failed (${status ?? 'network error'}). Please try again.`;
       toast.error(msg);
     } finally {
       setDownloading('');
@@ -124,7 +113,7 @@ export default function ReportsPage() {
            k?.includes('units') || k?.includes('litres') || k?.includes('kg');
   };
 
-  const getCellStyle = (header, value, rowIndex) => {
+  const getCellStyle = (header, value) => {
     if (typeof value !== 'number') return {};
     const h = header?.toLowerCase() || '';
     if (h.includes('profit') || h.includes('net')) {
@@ -194,7 +183,6 @@ export default function ReportsPage() {
       {/* ── Controls ── */}
       <div className="card mb16">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          {/* Selected report indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               background: current?.color,
@@ -210,25 +198,19 @@ export default function ReportsPage() {
 
           <div style={{ flex: 1 }} />
 
-          {/* Date range */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <label style={{ margin: 0, fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>FROM</label>
-              <input
-                type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                style={{ width: 'auto', padding: '7px 10px', fontSize: 12 }}
-              />
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                style={{ width: 'auto', padding: '7px 10px', fontSize: 12 }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <label style={{ margin: 0, fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>TO</label>
-              <input
-                type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                style={{ width: 'auto', padding: '7px 10px', fontSize: 12 }}
-              />
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                style={{ width: 'auto', padding: '7px 10px', fontSize: 12 }} />
             </div>
           </div>
 
-          {/* Quick date presets */}
           <div style={{ display: 'flex', gap: 4 }}>
             {[
               { label: '7d',  days: 7 },
@@ -236,44 +218,28 @@ export default function ReportsPage() {
               { label: '90d', days: 90 },
               { label: 'YTD', days: null },
             ].map(p => (
-              <button
-                key={p.label}
-                className="btn btn-ghost btn-xs"
-                onClick={() => {
-                  const t = new Date();
-                  const from = p.days
-                    ? new Date(t - p.days * 86400000)
-                    : new Date(t.getFullYear(), 0, 1);
-                  setDateFrom(from.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
-                  setDateTo(t.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
-                }}
-              >{p.label}</button>
+              <button key={p.label} className="btn btn-ghost btn-xs" onClick={() => {
+                const t = new Date();
+                const from = p.days
+                  ? new Date(t - p.days * 86400000)
+                  : new Date(t.getFullYear(), 0, 1);
+                setDateFrom(from.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
+                setDateTo(t.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
+              }}>{p.label}</button>
             ))}
           </div>
 
-          {/* Actions */}
-          <button
-            className="btn btn-primary btn-sm" onClick={doFetch} disabled={loading}
-            style={{ minWidth: 110 }}
-          >
+          <button className="btn btn-primary btn-sm" onClick={doFetch} disabled={loading} style={{ minWidth: 110 }}>
             {loading ? '⏳ Loading…' : '🔍 Generate'}
           </button>
-          <button
-            className={`export-btn excel${downloading === 'excel' ? ' loading' : ''}`}
-            onClick={() => doDownload('excel')}
-            disabled={!!downloading}
-          >
+          <button className={`export-btn excel${downloading === 'excel' ? ' loading' : ''}`} onClick={() => doDownload('excel')} disabled={!!downloading}>
             {downloading === 'excel' ? (
               <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Exporting…</>
             ) : (
               <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 13 12 17 16 13"/><line x1="12" y1="17" x2="12" y2="8"/></svg> Excel</>
             )}
           </button>
-          <button
-            className={`export-btn pdf${downloading === 'pdf' ? ' loading' : ''}`}
-            onClick={() => doDownload('pdf')}
-            disabled={!!downloading}
-          >
+          <button className={`export-btn pdf${downloading === 'pdf' ? ' loading' : ''}`} onClick={() => doDownload('pdf')} disabled={!!downloading}>
             {downloading === 'pdf' ? (
               <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{animation:'spin 1s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Exporting…</>
             ) : (
@@ -282,12 +248,8 @@ export default function ReportsPage() {
           </button>
         </div>
 
-        {/* ── Summary KPIs ── */}
         {data?.summary && Object.keys(data.summary).length > 0 && (
-          <div style={{
-            display: 'flex', gap: 10, flexWrap: 'wrap',
-            marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)',
-          }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             {Object.entries(data.summary).map(([k, v]) => {
               const kl = k.toLowerCase();
               const isProfit = kl.includes('profit') || kl.includes('net');
@@ -304,16 +266,13 @@ export default function ReportsPage() {
                   borderRadius: 10, padding: '10px 16px', flex: '1 1 160px', minWidth: 160,
                 }}>
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{k}</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color }}>
-                    {fmtCurrency(v)}
-                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color }}>{fmtCurrency(v)}</div>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Revenue by source breakdown */}
         {data?.revenue_by_source && (
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.04em' }}>
@@ -321,10 +280,7 @@ export default function ReportsPage() {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {Object.entries(data.revenue_by_source).map(([src, val]) => (
-                <div key={src} style={{
-                  background: 'var(--green-bg)', border: '1px solid #6ee7b7',
-                  borderRadius: 8, padding: '8px 12px', fontSize: 12,
-                }}>
+                <div key={src} style={{ background: 'var(--green-bg)', border: '1px solid #6ee7b7', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
                   <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 600 }}>{src.replace(/_/g, ' ')}</div>
                   <div style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtCurrency(val)}</div>
                 </div>
@@ -345,11 +301,11 @@ export default function ReportsPage() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className="badge b-blue">{data.rows?.length ?? 0} records</span>
               <button className={`export-btn excel${downloading==='excel'?' loading':''}`} onClick={() => doDownload('excel')} disabled={!!downloading}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={downloading==='excel'?{animation:'spin 1s linear infinite'}:{}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {downloading === 'excel' ? 'Exporting…' : 'Excel'}
               </button>
               <button className={`export-btn pdf${downloading==='pdf'?' loading':''}`} onClick={() => doDownload('pdf')} disabled={!!downloading}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={downloading==='pdf'?{animation:'spin 1s linear infinite'}:{}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {downloading === 'pdf' ? 'Exporting…' : 'PDF'}
               </button>
             </div>
@@ -359,9 +315,7 @@ export default function ReportsPage() {
               <thead>
                 <tr>
                   {(data.headers || []).map((h, i) => (
-                    <th key={i} style={{ textAlign: isCurrencyHeader(h) || isQtyHeader(h) ? 'right' : 'left' }}>
-                      {h}
-                    </th>
+                    <th key={i} style={{ textAlign: isCurrencyHeader(h) || isQtyHeader(h) ? 'right' : 'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -381,19 +335,16 @@ export default function ReportsPage() {
                   <tr key={ri}>
                     {row.map((cell, ci) => {
                       const header = data.headers?.[ci] || '';
-                      const cellStyle = getCellStyle(header, cell, ri);
+                      const cellStyle = getCellStyle(header, cell);
                       return (
-                        <td
-                          key={ci}
+                        <td key={ci}
                           className={typeof cell === 'number' && cell % 1 !== 0 ? 'ced' : ''}
                           style={{
                             textAlign: typeof cell === 'number' ? 'right' : 'left',
                             fontWeight: (isCurrencyHeader(header) || isQtyHeader(header)) && typeof cell === 'number' ? 600 : 400,
                             ...cellStyle,
                           }}
-                        >
-                          {fmtCell(cell)}
-                        </td>
+                        >{fmtCell(cell)}</td>
                       );
                     })}
                   </tr>
@@ -404,7 +355,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Fuel Excess Incidents */}
       {data?.excess_incidents?.length > 0 && (
         <div className="card mt16">
           <div className="card-title"><span className="card-title-ic">🔴</span>Fuel Excess Incidents</div>
@@ -417,11 +367,7 @@ export default function ReportsPage() {
                 {data.excess_incidents.map((r, i) => (
                   <tr key={i} className="row-danger">
                     {r.map((cell, ci) => (
-                      <td key={ci}>
-                        {ci === 4 && parseFloat(cell) > 0
-                          ? <span className="badge b-red">+{cell} L</span>
-                          : cell}
-                      </td>
+                      <td key={ci}>{ci === 4 && parseFloat(cell) > 0 ? <span className="badge b-red">+{cell} L</span> : cell}</td>
                     ))}
                   </tr>
                 ))}
@@ -431,7 +377,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Empty / initial state */}
       {!data && !loading && (
         <div className="card">
           <div className="empty-state" style={{ padding: '60px 24px' }}>
@@ -440,13 +385,6 @@ export default function ReportsPage() {
             <div className="empty-state-sub" style={{ maxWidth: 420, margin: '6px auto 20px' }}>
               Select a date range above and click <strong>Generate</strong> to preview data in the browser,
               or use <strong>Excel / PDF</strong> to download directly without preview.
-              {active === 'invoices' && (
-                <><br /><br />
-                  <span style={{ color: 'var(--primary)', fontSize: 11 }}>
-                    📌 Invoice Report shows quantity (tons/units), unit type, subtotal, VAT and payment status per invoice.
-                  </span>
-                </>
-              )}
               {active === 'revenue-expenditure' && (
                 <><br /><br />
                   <span style={{ color: 'var(--green)', fontSize: 11 }}>
@@ -456,9 +394,7 @@ export default function ReportsPage() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-sm" onClick={doFetch} disabled={loading}>
-                🔍 Generate Preview
-              </button>
+              <button className="btn btn-primary btn-sm" onClick={doFetch} disabled={loading}>🔍 Generate Preview</button>
               <button className={`export-btn excel${downloading==='excel'?' loading':''}`} onClick={() => doDownload('excel')} disabled={!!downloading}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {downloading === 'excel' ? 'Exporting…' : 'Download Excel'}
