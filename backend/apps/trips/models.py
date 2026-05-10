@@ -52,6 +52,10 @@ class Trip(TimeStampedModel):
 
     def __str__(self): return f"{self.waybill_no} | {self.origin} → {self.destination}"
 
+    @property
+    def net_profit(self):
+        return self.trip_revenue - self.fuel_cost - self.spare_parts_cost
+
     def save(self, *args, **kwargs):
         # Auto-calculate quantity difference
         if self.delivered_qty is not None:
@@ -79,8 +83,15 @@ class Trip(TimeStampedModel):
             self._sync_finance()
 
     def _sync_finance(self):
-        """On completion: upsert Revenue and Expenditure records for this trip."""
+        """On completion: upsert Revenue and Expenditure records for this trip.
+
+        Revenue  → keyed by (trip, source)         — Revenue has a trip FK.
+        Expenditure → keyed by (truck, category, reference=waybill_no)
+                      — Expenditure has NO trip FK, only truck FK.
+        """
         from apps.finance.models import Revenue, Expenditure
+
+        trip_date = self.unloading_time.date() if self.unloading_time else self.loading_time.date()
 
         # ── Revenue ──
         if self.trip_revenue and self.trip_revenue > 0:
@@ -89,19 +100,21 @@ class Trip(TimeStampedModel):
                 source=Revenue.TRIP_REVENUE,
                 defaults=dict(
                     amount=self.trip_revenue,
-                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    date=trip_date,
                     description=f"Trip {self.waybill_no} Revenue",
                 ),
             )
 
         # ── Expenditure: Fuel ──
+        # Expenditure has no trip FK; use truck + category + reference (waybill_no) as upsert key.
         if self.fuel_cost and self.fuel_cost > 0:
             Expenditure.objects.update_or_create(
-                trip=self,
+                truck=self.truck,
                 category=Expenditure.FUEL,
+                reference=self.waybill_no,
                 defaults=dict(
                     amount=self.fuel_cost,
-                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    date=trip_date,
                     description=f"Trip {self.waybill_no} Fuel Cost",
                 ),
             )
@@ -109,11 +122,12 @@ class Trip(TimeStampedModel):
         # ── Expenditure: Spare Parts ──
         if self.spare_parts_cost and self.spare_parts_cost > 0:
             Expenditure.objects.update_or_create(
-                trip=self,
+                truck=self.truck,
                 category=Expenditure.SPARE_PART,
+                reference=self.waybill_no,
                 defaults=dict(
                     amount=self.spare_parts_cost,
-                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    date=trip_date,
                     description=f"Trip {self.waybill_no} Spare Parts Cost",
                 ),
             )
