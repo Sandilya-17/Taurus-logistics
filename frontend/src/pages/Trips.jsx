@@ -12,55 +12,27 @@ const STATUS_BADGE = {
   CANCELLED: 'b-red',
 };
 
-// datetime-local input expects "YYYY-MM-DDTHH:MM"
-const toDatetimeLocal = (val) => {
-  if (!val) return '';
-  return val.slice(0, 16);
-};
-
-// Fetch ALL pages from a paginated DRF endpoint
-const fetchAllPages = async (url) => {
-  let results = [];
-  let nextUrl = url;
-  while (nextUrl) {
-    const res  = await api.get(nextUrl);
-    const data = res.data;
-    if (Array.isArray(data)) {
-      results = data;
-      break;
-    }
-    results = results.concat(data.results || []);
-    // Strip base URL from next link so axios uses relative path correctly
-    nextUrl = data.next
-      ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
-      : null;
-  }
-  return results;
-};
-
 export default function TripsPage() {
-  const [trucks,      setTrucks]      = useState([]);
-  const [drivers,     setDrivers]     = useState([]);
-  const [trips,       setTrips]       = useState([]);
-  const [computed,    setComputed]    = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
-  const [saving,      setSaving]      = useState(false);
-  const [loading,     setLoading]     = useState(false);
-  const [tab,         setTab]         = useState('all');
-  const [editingTrip, setEditingTrip] = useState(null);
+  const [trucks,  setTrucks]  = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [trips,   setTrips]   = useState([]);
+  const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
+  const [saving,  setSaving]  = useState(false);
+  const [tab,     setTab]     = useState('active');
 
   const { register, handleSubmit, watch, reset } = useForm({
     defaultValues: { status: 'PLANNED', rate_per_ton: '' }
   });
 
-  const wLoaded     = watch('loaded_qty');
-  const wDelivered  = watch('delivered_qty');
-  const wRate       = watch('rate_per_ton');
-  const wLoadTime   = watch('loading_time');
+  const wLoaded    = watch('loaded_qty');
+  const wDelivered = watch('delivered_qty');
+  const wRate      = watch('rate_per_ton');
+  const wLoadTime  = watch('loading_time');
   const wUnloadTime = watch('unloading_time');
 
   useEffect(() => {
-    fetchAllPages('/trucks/?status=ACTIVE').then(setTrucks);
-    fetchAllPages('/drivers/?status=ACTIVE').then(setDrivers);
+    api.get('/trucks/?status=ACTIVE').then(r  => setTrucks(r.data.results  || r.data));
+    api.get('/drivers/?status=ACTIVE').then(r => setDrivers(r.data.results || r.data));
     loadTrips();
   }, []);
 
@@ -71,42 +43,8 @@ export default function TripsPage() {
     setComputed({ ...c, duration: d });
   }, [wLoaded, wDelivered, wRate, wLoadTime, wUnloadTime]);
 
-  const loadTrips = async () => {
-    setLoading(true);
-    try {
-      const all = await fetchAllPages('/trips/');
-      setTrips(all);
-    } catch {
-      toast.error('Failed to load trips.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const clearForm = () => {
-    setEditingTrip(null);
-    reset({ status: 'PLANNED', rate_per_ton: '' });
-    setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
-  };
-
-  const startEdit = (trip) => {
-    setEditingTrip(trip);
-    reset({
-      truck:          trip.truck,
-      driver:         trip.driver,
-      waybill_no:     trip.waybill_no,
-      status:         trip.status,
-      origin:         trip.origin,
-      destination:    trip.destination,
-      material_type:  trip.material_type,
-      loaded_qty:     trip.loaded_qty,
-      delivered_qty:  trip.delivered_qty  ?? '',
-      rate_per_ton:   trip.rate_per_ton   ?? '',
-      loading_time:   toDatetimeLocal(trip.loading_time),
-      unloading_time: toDatetimeLocal(trip.unloading_time),
-      remark:         trip.remark ?? '',
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const loadTrips = () => {
+    api.get('/trips/').then(r => setTrips(r.data.results || r.data));
   };
 
   const deleteTrip = async (id) => {
@@ -114,34 +52,23 @@ export default function TripsPage() {
     try {
       await api.delete(`/trips/${id}/`);
       toast.success('Trip deleted.');
-      if (editingTrip?.id === id) clearForm();
       loadTrips();
-    } catch {
-      toast.error('Cannot delete this trip.');
-    }
+    } catch { toast.error('Cannot delete this trip.'); }
   };
 
   const onSubmit = async (data) => {
     setSaving(true);
-    const payload = {
-      ...data,
-      loaded_qty:    parseFloat(data.loaded_qty || 0),
-      delivered_qty: data.delivered_qty ? parseFloat(data.delivered_qty) : null,
-      rate_per_ton:  parseFloat(data.rate_per_ton || 0),
-    };
     try {
-      if (editingTrip) {
-        await api.patch(`/trips/${editingTrip.id}/`, payload);
-        toast.success('Trip updated successfully.');
-      } else {
-        await api.post('/trips/', payload);
-        toast.success('Trip posted successfully.');
-      }
-      const savedStatus = data.status;
-      clearForm();
-      if (['PLANNED','EN_ROUTE','DELAYED'].includes(savedStatus)) setTab('active');
-      else if (savedStatus === 'COMPLETED') setTab('completed');
-      else setTab('all');
+      await api.post('/trips/', {
+        ...data,
+        loaded_qty:    parseFloat(data.loaded_qty || 0),
+        delivered_qty: data.delivered_qty ? parseFloat(data.delivered_qty) : null,
+        rate_per_ton:  parseFloat(data.rate_per_ton || 0),
+        fuel_limit:    data.fuel_limit ? parseFloat(data.fuel_limit) : null,
+      });
+      toast.success('Trip posted successfully.');
+      reset({ status: 'PLANNED' });
+      setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
       loadTrips();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to save trip.');
@@ -150,23 +77,19 @@ export default function TripsPage() {
     }
   };
 
-  const activeTrips    = trips.filter(t => ['PLANNED', 'EN_ROUTE', 'DELAYED'].includes(t.status));
+  const activeTrips    = trips.filter(t => ['EN_ROUTE','DELAYED'].includes(t.status));
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const allTrips       = trips;
-  const visibleTrips   = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips;
-
-  const isEditing = !!editingTrip;
 
   return (
     <div>
-      {/* ── KPI Row ── */}
       <div className="g2 mb16">
         {[
-          { label: 'Active Trips',  val: activeTrips.length,    color: 'var(--blue)'  },
-          { label: 'Completed',     val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue', val: fmtGHS(trips.reduce((s, t) => s + parseFloat(t.trip_revenue || 0), 0)), color: 'var(--amber)' },
-          { label: 'Delayed',       val: trips.filter(t => t.status === 'DELAYED').length, color: 'var(--red)' },
-        ].map((k, i) => (
+          { label: 'Active Trips',    val: activeTrips.length,    color: 'var(--blue)'  },
+          { label: 'Completed',       val: completedTrips.length, color: 'var(--green)' },
+          { label: 'Total Revenue',   val: fmtGHS(trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0),0)), color: 'var(--amber)' },
+          { label: 'Delayed',         val: trips.filter(t=>t.status==='DELAYED').length, color: 'var(--red)' },
+        ].map((k,i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-val" style={{ color: k.color, fontSize: 20 }}>{k.val}</div>
@@ -175,30 +98,9 @@ export default function TripsPage() {
       </div>
 
       <div className="g2">
-        {/* ── Trip Form (New / Edit) ── */}
-        <div className="card" style={{ borderTop: isEditing ? '3px solid var(--amber)' : undefined }}>
-          <div className="card-title">
-            <span className="card-title-ic">{isEditing ? '✏️' : '🗺️'}</span>
-            {isEditing ? `Editing Trip — ${editingTrip.waybill_no}` : 'New Trip Entry'}
-          </div>
-
-          {isEditing && (
-            <div style={{
-              background: '#fff8e1',
-              border: '1px solid var(--amber)',
-              borderRadius: 6,
-              padding: '8px 12px',
-              marginBottom: 12,
-              fontSize: 13,
-              color: '#7a5c00',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-              ⚠️ Editing existing trip. Click <strong>&nbsp;Update Trip&nbsp;</strong> to save or <strong>&nbsp;Cancel&nbsp;</strong> to discard.
-            </div>
-          )}
-
+        {/* ── New Trip Form ── */}
+        <div className="card">
+          <div className="card-title"><span className="card-title-ic">🗺️</span>New Trip Entry</div>
           <form onSubmit={handleSubmit(onSubmit)}>
 
             <div className="sec-div">Fleet Assignment</div>
@@ -232,7 +134,6 @@ export default function TripsPage() {
                   <option value="EN_ROUTE">EN ROUTE</option>
                   <option value="DELAYED">DELAYED</option>
                   <option value="COMPLETED">COMPLETED</option>
-                  <option value="CANCELLED">CANCELLED</option>
                 </select>
               </div>
             </div>
@@ -272,7 +173,7 @@ export default function TripsPage() {
                 }}>
                   {computed.qty_difference !== 0
                     ? `${computed.qty_difference > 0 ? '▼ Shortage' : '▲ Overage'}: ${Math.abs(computed.qty_difference).toFixed(3)}T`
-                    : computed.qty_difference === 0 && parseFloat(wDelivered || 0) > 0
+                    : computed.qty_difference === 0 && parseFloat(wDelivered||0) > 0
                       ? '✓ Exact'
                       : '—'}
                 </div>
@@ -298,6 +199,13 @@ export default function TripsPage() {
             <div className="sec-div">Revenue — Auto-Calculated</div>
             <div className="fgrid">
               <div className="fg">
+                <label>Fuel Limit (L) *</label>
+                <input type="number" step="0.01" min="0" placeholder="e.g. 150.00"
+                       {...register('fuel_limit', { required: true })}
+                       style={{ color: 'var(--blue)', fontWeight: 600 }} />
+                <small style={{ color: 'var(--muted)', fontSize: 11 }}>Auto-used in Fuel Control when this trip is selected</small>
+              </div>
+              <div className="fg">
                 <label>Rate per Ton (GH₵)</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" {...register('rate_per_ton')} />
               </div>
@@ -313,10 +221,10 @@ export default function TripsPage() {
 
             <div className="flex gap8 mt16">
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? '⏳ Saving…' : isEditing ? '✓ Update Trip' : '✓ Post Trip'}
+                {saving ? '⏳ Saving…' : '✓ Post Trip'}
               </button>
-              <button type="button" className="btn btn-ghost" onClick={clearForm}>
-                {isEditing ? 'Cancel' : 'Clear'}
+              <button type="button" className="btn btn-ghost" onClick={() => { reset({ status: 'PLANNED' }); setComputed({ qty_difference: 0, trip_revenue: 0, duration: null }); }}>
+                Clear
               </button>
             </div>
           </form>
@@ -326,78 +234,42 @@ export default function TripsPage() {
         <div className="card">
           <div className="card-title"><span className="card-title-ic">📋</span>Trips</div>
           <div className="tabs">
-            {[
-              { key: 'active',    label: `Active (${activeTrips.length})`    },
-              { key: 'completed', label: `Completed (${completedTrips.length})` },
-              { key: 'all',       label: `All (${allTrips.length})`          },
-            ].map(t => (
-              <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
-                {t.label}
+            {['active','completed','all'].map(t => (
+              <div key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
               </div>
             ))}
           </div>
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>⏳ Loading trips…</div>
-          ) : (
-            <div className="tbl-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Waybill</th>
-                    <th>Truck</th>
-                    <th>Driver</th>
-                    <th>Route</th>
-                    <th>Material</th>
-                    <th>Loaded</th>
-                    <th>Revenue</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleTrips.map(t => (
-                    <tr key={t.id} style={editingTrip?.id === t.id ? { background: '#fff8e1' } : undefined}>
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Waybill</th><th>Truck</th><th>Driver</th><th>Route</th>
+                  <th>Material</th><th>Loaded</th><th>Fuel Limit</th><th>Revenue</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips)
+                  .map(t => (
+                    <tr key={t.id}>
                       <td className="mono">{t.waybill_no}</td>
                       <td className="mono">{t.truck_number}</td>
                       <td>{t.driver_name}</td>
                       <td style={{ fontSize: 11 }}>{t.origin} → {t.destination}</td>
                       <td>{t.material_type}</td>
                       <td>{t.loaded_qty}T</td>
+                      <td style={{ color: 'var(--blue)', fontWeight: 600 }}>{t.fuel_limit ? `${t.fuel_limit} L` : '—'}</td>
                       <td className="ced">{fmtGHS(t.trip_revenue)}</td>
                       <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
-                      <td>
-                        <div className="flex gap8">
-                          <button
-                            className="btn btn-xs"
-                            style={{ background: 'var(--amber)', color: '#fff' }}
-                            onClick={() => startEdit(t)}
-                            title="Edit trip"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className="btn btn-danger btn-xs"
-                            onClick={() => deleteTrip(t.id)}
-                            title="Delete trip"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
+                      <td><button className="btn btn-danger btn-xs" onClick={() => deleteTrip(t.id)}>🗑️</button></td>
                     </tr>
                   ))}
-                  {visibleTrips.length === 0 && (
-                    <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-                        No trips found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips).length === 0 && (
+                  <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No trips found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
