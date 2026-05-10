@@ -25,6 +25,13 @@ class TripDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset         = Trip.objects.all()
     serializer_class = TripSerializer
 
+    def perform_destroy(self, instance):
+        """Delete revenue before removing the trip — guarantees dashboard accuracy."""
+        from apps.finance.models import Revenue
+        Revenue.objects.filter(trip=instance).delete()
+        Revenue.objects.filter(invoice__trip=instance).delete()
+        instance.delete()
+
 
 class TripPreviewView(APIView):
     """POST trip fields → returns computed values instantly (no DB write)."""
