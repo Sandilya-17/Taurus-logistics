@@ -71,6 +71,7 @@ class IssueItemSerializer(serializers.ModelSerializer):
     item_name     = serializers.CharField(source='item.name',     read_only=True)
     location_name = serializers.CharField(source='location.name', read_only=True)
     truck_number  = serializers.CharField(source='truck.truck_number', read_only=True)
+    trip_waybill  = serializers.CharField(source='trip.waybill_no', read_only=True)
     available_qty = serializers.SerializerMethodField()
 
     class Meta:
