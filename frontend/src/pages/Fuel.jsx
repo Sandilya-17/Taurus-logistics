@@ -51,7 +51,22 @@ export default function FuelPage() {
       (r.data.results || r.data).forEach(l => { lmap[l.truck] = l.fuel_limit; });
       setLimits(lmap);
     });
-    api.get('/trips/?status=EN_ROUTE').then(r => setTrips(r.data.results || r.data));
+    // Fetch PLANNED + EN_ROUTE + DELAYED so all active trips appear in the dropdown
+    Promise.all([
+      api.get('/trips/?status=PLANNED'),
+      api.get('/trips/?status=EN_ROUTE'),
+      api.get('/trips/?status=DELAYED'),
+    ]).then(([p, e, d]) => {
+      const all = [
+        ...(p.data.results || p.data || []),
+        ...(e.data.results || e.data || []),
+        ...(d.data.results || d.data || []),
+      ];
+      // deduplicate by id and sort by waybill
+      const unique = Array.from(new Map(all.map(t => [t.id, t])).values())
+        .sort((a, b) => a.waybill_no.localeCompare(b.waybill_no));
+      setTrips(unique);
+    }).catch(() => {});
     loadHistory();
   }, []);
 
@@ -168,7 +183,9 @@ export default function FuelPage() {
                 <select {...register('trip_id')}>
                   <option value="">None</option>
                   {trips.map(t => (
-                    <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin}</option>
+                    <option key={t.id} value={t.id}>
+                      {t.waybill_no} · {t.truck_number} · {t.origin} → {t.destination} [{t.status}]
+                    </option>
                   ))}
                 </select>
               </div>
