@@ -82,7 +82,7 @@ class Revenue(TimeStampedModel):
     )
     trip = models.ForeignKey(
         'trips.Trip', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='revenue_entries'
+        on_delete=models.CASCADE, related_name='revenue_entries'
     )
     source = models.CharField(
         max_length=20, choices=SOURCE_CHOICES, default=HAULAGE
