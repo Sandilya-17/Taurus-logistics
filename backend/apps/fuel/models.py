@@ -16,7 +16,9 @@ class FuelLimit(TimeStampedModel):
 
 
 class FuelLog(TimeStampedModel):
-    """Every fuel fill-up.  excess_fuel is auto-calculated."""
+    """Every fuel fill-up.  excess_fuel is auto-calculated.
+    When linked to a trip, the trip's fuel_cost is auto-updated.
+    """
     truck       = models.ForeignKey('trucks.Truck', on_delete=models.PROTECT, related_name='fuel_logs')
     trip        = models.ForeignKey('trips.Trip',   on_delete=models.SET_NULL, null=True, blank=True, related_name='fuel_logs')
     date        = models.DateField()
@@ -46,6 +48,15 @@ class FuelLog(TimeStampedModel):
         # Auto-calculate total cost
         self.total_cost = self.litres * self.price_per_litre
         super().save(*args, **kwargs)
+        # Auto-update trip fuel cost if linked
+        if self.trip_id:
+            self.trip.recalculate_costs()
+
+    def delete(self, *args, **kwargs):
+        trip = self.trip
+        super().delete(*args, **kwargs)
+        if trip:
+            trip.recalculate_costs()
 
     def __str__(self):
         return f"{self.truck.truck_number} | {self.date} | {self.litres}L"
