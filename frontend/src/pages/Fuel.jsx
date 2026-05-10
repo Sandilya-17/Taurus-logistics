@@ -12,7 +12,7 @@ export default function FuelPage() {
   const [computed, setComputed] = useState({ excess_fuel: 0, total_cost: 0, excess_cost: 0 });
   const [saving,   setSaving]   = useState(false);
   const [editing,  setEditing]  = useState(null);
-  const [dlFuel,   setDlFuel]   = useState(''); // '' | 'excel' | 'pdf'
+  const [dlFuel,   setDlFuel]   = useState('');
 
   const handleFuelDownload = async (fmt) => {
     setDlFuel(fmt);
@@ -34,17 +34,16 @@ export default function FuelPage() {
     } catch { toast.error('Download failed. Please try again.'); }
     finally { setDlFuel(''); }
   };
+
   const { register, handleSubmit, watch, reset, setValue } = useForm({
     defaultValues: { price_per_litre: '14.50', litres: '', fuel_limit: '' }
   });
 
   const watchedTruck  = watch('truck_id');
-  const watchedTrip   = watch('trip_id');
   const watchedLitres = watch('litres');
   const watchedLimit  = watch('fuel_limit');
   const watchedPrice  = watch('price_per_litre');
 
-  // Load data
   useEffect(() => {
     api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data));
     api.get('/fuel/limits/').then(r => {
@@ -52,7 +51,7 @@ export default function FuelPage() {
       (r.data.results || r.data).forEach(l => { lmap[l.truck] = l.fuel_limit; });
       setLimits(lmap);
     });
-    api.get('/trips/?status=EN_ROUTE&status=PLANNED').then(r => setTrips(r.data.results || r.data));
+    api.get('/trips/?status=EN_ROUTE').then(r => setTrips(r.data.results || r.data));
     loadHistory();
   }, []);
 
@@ -86,32 +85,12 @@ export default function FuelPage() {
     }
   };
 
-  // When trip changes → auto-select the truck assigned to that trip
-  // AND auto-fill the fuel limit from the trip (overrides truck default)
   useEffect(() => {
-    if (watchedTrip) {
-      const selectedTrip = trips.find(t => String(t.id) === String(watchedTrip));
-      if (selectedTrip) {
-        // Auto-select truck
-        if (selectedTrip.truck) {
-          setValue('truck_id', String(selectedTrip.truck));
-        }
-        // Auto-fill trip-specific fuel limit (takes priority over truck default)
-        if (selectedTrip.fuel_limit) {
-          setValue('fuel_limit', selectedTrip.fuel_limit);
-        }
-      }
-    }
-  }, [watchedTrip, trips]);
-
-  // When truck changes → auto-fill fuel limit from truck default (only if no trip selected)
-  useEffect(() => {
-    if (watchedTruck && limits[watchedTruck] && !watchedTrip) {
+    if (watchedTruck && limits[watchedTruck]) {
       setValue('fuel_limit', limits[watchedTruck]);
     }
   }, [watchedTruck, limits]);
 
-  // Live auto-calculation using shared calcFuel helper
   useEffect(() => {
     setComputed(calcFuel(watchedLitres, watchedLimit, watchedPrice));
   }, [watchedLitres, watchedLimit, watchedPrice]);
@@ -152,7 +131,6 @@ export default function FuelPage() {
     }
   };
 
-  // Helper: compute excess cost for a history row
   const rowExcessCost = (fl) => {
     const ex  = parseFloat(fl.excess_fuel || 0);
     const ppl = parseFloat(fl.price_per_litre || 0);
@@ -183,11 +161,11 @@ export default function FuelPage() {
                 </select>
               </div>
               <div className="fg">
-                <label>Linked Trip (Optional) — Truck Auto-Selects</label>
+                <label>Linked Trip (Optional)</label>
                 <select {...register('trip_id')}>
                   <option value="">None</option>
                   {trips.map(t => (
-                    <option key={t.id} value={t.id}>{t.waybill_no}</option>
+                    <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin}</option>
                   ))}
                 </select>
               </div>
@@ -218,7 +196,6 @@ export default function FuelPage() {
               </div>
             </div>
 
-            {/* Live calculation results — 3 boxes */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div className="fg">
                 <label>Excess Fuel (L) — Auto</label>
@@ -329,13 +306,13 @@ export default function FuelPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th><th>Truck</th><th>Litres</th><th>Price/L</th>
+                    <th>Date</th><th>Truck</th><th>Trip</th><th>Litres</th><th>Price/L</th>
                     <th>Total Cost</th><th>Excess Cost</th><th>Status</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.length === 0 && (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>No fuel logs yet</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>No fuel logs yet</td></tr>
                   )}
                   {history.slice(0, 15).map(fl => {
                     const exCost = rowExcessCost(fl);
@@ -343,6 +320,7 @@ export default function FuelPage() {
                       <tr key={fl.id}>
                         <td>{new Date(fl.date).toLocaleDateString('en-GB')}</td>
                         <td className="mono">{fl.truck_number}</td>
+                        <td className="mono" style={{ fontSize: 11 }}>{fl.trip ? (fl.trip_waybill || fl.trip) : '—'}</td>
                         <td>{fl.litres} L</td>
                         <td>GH₵ {fl.price_per_litre}</td>
                         <td className="ced" style={{ fontWeight: 600 }}>{fmtGHS(fl.total_cost)}</td>
