@@ -18,7 +18,7 @@ export default function TripsPage() {
   const [trips,   setTrips]   = useState([]);
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
   const [saving,  setSaving]  = useState(false);
-  const [tab,     setTab]     = useState('active');
+  const [tab,     setTab]     = useState('all');
   const [selectedTrip, setSelectedTrip] = useState(null);
 
   const { register, handleSubmit, watch, reset } = useForm({
