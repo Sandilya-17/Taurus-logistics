@@ -698,8 +698,19 @@ class DashboardSummaryView(APIView):
         _Rev.objects.filter(source=_Rev.TRIP_REVENUE, trip__isnull=True).delete()
         _Rev.objects.filter(source=_Rev.HAULAGE, invoice__isnull=False, invoice__trip__isnull=True).delete()
 
-        # Also recount trips using the same queryset the Trips page uses
-        # so dashboard count always matches what the user sees
+        # Clean up phantom COMPLETED trips: those with no revenue AND no invoice
+        # These are trips where the user deleted revenue/invoice but the trip row survived
+        from apps.invoicing.models import Invoice as _Inv
+        _trips_with_revenue = set(_Rev.objects.filter(trip__isnull=False).values_list('trip_id', flat=True))
+        _trips_with_invoice = set(_Inv.objects.filter(trip__isnull=False).values_list('trip_id', flat=True))
+        _accounted_trip_ids = _trips_with_revenue | _trips_with_invoice
+
+        Trip.objects.filter(
+            status='COMPLETED',
+            loading_time__date__gte=month_start,
+            trip_revenue=0,
+        ).exclude(id__in=_accounted_trip_ids).delete()
+
         completed_trips_this_month = Trip.objects.filter(
             loading_time__date__gte=month_start, status='COMPLETED'
         ).count()
