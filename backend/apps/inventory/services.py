@@ -16,9 +16,6 @@ class StockService:
         if item_id:
             qs = qs.filter(id=item_id)
         
-        # We aggregate ledger entries. If location or as_of is provided,
-        # we filter the ledger entries within the aggregation.
-        # But Django 3/4 allows filtering inside annotations using filter=Q(...)
         from django.db.models import Q
         ledger_filter = Q()
         if location_id:
@@ -34,7 +31,6 @@ class StockService:
             'closing_qty', 'closing_value'
         ).order_by('name')
 
-        # Map to the keys expected by the frontend
         out = []
         for r in result:
             out.append({
@@ -129,7 +125,7 @@ class IssueService:
     def create_issue(data, user=None):
         """
         Validate stock, create IssueItem, post negative entry to StockLedger.
-        data keys: item_id, location_id, quantity, issue_type, truck_id, issue_date, remark
+        data keys: item_id, location_id, quantity, issue_type, truck_id, trip_id (optional), issue_date, remark
         """
         qty = Decimal(str(data['quantity']))
         # Get last known unit price from ledger
@@ -147,6 +143,7 @@ class IssueService:
             item_id      = data['item_id'],
             location_id  = data['location_id'],
             truck_id     = data.get('truck_id'),
+            trip_id      = data.get('trip_id'),   # NEW: optional trip link
             issue_type   = data['issue_type'],
             quantity     = qty,
             unit_price   = unit_price,
