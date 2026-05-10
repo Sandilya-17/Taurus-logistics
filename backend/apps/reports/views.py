@@ -717,7 +717,7 @@ class DashboardSummaryView(APIView):
             'this_month': {
                 'revenue':            float(Revenue.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
                 'expenditure':        float(Expenditure.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
-                'trips':              Trip.objects.filter(loading_time__date__gte=month_start, status__in=['EN_ROUTE','DELAYED','COMPLETED']).count(),
+                'trips':              Trip.objects.filter(loading_time__date__gte=month_start, status='COMPLETED').count(),
                 'fuel_litres':        float(fuel_agg.get('litres') or 0),
                 'fuel_excess_events': fuel_agg.get('excess_events') or 0,
             },
