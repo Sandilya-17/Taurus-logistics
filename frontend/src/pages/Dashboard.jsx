@@ -32,10 +32,21 @@ export default function Dashboard() {
   }, []);
 
   // Fetch on mount, on every navigation to this page, and every 30 seconds
+  // Also re-fetch when trips page signals a change via sessionStorage
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      fetchDashboard();
+    }, 30000);
+    // Poll for cross-page refresh signal every 2 seconds
+    const signalCheck = setInterval(() => {
+      const sig = sessionStorage.getItem('dashboard_refresh');
+      if (sig && parseInt(sig) > (Date.now() - 10000)) {
+        sessionStorage.removeItem('dashboard_refresh');
+        fetchDashboard();
+      }
+    }, 2000);
+    return () => { clearInterval(interval); clearInterval(signalCheck); };
   }, [location.pathname, fetchDashboard]);
 
   const fleet  = kpis?.fleet         || {};
