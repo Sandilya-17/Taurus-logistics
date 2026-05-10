@@ -39,6 +39,7 @@ export default function FuelPage() {
   });
 
   const watchedTruck  = watch('truck_id');
+  const watchedTrip   = watch('trip_id');
   const watchedLitres = watch('litres');
   const watchedLimit  = watch('fuel_limit');
   const watchedPrice  = watch('price_per_litre');
@@ -51,25 +52,7 @@ export default function FuelPage() {
       (r.data.results || r.data).forEach(l => { lmap[l.truck] = l.fuel_limit; });
       setLimits(lmap);
     });
-    // Fetch ALL trips (all statuses) for the linked trip dropdown
-    const fetchAllTrips = async () => {
-      try {
-        let results = [];
-        let nextUrl = '/trips/';
-        while (nextUrl) {
-          const r = await api.get(nextUrl);
-          const data = r.data;
-          if (Array.isArray(data)) { results = data; break; }
-          results = results.concat(data.results || []);
-          nextUrl = data.next
-            ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
-            : null;
-        }
-        results.sort((a, b) => a.waybill_no.localeCompare(b.waybill_no));
-        setTrips(results);
-      } catch { /* ignore */ }
-    };
-    fetchAllTrips();
+    api.get('/trips/?status=EN_ROUTE&status=PLANNED').then(r => setTrips(r.data.results || r.data));
     loadHistory();
   }, []);
 
@@ -102,6 +85,16 @@ export default function FuelPage() {
       toast.error('Failed to delete fuel log.');
     }
   };
+
+  // When trip changes → auto-select the truck assigned to that trip
+  useEffect(() => {
+    if (watchedTrip) {
+      const selectedTrip = trips.find(t => String(t.id) === String(watchedTrip));
+      if (selectedTrip && selectedTrip.truck) {
+        setValue('truck_id', String(selectedTrip.truck));
+      }
+    }
+  }, [watchedTrip, trips]);
 
   // When truck changes → auto-fill fuel limit
   useEffect(() => {
@@ -182,13 +175,11 @@ export default function FuelPage() {
                 </select>
               </div>
               <div className="fg">
-                <label>Linked Trip (Optional)</label>
+                <label>Linked Trip (Optional) — Truck Auto-Selects</label>
                 <select {...register('trip_id')}>
                   <option value="">None</option>
                   {trips.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.waybill_no} · {t.truck_number} · {t.origin} → {t.destination} [{t.status}]
-                    </option>
+                    <option key={t.id} value={t.id}>{t.waybill_no}</option>
                   ))}
                 </select>
               </div>
