@@ -212,9 +212,9 @@ class PurchasePreviewView(APIView):
 
 # ── Issue ─────────────────────────────────────────────────────────────────────
 class IssueListCreate(generics.ListCreateAPIView):
-    queryset         = IssueItem.objects.select_related('item', 'location', 'truck')
+    queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
     serializer_class = IssueItemSerializer
-    filterset_fields = ('item', 'location', 'issue_type', 'truck')
+    filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
 
     def create(self, request, *args, **kwargs):
         try:
@@ -231,9 +231,13 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        trip = instance.trip  # save reference before delete
         if instance.ledger_entry_id:
             StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
-        return super().destroy(request, *args, **kwargs)
+        result = super().destroy(request, *args, **kwargs)
+        if trip:
+            trip.recalculate_costs()
+        return result
 
 
 # ── Available Stock Check ─────────────────────────────────────────────────────
