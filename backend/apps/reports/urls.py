@@ -12,6 +12,8 @@ from .views import (
     VATReportView,
     TyreReportView,
     LubricantReportView,
+    TruckWiseSummaryView,
+    TripDetailReportView,
 )
 
 urlpatterns = [
@@ -19,6 +21,8 @@ urlpatterns = [
     path('revenue-expenditure/',  RevenueExpenditureReportView.as_view(),  name='report-rev-exp'),
     path('fuel/',                 FuelReportView.as_view(),                name='report-fuel'),
     path('trips/',                TripReportView.as_view(),                name='report-trips'),
+    path('trip-pl/',              TripDetailReportView.as_view(),          name='report-trip-pl'),
+    path('truck-summary/',        TruckWiseSummaryView.as_view(),          name='report-truck-summary'),
     path('stock/',                StockReportView.as_view(),               name='report-stock'),
     path('invoices/',             InvoiceReportView.as_view(),             name='report-invoices'),
     path('spare-parts/',          SparePartsReportView.as_view(),          name='report-spare-parts'),
