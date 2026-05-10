@@ -51,22 +51,25 @@ export default function FuelPage() {
       (r.data.results || r.data).forEach(l => { lmap[l.truck] = l.fuel_limit; });
       setLimits(lmap);
     });
-    // Fetch PLANNED + EN_ROUTE + DELAYED so all active trips appear in the dropdown
-    Promise.all([
-      api.get('/trips/?status=PLANNED'),
-      api.get('/trips/?status=EN_ROUTE'),
-      api.get('/trips/?status=DELAYED'),
-    ]).then(([p, e, d]) => {
-      const all = [
-        ...(p.data.results || p.data || []),
-        ...(e.data.results || e.data || []),
-        ...(d.data.results || d.data || []),
-      ];
-      // deduplicate by id and sort by waybill
-      const unique = Array.from(new Map(all.map(t => [t.id, t])).values())
-        .sort((a, b) => a.waybill_no.localeCompare(b.waybill_no));
-      setTrips(unique);
-    }).catch(() => {});
+    // Fetch ALL trips (all statuses) for the linked trip dropdown
+    const fetchAllTrips = async () => {
+      try {
+        let results = [];
+        let nextUrl = '/trips/';
+        while (nextUrl) {
+          const r = await api.get(nextUrl);
+          const data = r.data;
+          if (Array.isArray(data)) { results = data; break; }
+          results = results.concat(data.results || []);
+          nextUrl = data.next
+            ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
+            : null;
+        }
+        results.sort((a, b) => a.waybill_no.localeCompare(b.waybill_no));
+        setTrips(results);
+      } catch { /* ignore */ }
+    };
+    fetchAllTrips();
     loadHistory();
   }, []);
 
