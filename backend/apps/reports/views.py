@@ -351,7 +351,6 @@ class StockReportView(APIView):
     def get(self, request):
         from apps.inventory.models import Item
 
-        # FIX: is_deleted is a property not a DB field — use deleted_at__isnull=True
         items = Item.objects.filter(deleted_at__isnull=True).order_by('item_type', 'name')
 
         headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH\u20b5)', 'Reorder Level', 'Status']
@@ -455,7 +454,6 @@ class SparePartsReportView(APIView):
                           created_at__date__range=[date_from, date_to])
                   .order_by('-created_at'))
 
-        # FIX: unit_price (not unit_cost)
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location', 'Reference']
         rows = []
         total_in  = Decimal('0')
@@ -467,7 +465,7 @@ class SparePartsReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
-                float(entry.unit_price or 0),      # FIX: unit_price
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
                 entry.remark or '—',
@@ -499,28 +497,26 @@ class SparePartsReportView(APIView):
 
 class MaintenanceReportView(APIView):
     def get(self, request):
-        # FIX: correct model name is MaintenanceLog (not MaintenanceRecord)
         from apps.maintenance.models import MaintenanceLog
         date_from, date_to = _parse_date_range(request)
 
         records = (MaintenanceLog.objects.select_related('truck', 'mechanic')
-                   .filter(service_date__range=[date_from, date_to])  # FIX: service_date
+                   .filter(service_date__range=[date_from, date_to])
                    .order_by('-service_date'))
 
-        # FIX: field names corrected throughout
         headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH\u20b5)', 'Mechanic', 'Next Service Date']
         rows = []
         total_cost = Decimal('0')
 
         for rec in records:
             rows.append([
-                str(rec.service_date),                                         # FIX: service_date
+                str(rec.service_date),
                 rec.truck.truck_number,
                 rec.maintenance_type,
                 rec.description[:60] if rec.description else '—',
-                float(rec.total_cost or 0),                                    # FIX: total_cost
-                rec.mechanic.name if rec.mechanic else '—',                    # FIX: mechanic.name
-                str(rec.next_service_date) if rec.next_service_date else '—',  # FIX: next_service_date
+                float(rec.total_cost or 0),
+                rec.mechanic.name if rec.mechanic else '—',
+                str(rec.next_service_date) if rec.next_service_date else '—',
             ])
             total_cost += rec.total_cost or 0
 
@@ -546,12 +542,10 @@ class VATReportView(APIView):
         from apps.invoicing.models import Invoice
         date_from, date_to = _parse_date_range(request)
 
-        # FIX: vat_applicable (not vat_enabled)
         invoices = (Invoice.objects
                     .filter(invoice_date__range=[date_from, date_to], vat_applicable=True)
                     .order_by('-invoice_date'))
 
-        # FIX: vat_percentage (not vat_percent)
         headers = ['Invoice #', 'Date', 'Client', 'Subtotal (GH\u20b5)', 'VAT %', 'VAT Amount (GH\u20b5)', 'Total (GH\u20b5)', 'Status']
         rows = []
         total_vat = Decimal('0')
@@ -562,7 +556,7 @@ class VATReportView(APIView):
                 str(inv.invoice_date),
                 inv.client_name,
                 float(inv.subtotal),
-                float(inv.vat_percentage or 0),    # FIX: vat_percentage
+                float(inv.vat_percentage or 0),
                 float(inv.vat_amount),
                 float(inv.total_amount),
                 inv.status,
@@ -596,7 +590,6 @@ class TyreReportView(APIView):
                           created_at__date__range=[date_from, date_to])
                   .order_by('-created_at'))
 
-        # FIX: unit_price (not unit_cost)
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location']
         rows = []
         total_value = Decimal('0')
@@ -607,7 +600,7 @@ class TyreReportView(APIView):
                 entry.item.name,
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
-                float(entry.unit_price or 0),   # FIX: unit_price
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
             ])
@@ -640,7 +633,6 @@ class LubricantReportView(APIView):
                           created_at__date__range=[date_from, date_to])
                   .order_by('-created_at'))
 
-        # FIX: unit_price (not unit_cost)
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Price (GH\u20b5)', 'Amount (GH\u20b5)', 'Location', 'Reference']
         rows = []
         total_in  = Decimal('0')
@@ -653,7 +645,7 @@ class LubricantReportView(APIView):
                 entry.get_transaction_type_display(),
                 float(entry.quantity),
                 entry.item.unit,
-                float(entry.unit_price or 0),   # FIX: unit_price
+                float(entry.unit_price or 0),
                 float(entry.final_amount or 0),
                 entry.location.name if entry.location else '—',
                 entry.remark or '—',
@@ -704,17 +696,15 @@ class DashboardSummaryView(APIView):
                     .aggregate(litres=Sum('litres'),
                                excess_events=Count('id', filter=Q(excess_fuel__gt=0))))
 
-        # FIX: is_deleted is a property not a DB field — use deleted_at__isnull=True
         items = Item.objects.filter(deleted_at__isnull=True)
         stock_value = sum(item.available_value() for item in items)
         stock_items_count = items.count()
 
-        # FIX: include truck_number in each alert dict so Dashboard.jsx can display it
         trucks = Truck.objects.filter(status='ACTIVE')
         expiry_alerts = []
         for truck in trucks:
             for alert in truck.expiry_alerts():
-                alert['truck_number'] = truck.truck_number   # FIX: add truck_number
+                alert['truck_number'] = truck.truck_number
                 expiry_alerts.append(alert)
         expiry_alerts.sort(key=lambda a: a['days_remaining'])
 
@@ -735,3 +725,156 @@ class DashboardSummaryView(APIView):
             'stock_items': stock_items_count,
             'expiry_alerts': expiry_alerts,
         })
+
+
+# ================================================================
+# TRUCK-WISE REPORTS
+# ================================================================
+
+class TruckWiseSummaryView(APIView):
+    """Complete per-truck summary: revenue, fuel cost, spare parts, net profit."""
+    def get(self, request):
+        from apps.trucks.models import Truck
+        from apps.trips.models import Trip
+        from apps.fuel.models import FuelLog
+        from apps.inventory.models import IssueItem
+        from apps.finance.models import Expenditure
+        from django.db.models import Sum, Count, Q
+
+        date_from, date_to = _parse_date_range(request, default_days=90)
+        truck_id = request.query_params.get('truck')
+
+        trucks_qs = Truck.objects.filter(deleted_at__isnull=True)
+        if truck_id:
+            trucks_qs = trucks_qs.filter(pk=truck_id)
+
+        rows = []
+        grand_rev = grand_fuel = grand_spare = grand_net = Decimal('0')
+
+        for truck in trucks_qs:
+            rev = (Trip.objects.filter(
+                truck=truck, status='COMPLETED',
+                loading_time__date__range=[date_from, date_to]
+            ).aggregate(t=Sum('trip_revenue'))['t'] or Decimal('0'))
+
+            fuel = (FuelLog.objects.filter(
+                truck=truck, date__range=[date_from, date_to]
+            ).aggregate(t=Sum('total_cost'))['t'] or Decimal('0'))
+
+            spare = (IssueItem.objects.filter(
+                truck=truck, issue_date__range=[date_from, date_to],
+                item__item_type='SPARE_PART'
+            ).aggregate(t=Sum('final_amount'))['t'] or Decimal('0'))
+
+            other_exp = (Expenditure.objects.filter(
+                truck=truck, date__range=[date_from, date_to]
+            ).exclude(category__in=['FUEL', 'SPARE_PART'])
+             .aggregate(t=Sum('amount'))['t'] or Decimal('0'))
+
+            trip_count = Trip.objects.filter(
+                truck=truck, loading_time__date__range=[date_from, date_to]
+            ).count()
+
+            net = rev - fuel - spare - other_exp
+
+            rows.append([
+                truck.truck_number,
+                truck.model,
+                trip_count,
+                float(rev),
+                float(fuel),
+                float(spare),
+                float(other_exp),
+                float(net),
+            ])
+
+            grand_rev   += rev
+            grand_fuel  += fuel
+            grand_spare += spare
+            grand_net   += (rev - fuel - spare - other_exp)
+
+        headers = ['Truck #', 'Model', 'Trips', 'Revenue (GH₵)', 'Fuel Cost (GH₵)',
+                   'Spare Parts (GH₵)', 'Other Exp (GH₵)', 'Net Profit (GH₵)']
+
+        summary = {
+            'Total Revenue (GH₵)':     float(grand_rev),
+            'Total Fuel Cost (GH₵)':   float(grand_fuel),
+            'Total Spare Parts (GH₵)': float(grand_spare),
+            'Total Net Profit (GH₵)':  float(grand_net),
+        }
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Truck-wise Summary  {date_from} → {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'truck_summary_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'truck_summary_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class TripDetailReportView(APIView):
+    """Per-trip P&L: revenue, fuel cost, spare parts cost, net profit."""
+    def get(self, request):
+        from apps.trips.models import Trip
+        date_from, date_to = _parse_date_range(request)
+        truck_id = request.query_params.get('truck')
+
+        trips_qs = (Trip.objects.select_related('truck', 'driver')
+                    .filter(loading_time__date__range=[date_from, date_to])
+                    .order_by('-loading_time'))
+        if truck_id:
+            trips_qs = trips_qs.filter(truck_id=truck_id)
+
+        headers = ['Waybill', 'Date', 'Truck', 'Driver', 'Route',
+                   'Loaded (t)', 'Delivered (t)', 'Revenue (GH₵)',
+                   'Fuel Cost (GH₵)', 'Spare Parts (GH₵)', 'Net Profit (GH₵)', 'Status']
+        rows = []
+        total_rev = total_fuel = total_spare = total_net = Decimal('0')
+
+        for t in trips_qs:
+            net = t.net_profit
+            rows.append([
+                t.waybill_no,
+                str(t.loading_time.date()),
+                t.truck.truck_number,
+                t.driver.name if hasattr(t.driver, 'name') else f"{t.driver.first_name} {t.driver.last_name}",
+                f"{t.origin} → {t.destination}",
+                float(t.loaded_qty),
+                float(t.delivered_qty or 0),
+                float(t.trip_revenue),
+                float(t.fuel_cost),
+                float(t.spare_parts_cost),
+                float(net),
+                t.status,
+            ])
+            total_rev   += t.trip_revenue
+            total_fuel  += t.fuel_cost
+            total_spare += t.spare_parts_cost
+            total_net   += net
+
+        summary = {
+            'Total Revenue (GH₵)':     float(total_rev),
+            'Total Fuel Cost (GH₵)':   float(total_fuel),
+            'Total Spare Parts (GH₵)': float(total_spare),
+            'Total Net Profit (GH₵)':  float(total_net),
+        }
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Trip P&L Report  {date_from} → {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'trip_pl_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'trip_pl_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
