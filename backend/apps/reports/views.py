@@ -692,6 +692,18 @@ class DashboardSummaryView(APIView):
         today       = timezone.now().date()
         month_start = today.replace(day=1)
 
+        # Auto-clean orphaned revenue on every dashboard load
+        # (Revenue whose trip was deleted but revenue row survived)
+        from apps.finance.models import Revenue as _Rev
+        _Rev.objects.filter(source=_Rev.TRIP_REVENUE, trip__isnull=True).delete()
+        _Rev.objects.filter(source=_Rev.HAULAGE, invoice__isnull=False, invoice__trip__isnull=True).delete()
+
+        # Also recount trips using the same queryset the Trips page uses
+        # so dashboard count always matches what the user sees
+        completed_trips_this_month = Trip.objects.filter(
+            loading_time__date__gte=month_start, status='COMPLETED'
+        ).count()
+
         fuel_agg = (FuelLog.objects.filter(date__gte=month_start)
                     .aggregate(litres=Sum('litres'),
                                excess_events=Count('id', filter=Q(excess_fuel__gt=0))))
@@ -717,7 +729,7 @@ class DashboardSummaryView(APIView):
             'this_month': {
                 'revenue':            float(Revenue.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
                 'expenditure':        float(Expenditure.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
-                'trips':              Trip.objects.filter(loading_time__date__gte=month_start, status='COMPLETED').count(),
+                'trips':              completed_trips_this_month,
                 'fuel_litres':        float(fuel_agg.get('litres') or 0),
                 'fuel_excess_events': fuel_agg.get('excess_events') or 0,
             },
