@@ -1,4 +1,4 @@
-// src/pages/Issue.jsx – Issue items with Edit/Delete (Admin only) + ledger sync
+// src/pages/Issue.jsx – Issue items with trip linkage (auto-updates trip spare_parts_cost)
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import api, { fmtGHS } from '../utils/api';
@@ -12,6 +12,7 @@ export default function IssuePage() {
   const [items,     setItems]     = useState([]);
   const [locations, setLocations] = useState([]);
   const [trucks,    setTrucks]    = useState([]);
+  const [trips,     setTrips]     = useState([]);
   const [history,   setHistory]   = useState([]);
   const [avail,     setAvail]     = useState(null);
   const [unitPrice, setUnitPrice] = useState(0);
@@ -28,15 +29,21 @@ export default function IssuePage() {
   const watchedLoc   = watch('location_id');
   const watchedQty   = watch('quantity');
   const watchedType  = watch('issue_type');
+  const watchedTruck = watch('truck_id');
 
   const loadData = () => {
     api.get('/inventory/items/').then(r  => setItems(r.data.results    || r.data));
     api.get('/inventory/locations/').then(r => setLocations(r.data.results || r.data));
     api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data));
+    api.get('/trips/?status=EN_ROUTE').then(r => setTrips(r.data.results || r.data));
     api.get('/inventory/issues/?page_size=200').then(r => setHistory(r.data.results || r.data));
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const truckTrips = watchedTruck
+    ? trips.filter(t => String(t.truck) === String(watchedTruck))
+    : trips;
 
   useEffect(() => {
     if (!watchedItem) { setAvail(null); setUnitPrice(0); return; }
@@ -76,9 +83,10 @@ export default function IssuePage() {
           ...data,
           quantity:   parseFloat(data.quantity),
           truck_id:   data.truck_id || null,
+          trip_id:    data.trip_id  || null,
           issue_date: data.issue_date,
         });
-        toast.success('Issue recorded. Stock ledger debited.');
+        toast.success('Issue recorded. Stock ledger debited.' + (data.trip_id ? ' Trip spare parts cost updated.' : ''));
       }
       reset({ issue_type: 'TRUCK', quantity: '' });
       setAvail(null); setUnitPrice(0); setTotalVal(0);
@@ -120,7 +128,7 @@ export default function IssuePage() {
         <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>
           {editRec
             ? '✏️ Editing issue — only date and remark are editable (quantity is locked to protect ledger integrity).'
-            : 'Stock is validated live. Issue is blocked if quantity exceeds available stock.'}
+            : 'Stock is validated live. Issue is blocked if quantity exceeds available stock. Link to a trip to auto-update spare parts cost.'}
         </p>
       </div>
 
@@ -178,6 +186,15 @@ export default function IssuePage() {
                       </select>
                     </div>
                   )}
+                  <div className="fg">
+                    <label>Link to Trip <span style={{ fontSize: 10, color: 'var(--muted)' }}>(auto-updates trip cost)</span></label>
+                    <select {...register('trip_id')}>
+                      <option value="">— None / Not Trip-Specific —</option>
+                      {truckTrips.map(t => (
+                        <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin} → {t.destination}</option>
+                      ))}
+                    </select>
+                  </div>
                 </>
               )}
               {editRec && (
@@ -185,6 +202,7 @@ export default function IssuePage() {
                   <div className="alert" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>
                     📦 <strong style={{ color: 'var(--text)' }}>{editRec.item_name}</strong> · Qty: {editRec.quantity} · Type: {editRec.issue_type}
                     {editRec.truck_number && ` · Truck: ${editRec.truck_number}`}
+                    {editRec.trip_waybill && ` · Trip: ${editRec.trip_waybill}`}
                   </div>
                 </div>
               )}
@@ -250,14 +268,14 @@ export default function IssuePage() {
             <table>
               <thead>
                 <tr>
-                  <th>Date</th><th>Item</th><th>Type</th><th>Truck</th>
+                  <th>Date</th><th>Item</th><th>Type</th><th>Truck</th><th>Trip</th>
                   <th>Qty</th><th>Value (GH₵)</th>
                   {isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {history.length === 0 && (
-                  <tr><td colSpan={isAdmin ? 7 : 6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No issues yet</td></tr>
+                  <tr><td colSpan={isAdmin ? 8 : 7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No issues yet</td></tr>
                 )}
                 {history.map(i => (
                   <tr key={i.id} style={{ background: editRec?.id === i.id ? 'rgba(245,158,11,0.06)' : undefined }}>
@@ -265,6 +283,7 @@ export default function IssuePage() {
                     <td>{i.item_name}</td>
                     <td><span className={`badge ${i.issue_type === 'TRUCK' ? 'b-blue' : 'b-amber'}`}>{i.issue_type}</span></td>
                     <td className="mono">{i.truck_number || '—'}</td>
+                    <td className="mono">{i.trip_waybill || '—'}</td>
                     <td>{i.quantity}</td>
                     <td className="ced">{parseFloat(i.final_amount).toFixed(2)}</td>
                     {isAdmin && (
