@@ -1,4 +1,4 @@
-// src/pages/Trips.jsx
+// src/pages/Trips.jsx – Trips with fuel cost, spare parts cost, net profit display
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import api, { calcTrip, calcDuration, fmtGHS } from '../utils/api';
@@ -19,6 +19,7 @@ export default function TripsPage() {
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
   const [saving,  setSaving]  = useState(false);
   const [tab,     setTab]     = useState('active');
+  const [selectedTrip, setSelectedTrip] = useState(null);
 
   const { register, handleSubmit, watch, reset } = useForm({
     defaultValues: { status: 'PLANNED', rate_per_ton: '' }
@@ -29,6 +30,7 @@ export default function TripsPage() {
   const wRate      = watch('rate_per_ton');
   const wLoadTime  = watch('loading_time');
   const wUnloadTime = watch('unloading_time');
+  const wTruck    = watch('truck');
 
   useEffect(() => {
     api.get('/trucks/?status=ACTIVE').then(r  => setTrucks(r.data.results  || r.data));
@@ -36,7 +38,6 @@ export default function TripsPage() {
     loadTrips();
   }, []);
 
-  // Live auto-calculations
   useEffect(() => {
     const c = calcTrip(wLoaded, wDelivered, wRate);
     const d = calcDuration(wLoadTime, wUnloadTime);
@@ -64,7 +65,6 @@ export default function TripsPage() {
         loaded_qty:    parseFloat(data.loaded_qty || 0),
         delivered_qty: data.delivered_qty ? parseFloat(data.delivered_qty) : null,
         rate_per_ton:  parseFloat(data.rate_per_ton || 0),
-        fuel_limit:    data.fuel_limit ? parseFloat(data.fuel_limit) : null,
       });
       toast.success('Trip posted successfully.');
       reset({ status: 'PLANNED' });
@@ -81,18 +81,26 @@ export default function TripsPage() {
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const allTrips       = trips;
 
+  const displayTrips = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips;
+
+  const totalRevenue   = trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
+  const totalFuelCost  = trips.reduce((s,t) => s + parseFloat(t.fuel_cost||0), 0);
+  const totalSpare     = trips.reduce((s,t) => s + parseFloat(t.spare_parts_cost||0), 0);
+  const totalNet       = totalRevenue - totalFuelCost - totalSpare;
+
   return (
     <div>
-      <div className="g2 mb16">
+      {/* KPIs */}
+      <div className="g2 mb16" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {[
           { label: 'Active Trips',    val: activeTrips.length,    color: 'var(--blue)'  },
           { label: 'Completed',       val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue',   val: fmtGHS(trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0),0)), color: 'var(--amber)' },
-          { label: 'Delayed',         val: trips.filter(t=>t.status==='DELAYED').length, color: 'var(--red)' },
+          { label: 'Total Revenue',   val: fmtGHS(totalRevenue),  color: 'var(--amber)' },
+          { label: 'Net Profit',      val: fmtGHS(totalNet),      color: totalNet >= 0 ? 'var(--green)' : 'var(--red)' },
         ].map((k,i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
-            <div className="kpi-val" style={{ color: k.color, fontSize: 20 }}>{k.val}</div>
+            <div className="kpi-val" style={{ color: k.color, fontSize: 18 }}>{k.val}</div>
           </div>
         ))}
       </div>
@@ -111,6 +119,14 @@ export default function TripsPage() {
                   <option value="">— Select Truck —</option>
                   {trucks.map(t => <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>)}
                 </select>
+                {wTruck && (() => {
+                  const tk = trucks.find(t => String(t.id) === String(wTruck));
+                  return tk ? (
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                      ✓ {tk.truck_number} · {tk.model} · Status: {tk.status}
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <div className="fg">
                 <label>Driver *</label>
@@ -199,13 +215,6 @@ export default function TripsPage() {
             <div className="sec-div">Revenue — Auto-Calculated</div>
             <div className="fgrid">
               <div className="fg">
-                <label>Fuel Limit (L) *</label>
-                <input type="number" step="0.01" min="0" placeholder="e.g. 150.00"
-                       {...register('fuel_limit', { required: true })}
-                       style={{ color: 'var(--blue)', fontWeight: 600 }} />
-                <small style={{ color: 'var(--muted)', fontSize: 11 }}>Auto-used in Fuel Control when this trip is selected</small>
-              </div>
-              <div className="fg">
                 <label>Rate per Ton (GH₵)</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" {...register('rate_per_ton')} />
               </div>
@@ -217,6 +226,11 @@ export default function TripsPage() {
                 <label>Remark</label>
                 <input type="text" placeholder="Optional note" {...register('remark')} />
               </div>
+            </div>
+
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--muted)', marginTop: 10 }}>
+              💡 Fuel cost and spare parts cost are auto-calculated from fuel logs and spare part issues linked to this trip.
+              Revenue and expenditures are auto-posted to Finance when trip is marked <strong>COMPLETED</strong>.
             </div>
 
             <div className="flex gap8 mt16">
@@ -245,12 +259,15 @@ export default function TripsPage() {
               <thead>
                 <tr>
                   <th>Waybill</th><th>Truck</th><th>Driver</th><th>Route</th>
-                  <th>Material</th><th>Loaded</th><th>Fuel Limit</th><th>Revenue</th><th>Status</th><th>Actions</th>
+                  <th>Material</th><th>Loaded</th><th>Revenue</th>
+                  <th>Fuel Cost</th><th>Spare Parts</th><th>Net Profit</th>
+                  <th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips)
-                  .map(t => (
+                {displayTrips.map(t => {
+                  const net = parseFloat(t.trip_revenue||0) - parseFloat(t.fuel_cost||0) - parseFloat(t.spare_parts_cost||0);
+                  return (
                     <tr key={t.id}>
                       <td className="mono">{t.waybill_no}</td>
                       <td className="mono">{t.truck_number}</td>
@@ -258,18 +275,68 @@ export default function TripsPage() {
                       <td style={{ fontSize: 11 }}>{t.origin} → {t.destination}</td>
                       <td>{t.material_type}</td>
                       <td>{t.loaded_qty}T</td>
-                      <td style={{ color: 'var(--blue)', fontWeight: 600 }}>{t.fuel_limit ? `${t.fuel_limit} L` : '—'}</td>
                       <td className="ced">{fmtGHS(t.trip_revenue)}</td>
+                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmtGHS(t.fuel_cost)}</td>
+                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmtGHS(t.spare_parts_cost)}</td>
+                      <td className="ced" style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{fmtGHS(net)}</td>
                       <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
-                      <td><button className="btn btn-danger btn-xs" onClick={() => deleteTrip(t.id)}>🗑️</button></td>
+                      <td>
+                        <div className="flex gap4">
+                          <button className="btn btn-ghost btn-xs" title="Details" onClick={() => setSelectedTrip(selectedTrip?.id === t.id ? null : t)}>🔍</button>
+                          <button className="btn btn-danger btn-xs" onClick={() => deleteTrip(t.id)}>🗑️</button>
+                        </div>
+                      </td>
                     </tr>
-                  ))}
-                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips).length === 0 && (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No trips found</td></tr>
+                  );
+                })}
+                {displayTrips.length === 0 && (
+                  <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No trips found</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {selectedTrip && (
+            <div style={{ borderTop: '1px solid var(--border)', padding: 16, marginTop: 8 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>📊 Trip P&L — {selectedTrip.waybill_no}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                {[
+                  { label: 'Revenue',      val: fmtGHS(selectedTrip.trip_revenue),    color: 'var(--green)' },
+                  { label: 'Fuel Cost',    val: fmtGHS(selectedTrip.fuel_cost),       color: 'var(--amber)' },
+                  { label: 'Spare Parts',  val: fmtGHS(selectedTrip.spare_parts_cost),color: 'var(--amber)' },
+                ].map((k,i) => (
+                  <div key={i} style={{ background: 'var(--surface)', borderRadius: 8, padding: '10px 14px' }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{k.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: k.color }}>{k.val}</div>
+                  </div>
+                ))}
+              </div>
+              {(() => {
+                const net = parseFloat(selectedTrip.trip_revenue||0) - parseFloat(selectedTrip.fuel_cost||0) - parseFloat(selectedTrip.spare_parts_cost||0);
+                return (
+                  <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8, background: net >= 0 ? 'rgba(14,159,110,0.1)' : 'rgba(224,36,36,0.1)', color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 700, fontSize: 15 }}>
+                    Net Profit: {fmtGHS(net)}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {tab === 'completed' && completedTrips.length > 0 && (
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+              {[
+                { label: 'Total Revenue',    val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0),0)),    color: 'var(--green)' },
+                { label: 'Total Fuel Cost',  val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.fuel_cost||0),0)),       color: 'var(--amber)' },
+                { label: 'Total Spare Parts',val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.spare_parts_cost||0),0)),color: 'var(--amber)' },
+                { label: 'Total Net Profit', val: (() => { const n = completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0)-parseFloat(t.fuel_cost||0)-parseFloat(t.spare_parts_cost||0),0); return fmtGHS(n); })(), color: 'var(--blue)' },
+              ].map((k,i) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' }}>{k.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{k.val}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
