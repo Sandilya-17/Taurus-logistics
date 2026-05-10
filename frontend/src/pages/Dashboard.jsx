@@ -1,6 +1,6 @@
 // src/pages/Dashboard.jsx – Enterprise Dashboard
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import api, { fmtGHS } from '../utils/api';
 
 const StatCard = ({ label, value, color, sub, icon, pct }) => (
@@ -21,12 +21,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  useEffect(() => {
+  const location = useLocation();
+
+  const fetchDashboard = useCallback(() => {
+    setLoading(true);
     api.get('/reports/dashboard/')
       .then(r => { setKpis(r.data); setError(null); })
       .catch(e => setError(e.response?.data?.detail || 'Dashboard data failed to load.'))
       .finally(() => setLoading(false));
   }, []);
+
+  // Fetch on mount, on every navigation to this page, and every 30 seconds
+  useEffect(() => {
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, 30000);
+    return () => clearInterval(interval);
+  }, [location.pathname, fetchDashboard]);
 
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
@@ -38,6 +48,17 @@ export default function Dashboard() {
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Dashboard</h2>
+        <button
+          className="btn btn-ghost"
+          onClick={fetchDashboard}
+          title="Refresh dashboard"
+          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          🔄 Refresh
+        </button>
+      </div>
       {error && (
         <div className="alert alert-warn mb16" style={{ borderRadius: 10, fontWeight: 500, color: 'var(--red)', background: '#fff5f5', borderColor: 'var(--red)' }}>
           ⚠️&nbsp; <strong>Dashboard error:</strong> {error}
