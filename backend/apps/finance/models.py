@@ -78,7 +78,7 @@ class Revenue(TimeStampedModel):
 
     invoice = models.ForeignKey(
         'invoicing.Invoice', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='revenue_entries'
+        on_delete=models.CASCADE, related_name='revenue_entries'
     )
     trip = models.ForeignKey(
         'trips.Trip', null=True, blank=True,
