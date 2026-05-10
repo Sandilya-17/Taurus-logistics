@@ -878,3 +878,20 @@ class TripDetailReportView(APIView):
             resp.write(buf.read()); return resp
 
         return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+class CleanupOrphanedRevenueView(APIView):
+    """DELETE /reports/cleanup-revenue/
+    Removes Revenue rows whose trip was deleted (trip=NULL, source=TRIP_REVENUE)
+    and Revenue rows whose invoice has no trip (invoice__trip=NULL, source=HAULAGE).
+    Safe to call any time. Returns count of deleted records.
+    """
+    def delete(self, request):
+        from apps.finance.models import Revenue
+        deleted = 0
+        # Orphaned trip revenue (trip deleted, revenue stayed)
+        r1 = Revenue.objects.filter(source=Revenue.TRIP_REVENUE, trip__isnull=True).delete()
+        deleted += r1[0]
+        # Orphaned haulage revenue (invoice exists but its trip was deleted)
+        r2 = Revenue.objects.filter(source=Revenue.HAULAGE, invoice__trip__isnull=True, invoice__isnull=False).delete()
+        deleted += r2[0]
+        return Response({'deleted': deleted, 'message': f'Removed {deleted} orphaned revenue record(s).'})
