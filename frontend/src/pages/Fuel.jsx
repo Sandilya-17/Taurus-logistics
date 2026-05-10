@@ -87,18 +87,26 @@ export default function FuelPage() {
   };
 
   // When trip changes → auto-select the truck assigned to that trip
+  // AND auto-fill the fuel limit from the trip (overrides truck default)
   useEffect(() => {
     if (watchedTrip) {
       const selectedTrip = trips.find(t => String(t.id) === String(watchedTrip));
-      if (selectedTrip && selectedTrip.truck) {
-        setValue('truck_id', String(selectedTrip.truck));
+      if (selectedTrip) {
+        // Auto-select truck
+        if (selectedTrip.truck) {
+          setValue('truck_id', String(selectedTrip.truck));
+        }
+        // Auto-fill trip-specific fuel limit (takes priority over truck default)
+        if (selectedTrip.fuel_limit) {
+          setValue('fuel_limit', selectedTrip.fuel_limit);
+        }
       }
     }
   }, [watchedTrip, trips]);
 
-  // When truck changes → auto-fill fuel limit
+  // When truck changes → auto-fill fuel limit from truck default (only if no trip selected)
   useEffect(() => {
-    if (watchedTruck && limits[watchedTruck]) {
+    if (watchedTruck && limits[watchedTruck] && !watchedTrip) {
       setValue('fuel_limit', limits[watchedTruck]);
     }
   }, [watchedTruck, limits]);
