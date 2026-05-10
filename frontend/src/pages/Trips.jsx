@@ -68,6 +68,7 @@ export default function TripsPage() {
       toast.success('Trip posted successfully.');
       reset({ status: 'PLANNED' });
       setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
+      setTab('active');
       loadTrips();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to save trip.');
@@ -76,7 +77,7 @@ export default function TripsPage() {
     }
   };
 
-  const activeTrips    = trips.filter(t => ['EN_ROUTE','DELAYED'].includes(t.status));
+  const activeTrips    = trips.filter(t => ['PLANNED','EN_ROUTE','DELAYED'].includes(t.status));
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const allTrips       = trips;
 
