@@ -45,7 +45,7 @@ export default function TripsPage() {
   const [computed,    setComputed]    = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
   const [saving,      setSaving]      = useState(false);
   const [loading,     setLoading]     = useState(false);
-  const [tab,         setTab]         = useState('active');
+  const [tab,         setTab]         = useState('all');
   const [editingTrip, setEditingTrip] = useState(null);
 
   const { register, handleSubmit, watch, reset } = useForm({
@@ -137,8 +137,11 @@ export default function TripsPage() {
         await api.post('/trips/', payload);
         toast.success('Trip posted successfully.');
       }
+      const savedStatus = data.status;
       clearForm();
-      setTab('active');
+      if (['PLANNED','EN_ROUTE','DELAYED'].includes(savedStatus)) setTab('active');
+      else if (savedStatus === 'COMPLETED') setTab('completed');
+      else setTab('all');
       loadTrips();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to save trip.');
