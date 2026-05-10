@@ -96,10 +96,21 @@ export default function RevenuePage() {
   // ── Load revenue records ────────────────────────────────────────────────
   useEffect(() => { loadRevenue(); }, []);
 
-  const loadRevenue = () => {
-    api.get('/finance/revenue/')
-      .then(r => setItems(r.data.results || r.data))
-      .catch(() => {});
+  const loadRevenue = async () => {
+    try {
+      let results = [];
+      let nextUrl = '/finance/revenue/';
+      while (nextUrl) {
+        const r    = await api.get(nextUrl);
+        const data = r.data;
+        if (Array.isArray(data)) { results = data; break; }
+        results = results.concat(data.results || []);
+        nextUrl = data.next
+          ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
+          : null;
+      }
+      setItems(results);
+    } catch { /* silently ignore */ }
   };
 
   // ── Load invoices (HAULAGE) ─────────────────────────────────────────────
@@ -217,22 +228,21 @@ export default function RevenuePage() {
       return;
     }
     if (watchSource === 'TRIP_REVENUE' && !editing && !selectedTrip) {
-      toast.error('Please select a completed trip.');
+      toast.error('Please select a completed trip to auto-fill the amount.');
       return;
     }
 
     setSaving(true);
     try {
+      // Note: backend blocks POSTing invoice/trip FK directly (auto-created on invoice PAID).
+      // We send only the plain fields; amount/reference/description are already pre-filled
+      // from the selected trip or invoice by the handleTripSelect / handleInvoiceSelect handlers.
       const payload = {
-        ...data,
-        amount: parseFloat(data.amount),
-        source: data.source,
-        ...(watchSource === 'HAULAGE' && selectedInvoice
-          ? { invoice: selectedInvoice.id, trip: selectedInvoice.trip || null }
-          : {}),
-        ...(watchSource === 'TRIP_REVENUE' && selectedTrip
-          ? { trip: selectedTrip.id }
-          : {}),
+        source:      data.source,
+        amount:      parseFloat(data.amount),
+        date:        data.date,
+        reference:   data.reference  || '',
+        description: data.description || '',
       };
 
       if (editing) {
