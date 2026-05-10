@@ -18,14 +18,35 @@ const toDatetimeLocal = (val) => {
   return val.slice(0, 16);
 };
 
+// Fetch ALL pages from a paginated DRF endpoint
+const fetchAllPages = async (url) => {
+  let results = [];
+  let nextUrl = url;
+  while (nextUrl) {
+    const res  = await api.get(nextUrl);
+    const data = res.data;
+    if (Array.isArray(data)) {
+      results = data;
+      break;
+    }
+    results = results.concat(data.results || []);
+    // Strip base URL from next link so axios uses relative path correctly
+    nextUrl = data.next
+      ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
+      : null;
+  }
+  return results;
+};
+
 export default function TripsPage() {
-  const [trucks,   setTrucks]   = useState([]);
-  const [drivers,  setDrivers]  = useState([]);
-  const [trips,    setTrips]    = useState([]);
-  const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
-  const [saving,   setSaving]   = useState(false);
-  const [tab,      setTab]      = useState('active');
-  const [editingTrip, setEditingTrip] = useState(null); // null = new trip mode
+  const [trucks,      setTrucks]      = useState([]);
+  const [drivers,     setDrivers]     = useState([]);
+  const [trips,       setTrips]       = useState([]);
+  const [computed,    setComputed]    = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
+  const [saving,      setSaving]      = useState(false);
+  const [loading,     setLoading]     = useState(false);
+  const [tab,         setTab]         = useState('active');
+  const [editingTrip, setEditingTrip] = useState(null);
 
   const { register, handleSubmit, watch, reset } = useForm({
     defaultValues: { status: 'PLANNED', rate_per_ton: '' }
@@ -38,8 +59,8 @@ export default function TripsPage() {
   const wUnloadTime = watch('unloading_time');
 
   useEffect(() => {
-    api.get('/trucks/?status=ACTIVE').then(r  => setTrucks(r.data.results  || r.data));
-    api.get('/drivers/?status=ACTIVE').then(r => setDrivers(r.data.results || r.data));
+    fetchAllPages('/trucks/?status=ACTIVE').then(setTrucks);
+    fetchAllPages('/drivers/?status=ACTIVE').then(setDrivers);
     loadTrips();
   }, []);
 
@@ -50,8 +71,16 @@ export default function TripsPage() {
     setComputed({ ...c, duration: d });
   }, [wLoaded, wDelivered, wRate, wLoadTime, wUnloadTime]);
 
-  const loadTrips = () => {
-    api.get('/trips/').then(r => setTrips(r.data.results || r.data));
+  const loadTrips = async () => {
+    setLoading(true);
+    try {
+      const all = await fetchAllPages('/trips/');
+      setTrips(all);
+    } catch {
+      toast.error('Failed to load trips.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearForm = () => {
@@ -71,8 +100,8 @@ export default function TripsPage() {
       destination:    trip.destination,
       material_type:  trip.material_type,
       loaded_qty:     trip.loaded_qty,
-      delivered_qty:  trip.delivered_qty ?? '',
-      rate_per_ton:   trip.rate_per_ton  ?? '',
+      delivered_qty:  trip.delivered_qty  ?? '',
+      rate_per_ton:   trip.rate_per_ton   ?? '',
       loading_time:   toDatetimeLocal(trip.loading_time),
       unloading_time: toDatetimeLocal(trip.unloading_time),
       remark:         trip.remark ?? '',
@@ -87,7 +116,9 @@ export default function TripsPage() {
       toast.success('Trip deleted.');
       if (editingTrip?.id === id) clearForm();
       loadTrips();
-    } catch { toast.error('Cannot delete this trip.'); }
+    } catch {
+      toast.error('Cannot delete this trip.');
+    }
   };
 
   const onSubmit = async (data) => {
@@ -116,19 +147,21 @@ export default function TripsPage() {
     }
   };
 
-  const activeTrips    = trips.filter(t => ['PLANNED','EN_ROUTE','DELAYED'].includes(t.status));
+  const activeTrips    = trips.filter(t => ['PLANNED', 'EN_ROUTE', 'DELAYED'].includes(t.status));
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const allTrips       = trips;
+  const visibleTrips   = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips;
 
   const isEditing = !!editingTrip;
 
   return (
     <div>
+      {/* ── KPI Row ── */}
       <div className="g2 mb16">
         {[
           { label: 'Active Trips',  val: activeTrips.length,    color: 'var(--blue)'  },
           { label: 'Completed',     val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue', val: fmtGHS(trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0)), color: 'var(--amber)' },
+          { label: 'Total Revenue', val: fmtGHS(trips.reduce((s, t) => s + parseFloat(t.trip_revenue || 0), 0)), color: 'var(--amber)' },
           { label: 'Delayed',       val: trips.filter(t => t.status === 'DELAYED').length, color: 'var(--red)' },
         ].map((k, i) => (
           <div key={i} className="kpi">
@@ -159,7 +192,7 @@ export default function TripsPage() {
               alignItems: 'center',
               gap: 8,
             }}>
-              ⚠️ You are editing an existing trip. Click <strong>&nbsp;Update Trip&nbsp;</strong> to save changes or <strong>&nbsp;Cancel&nbsp;</strong> to discard.
+              ⚠️ Editing existing trip. Click <strong>&nbsp;Update Trip&nbsp;</strong> to save or <strong>&nbsp;Cancel&nbsp;</strong> to discard.
             </div>
           )}
 
@@ -236,7 +269,7 @@ export default function TripsPage() {
                 }}>
                   {computed.qty_difference !== 0
                     ? `${computed.qty_difference > 0 ? '▼ Shortage' : '▲ Overage'}: ${Math.abs(computed.qty_difference).toFixed(3)}T`
-                    : computed.qty_difference === 0 && parseFloat(wDelivered||0) > 0
+                    : computed.qty_difference === 0 && parseFloat(wDelivered || 0) > 0
                       ? '✓ Exact'
                       : '—'}
                 </div>
@@ -290,23 +323,37 @@ export default function TripsPage() {
         <div className="card">
           <div className="card-title"><span className="card-title-ic">📋</span>Trips</div>
           <div className="tabs">
-            {['active','completed','all'].map(t => (
-              <div key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+            {[
+              { key: 'active',    label: `Active (${activeTrips.length})`    },
+              { key: 'completed', label: `Completed (${completedTrips.length})` },
+              { key: 'all',       label: `All (${allTrips.length})`          },
+            ].map(t => (
+              <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>
+                {t.label}
               </div>
             ))}
           </div>
-          <div className="tbl-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Waybill</th><th>Truck</th><th>Driver</th><th>Route</th>
-                  <th>Material</th><th>Loaded</th><th>Revenue</th><th>Status</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips)
-                  .map(t => (
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>⏳ Loading trips…</div>
+          ) : (
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Waybill</th>
+                    <th>Truck</th>
+                    <th>Driver</th>
+                    <th>Route</th>
+                    <th>Material</th>
+                    <th>Loaded</th>
+                    <th>Revenue</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleTrips.map(t => (
                     <tr key={t.id} style={editingTrip?.id === t.id ? { background: '#fff8e1' } : undefined}>
                       <td className="mono">{t.waybill_no}</td>
                       <td className="mono">{t.truck_number}</td>
@@ -337,12 +384,17 @@ export default function TripsPage() {
                       </td>
                     </tr>
                   ))}
-                {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips).length === 0 && (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No trips found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  {visibleTrips.length === 0 && (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+                        No trips found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
