@@ -15,6 +15,7 @@ class FuelLimitSerializer(serializers.ModelSerializer):
 
 class FuelLogSerializer(serializers.ModelSerializer):
     truck_number = serializers.CharField(source='truck.truck_number', read_only=True)
+    trip_waybill = serializers.CharField(source='trip.waybill_no', read_only=True)
     # Auto-calculated – read only
     excess_fuel  = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
     total_cost   = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
