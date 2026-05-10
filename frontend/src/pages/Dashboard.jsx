@@ -58,7 +58,7 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <StatCard label="Active Trucks"      value={fleet.active_trucks}  color="var(--blue)"  sub={`🚛 ${fleet.ongoing_trips ?? 0} currently on trip`} pct={80} />
         <StatCard label="Active Drivers"     value={fleet.active_drivers} color="var(--sky)"   pct={75} />
-        <StatCard label="Trips This Month"   value={month.trips}          color="#7c3aed"       pct={60} />
+        <StatCard label="Completed Trips"    value={month.trips}          color="#7c3aed"       pct={60} />
         <StatCard label="Monthly Revenue"    value={month.revenue  ? fmtGHS(month.revenue)  : null} color="var(--green)" pct={70} />
         <StatCard label="Monthly Expenditure"value={month.expenditure ? fmtGHS(month.expenditure) : null} color="var(--red)" pct={50} />
         <StatCard label="Fuel Usage"         value={month.fuel_litres != null ? `${month.fuel_litres.toLocaleString()} L` : null} color="var(--blue)" sub={`${month.fuel_excess_events ?? 0} excess events`} />
@@ -128,7 +128,7 @@ export default function Dashboard() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
 
             {[
-              { label: 'Trips Completed', val: month.trips ?? '—' },
+              { label: 'Trips Completed', val: month.trips ?? 0 },
               { label: 'Fuel Consumed',   val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
               { label: 'Fuel Excess Events', val: month.fuel_excess_events ?? '0' },
               { label: 'Stock Items',     val: kpis?.stock_items ?? '—' },
