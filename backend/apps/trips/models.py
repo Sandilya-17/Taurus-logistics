@@ -36,6 +36,13 @@ class Trip(TimeStampedModel):
     status         = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PLANNED)
     rate_per_ton   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     trip_revenue   = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    # Auto-aggregated from fuel logs and spare part issues linked to this trip
+    fuel_cost        = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                                           help_text='Auto-summed from fuel logs linked to this trip')
+    spare_parts_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                                           help_text='Auto-summed from spare part issues linked to this trip')
+
     remark         = models.TextField(blank=True)
     created_by     = models.ForeignKey('users.User', null=True, blank=True, on_delete=models.SET_NULL)
 
@@ -67,10 +74,20 @@ class Trip(TimeStampedModel):
 
         super().save(*args, **kwargs)
 
-    @property
-    def duration_display(self):
-        if not self.trip_duration_minutes:
-            return None
-        h = self.trip_duration_minutes // 60
-        m = self.trip_duration_minutes % 60
-        return f"{h}h {m}m"
+        # When trip is completed → auto-create Revenue and Expenditure entries
+        if self.status == self.COMPLETED:
+            self._sync_finance()
+
+    def _sync_finance(self):
+        """On completion: upsert Revenue and Expenditure records for this trip."""
+        from apps.finance.models import Revenue, Expenditure
+
+        # ── Revenue ──
+        if self.trip_revenue and self.trip_revenue > 0:
+            Revenue.objects.update_or_create(
+                trip=self,
+                source=Revenue.TRIP_REVENUE,
+                defaults=dict(
+                    amount=self.trip_revenue,
+                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    description=f"Trip {self.waybi
