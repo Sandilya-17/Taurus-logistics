@@ -54,6 +54,8 @@ export default function TripsPage() {
       await api.delete(`/trips/${id}/`);
       toast.success('Trip deleted.');
       loadTrips();
+      // Signal dashboard to refresh on next visit
+      sessionStorage.setItem('dashboard_refresh', Date.now());
     } catch { toast.error('Cannot delete this trip.'); }
   };
 
@@ -70,6 +72,7 @@ export default function TripsPage() {
       reset({ status: 'PLANNED' });
       setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
       loadTrips();
+      sessionStorage.setItem('dashboard_refresh', Date.now());
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to save trip.');
     } finally {
