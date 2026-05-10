@@ -168,7 +168,9 @@ class Purchase(TimeStampedModel):
 
 
 class IssueItem(TimeStampedModel):
-    """Issue – reduces stock via negative StockLedger entry."""
+    """Issue – reduces stock via negative StockLedger entry.
+    Can be linked to a trip so the cost auto-updates the trip's spare_parts_cost.
+    """
     TRUCK     = 'TRUCK'
     WORKSHOP  = 'WORKSHOP'
     BREAKDOWN = 'BREAKDOWN'
@@ -177,6 +179,7 @@ class IssueItem(TimeStampedModel):
     item         = models.ForeignKey(Item,     on_delete=models.PROTECT, related_name='issues')
     location     = models.ForeignKey(Location, on_delete=models.PROTECT)
     truck        = models.ForeignKey('trucks.Truck', null=True, blank=True, on_delete=models.SET_NULL, related_name='issues')
+    trip         = models.ForeignKey('trips.Trip',   null=True, blank=True, on_delete=models.SET_NULL, related_name='spare_issues')
     issue_type   = models.CharField(max_length=15, choices=ISSUE_TYPE_CHOICES)
     quantity     = models.DecimalField(max_digits=12, decimal_places=3)
     unit_price   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -191,3 +194,9 @@ class IssueItem(TimeStampedModel):
         ordering = ['-issue_date']
 
     def __str__(self): return f"ISS-{self.pk} | {self.item.name} | {self.quantity}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Auto-update trip's spare_parts_cost when linked to a trip
+        if self.trip_id:
+            self.trip.recalculate_costs()
