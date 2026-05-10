@@ -90,4 +90,30 @@ class Trip(TimeStampedModel):
                 defaults=dict(
                     amount=self.trip_revenue,
                     date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
-                    description=f"Trip {self.waybi
+                    description=f"Trip {self.waybill_no} Revenue",
+                ),
+            )
+
+        # ── Expenditure: Fuel ──
+        if self.fuel_cost and self.fuel_cost > 0:
+            Expenditure.objects.update_or_create(
+                trip=self,
+                category=Expenditure.FUEL,
+                defaults=dict(
+                    amount=self.fuel_cost,
+                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    description=f"Trip {self.waybill_no} Fuel Cost",
+                ),
+            )
+
+        # ── Expenditure: Spare Parts ──
+        if self.spare_parts_cost and self.spare_parts_cost > 0:
+            Expenditure.objects.update_or_create(
+                trip=self,
+                category=Expenditure.SPARE_PART,
+                defaults=dict(
+                    amount=self.spare_parts_cost,
+                    date=self.unloading_time.date() if self.unloading_time else self.loading_time.date(),
+                    description=f"Trip {self.waybill_no} Spare Parts Cost",
+                ),
+            )
