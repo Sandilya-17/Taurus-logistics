@@ -56,6 +56,13 @@ class Trip(TimeStampedModel):
     def net_profit(self):
         return self.trip_revenue - self.fuel_cost - self.spare_parts_cost
 
+    @property
+    def duration_display(self):
+        if not self.trip_duration_minutes:
+            return None
+        h, m = divmod(self.trip_duration_minutes, 60)
+        return f"{h}h {m}m" if h else f"{m}m"
+
     def save(self, *args, **kwargs):
         # Auto-calculate quantity difference
         if self.delivered_qty is not None:
