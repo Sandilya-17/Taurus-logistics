@@ -12,22 +12,29 @@ const STATUS_BADGE = {
   CANCELLED: 'b-red',
 };
 
+// datetime-local input expects "YYYY-MM-DDTHH:MM"
+const toDatetimeLocal = (val) => {
+  if (!val) return '';
+  return val.slice(0, 16);
+};
+
 export default function TripsPage() {
-  const [trucks,  setTrucks]  = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [trips,   setTrips]   = useState([]);
+  const [trucks,   setTrucks]   = useState([]);
+  const [drivers,  setDrivers]  = useState([]);
+  const [trips,    setTrips]    = useState([]);
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
-  const [saving,  setSaving]  = useState(false);
-  const [tab,     setTab]     = useState('active');
+  const [saving,   setSaving]   = useState(false);
+  const [tab,      setTab]      = useState('active');
+  const [editingTrip, setEditingTrip] = useState(null); // null = new trip mode
 
   const { register, handleSubmit, watch, reset } = useForm({
     defaultValues: { status: 'PLANNED', rate_per_ton: '' }
   });
 
-  const wLoaded    = watch('loaded_qty');
-  const wDelivered = watch('delivered_qty');
-  const wRate      = watch('rate_per_ton');
-  const wLoadTime  = watch('loading_time');
+  const wLoaded     = watch('loaded_qty');
+  const wDelivered  = watch('delivered_qty');
+  const wRate       = watch('rate_per_ton');
+  const wLoadTime   = watch('loading_time');
   const wUnloadTime = watch('unloading_time');
 
   useEffect(() => {
@@ -47,27 +54,59 @@ export default function TripsPage() {
     api.get('/trips/').then(r => setTrips(r.data.results || r.data));
   };
 
+  const clearForm = () => {
+    setEditingTrip(null);
+    reset({ status: 'PLANNED', rate_per_ton: '' });
+    setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
+  };
+
+  const startEdit = (trip) => {
+    setEditingTrip(trip);
+    reset({
+      truck:          trip.truck,
+      driver:         trip.driver,
+      waybill_no:     trip.waybill_no,
+      status:         trip.status,
+      origin:         trip.origin,
+      destination:    trip.destination,
+      material_type:  trip.material_type,
+      loaded_qty:     trip.loaded_qty,
+      delivered_qty:  trip.delivered_qty ?? '',
+      rate_per_ton:   trip.rate_per_ton  ?? '',
+      loading_time:   toDatetimeLocal(trip.loading_time),
+      unloading_time: toDatetimeLocal(trip.unloading_time),
+      remark:         trip.remark ?? '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const deleteTrip = async (id) => {
     if (!window.confirm('Delete this trip? This cannot be undone.')) return;
     try {
       await api.delete(`/trips/${id}/`);
       toast.success('Trip deleted.');
+      if (editingTrip?.id === id) clearForm();
       loadTrips();
     } catch { toast.error('Cannot delete this trip.'); }
   };
 
   const onSubmit = async (data) => {
     setSaving(true);
+    const payload = {
+      ...data,
+      loaded_qty:    parseFloat(data.loaded_qty || 0),
+      delivered_qty: data.delivered_qty ? parseFloat(data.delivered_qty) : null,
+      rate_per_ton:  parseFloat(data.rate_per_ton || 0),
+    };
     try {
-      await api.post('/trips/', {
-        ...data,
-        loaded_qty:    parseFloat(data.loaded_qty || 0),
-        delivered_qty: data.delivered_qty ? parseFloat(data.delivered_qty) : null,
-        rate_per_ton:  parseFloat(data.rate_per_ton || 0),
-      });
-      toast.success('Trip posted successfully.');
-      reset({ status: 'PLANNED' });
-      setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
+      if (editingTrip) {
+        await api.patch(`/trips/${editingTrip.id}/`, payload);
+        toast.success('Trip updated successfully.');
+      } else {
+        await api.post('/trips/', payload);
+        toast.success('Trip posted successfully.');
+      }
+      clearForm();
       setTab('active');
       loadTrips();
     } catch (e) {
@@ -81,15 +120,17 @@ export default function TripsPage() {
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const allTrips       = trips;
 
+  const isEditing = !!editingTrip;
+
   return (
     <div>
       <div className="g2 mb16">
         {[
-          { label: 'Active Trips',    val: activeTrips.length,    color: 'var(--blue)'  },
-          { label: 'Completed',       val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue',   val: fmtGHS(trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0),0)), color: 'var(--amber)' },
-          { label: 'Delayed',         val: trips.filter(t=>t.status==='DELAYED').length, color: 'var(--red)' },
-        ].map((k,i) => (
+          { label: 'Active Trips',  val: activeTrips.length,    color: 'var(--blue)'  },
+          { label: 'Completed',     val: completedTrips.length, color: 'var(--green)' },
+          { label: 'Total Revenue', val: fmtGHS(trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0)), color: 'var(--amber)' },
+          { label: 'Delayed',       val: trips.filter(t => t.status === 'DELAYED').length, color: 'var(--red)' },
+        ].map((k, i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-val" style={{ color: k.color, fontSize: 20 }}>{k.val}</div>
@@ -98,9 +139,30 @@ export default function TripsPage() {
       </div>
 
       <div className="g2">
-        {/* ── New Trip Form ── */}
-        <div className="card">
-          <div className="card-title"><span className="card-title-ic">🗺️</span>New Trip Entry</div>
+        {/* ── Trip Form (New / Edit) ── */}
+        <div className="card" style={{ borderTop: isEditing ? '3px solid var(--amber)' : undefined }}>
+          <div className="card-title">
+            <span className="card-title-ic">{isEditing ? '✏️' : '🗺️'}</span>
+            {isEditing ? `Editing Trip — ${editingTrip.waybill_no}` : 'New Trip Entry'}
+          </div>
+
+          {isEditing && (
+            <div style={{
+              background: '#fff8e1',
+              border: '1px solid var(--amber)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              marginBottom: 12,
+              fontSize: 13,
+              color: '#7a5c00',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              ⚠️ You are editing an existing trip. Click <strong>&nbsp;Update Trip&nbsp;</strong> to save changes or <strong>&nbsp;Cancel&nbsp;</strong> to discard.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit(onSubmit)}>
 
             <div className="sec-div">Fleet Assignment</div>
@@ -134,6 +196,7 @@ export default function TripsPage() {
                   <option value="EN_ROUTE">EN ROUTE</option>
                   <option value="DELAYED">DELAYED</option>
                   <option value="COMPLETED">COMPLETED</option>
+                  <option value="CANCELLED">CANCELLED</option>
                 </select>
               </div>
             </div>
@@ -214,10 +277,10 @@ export default function TripsPage() {
 
             <div className="flex gap8 mt16">
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? '⏳ Saving…' : '✓ Post Trip'}
+                {saving ? '⏳ Saving…' : isEditing ? '✓ Update Trip' : '✓ Post Trip'}
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => { reset({ status: 'PLANNED' }); setComputed({ qty_difference: 0, trip_revenue: 0, duration: null }); }}>
-                Clear
+              <button type="button" className="btn btn-ghost" onClick={clearForm}>
+                {isEditing ? 'Cancel' : 'Clear'}
               </button>
             </div>
           </form>
@@ -244,7 +307,7 @@ export default function TripsPage() {
               <tbody>
                 {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips)
                   .map(t => (
-                    <tr key={t.id}>
+                    <tr key={t.id} style={editingTrip?.id === t.id ? { background: '#fff8e1' } : undefined}>
                       <td className="mono">{t.waybill_no}</td>
                       <td className="mono">{t.truck_number}</td>
                       <td>{t.driver_name}</td>
@@ -253,7 +316,25 @@ export default function TripsPage() {
                       <td>{t.loaded_qty}T</td>
                       <td className="ced">{fmtGHS(t.trip_revenue)}</td>
                       <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
-                      <td><button className="btn btn-danger btn-xs" onClick={() => deleteTrip(t.id)}>🗑️</button></td>
+                      <td>
+                        <div className="flex gap8">
+                          <button
+                            className="btn btn-xs"
+                            style={{ background: 'var(--amber)', color: '#fff' }}
+                            onClick={() => startEdit(t)}
+                            title="Edit trip"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="btn btn-danger btn-xs"
+                            onClick={() => deleteTrip(t.id)}
+                            title="Delete trip"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 {(tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips).length === 0 && (
