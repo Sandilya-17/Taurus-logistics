@@ -8,16 +8,22 @@ class TripSerializer(serializers.ModelSerializer):
     truck_number    = serializers.CharField(source='truck.truck_number', read_only=True)
     driver_name     = serializers.CharField(source='driver.name',        read_only=True)
     duration_display = serializers.CharField(read_only=True)
+    net_profit      = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
 
     # Read-only auto-calculated
     qty_difference        = serializers.DecimalField(max_digits=10, decimal_places=3, read_only=True)
     trip_duration_minutes = serializers.IntegerField(read_only=True)
     trip_revenue          = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    fuel_cost             = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    spare_parts_cost      = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model  = Trip
         fields = '__all__'
-        read_only_fields = ('qty_difference','trip_duration_minutes','trip_revenue','created_at','updated_at')
+        read_only_fields = (
+            'qty_difference','trip_duration_minutes','trip_revenue',
+            'fuel_cost','spare_parts_cost','created_at','updated_at'
+        )
 
 
 class TripPreviewSerializer(serializers.Serializer):
