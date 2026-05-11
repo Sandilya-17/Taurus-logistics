@@ -152,6 +152,7 @@ CORS_EXPOSE_HEADERS = [
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
 CSRF_TRUSTED_ORIGINS = [
+    'https://*.up.railway.app',
     'https://taurus-logistics-production.up.railway.app',
     'https://taurus-logistics-production-0a15.up.railway.app',
 ]
