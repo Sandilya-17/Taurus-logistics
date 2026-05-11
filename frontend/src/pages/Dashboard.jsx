@@ -1,6 +1,6 @@
 // src/pages/Dashboard.jsx – Enterprise Dashboard
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api, { fmtGHS } from '../utils/api';
 
 const StatCard = ({ label, value, color, sub, icon, pct }) => (
@@ -21,33 +21,20 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  const location = useLocation();
-
-  const fetchDashboard = useCallback(() => {
+  const loadDashboard = () => {
     setLoading(true);
     api.get('/reports/dashboard/')
       .then(r => { setKpis(r.data); setError(null); })
       .catch(e => setError(e.response?.data?.detail || 'Dashboard data failed to load.'))
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  // Fetch on mount, on every navigation to this page, and every 30 seconds
-  // Also re-fetch when trips page signals a change via sessionStorage
   useEffect(() => {
-    fetchDashboard();
-    const interval = setInterval(() => {
-      fetchDashboard();
-    }, 30000);
-    // Poll for cross-page refresh signal every 2 seconds
-    const signalCheck = setInterval(() => {
-      const sig = sessionStorage.getItem('dashboard_refresh');
-      if (sig && parseInt(sig) > (Date.now() - 10000)) {
-        sessionStorage.removeItem('dashboard_refresh');
-        fetchDashboard();
-      }
-    }, 2000);
-    return () => { clearInterval(interval); clearInterval(signalCheck); };
-  }, [location.pathname, fetchDashboard]);
+    loadDashboard();
+    // BUG FIX: re-fetch dashboard when a trip is deleted from the Trips page
+    window.addEventListener('taurus:dashboard:refresh', loadDashboard);
+    return () => window.removeEventListener('taurus:dashboard:refresh', loadDashboard);
+  }, []);
 
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
@@ -59,17 +46,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Dashboard</h2>
-        <button
-          className="btn btn-ghost"
-          onClick={fetchDashboard}
-          title="Refresh dashboard"
-          style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          🔄 Refresh
-        </button>
-      </div>
       {error && (
         <div className="alert alert-warn mb16" style={{ borderRadius: 10, fontWeight: 500, color: 'var(--red)', background: '#fff5f5', borderColor: 'var(--red)' }}>
           ⚠️&nbsp; <strong>Dashboard error:</strong> {error}
@@ -90,7 +66,7 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <StatCard label="Active Trucks"      value={fleet.active_trucks}  color="var(--blue)"  sub={`🚛 ${fleet.ongoing_trips ?? 0} currently on trip`} pct={80} />
         <StatCard label="Active Drivers"     value={fleet.active_drivers} color="var(--sky)"   pct={75} />
-        <StatCard label="Completed Trips"    value={month.trips}          color="#7c3aed"       pct={60} />
+        <StatCard label="Trips This Month"   value={month.trips}          color="#7c3aed"       pct={60} />
         <StatCard label="Monthly Revenue"    value={month.revenue  ? fmtGHS(month.revenue)  : null} color="var(--green)" pct={70} />
         <StatCard label="Monthly Expenditure"value={month.expenditure ? fmtGHS(month.expenditure) : null} color="var(--red)" pct={50} />
         <StatCard label="Fuel Usage"         value={month.fuel_litres != null ? `${month.fuel_litres.toLocaleString()} L` : null} color="var(--blue)" sub={`${month.fuel_excess_events ?? 0} excess events`} />
@@ -160,7 +136,7 @@ export default function Dashboard() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
 
             {[
-              { label: 'Trips Completed', val: month.trips ?? 0 },
+              { label: 'Trips Completed', val: month.trips ?? '—' },
               { label: 'Fuel Consumed',   val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
               { label: 'Fuel Excess Events', val: month.fuel_excess_events ?? '0' },
               { label: 'Stock Items',     val: kpis?.stock_items ?? '—' },
