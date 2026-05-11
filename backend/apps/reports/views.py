@@ -1,837 +1,257 @@
-"""apps/reports/views.py – Full fixed report suite."""
-from io import BytesIO
-from datetime import date, timedelta
-from decimal import Decimal
-
-from django.db.models import Sum, Count, Q
-from django.http import HttpResponse
-from rest_framework.views import APIView
-from rest_framework.response import Response
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _parse_date_range(request, default_days=30):
-    today = date.today()
-    date_from = request.query_params.get('date_from') or str(today - timedelta(days=default_days))
-    date_to   = request.query_params.get('date_to')   or str(today)
-    return date_from, date_to
-
-
-def _excel_response(filename):
-    r = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    r['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return r
-
-
-def _pdf_response(filename):
-    r = HttpResponse(content_type='application/pdf')
-    r['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return r
-
-
-# ── Excel builder ─────────────────────────────────────────────────────────────
-
-def build_excel(title, headers, rows, summary=None):
-    try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        from openpyxl.utils import get_column_letter
-    except ImportError:
-        raise ImportError("openpyxl is required: pip install openpyxl")
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Report"
-
-    ws.merge_cells(f"A1:{get_column_letter(len(headers))}1")
-    title_cell = ws["A1"]
-    title_cell.value = title
-    title_cell.font = Font(bold=True, size=13, color="FFFFFF")
-    title_cell.fill = PatternFill("solid", fgColor="1a3a6e")
-    title_cell.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 28
-
-    header_fill = PatternFill("solid", fgColor="2563EB")
-    header_font = Font(bold=True, color="FFFFFF", size=10)
-    thin = Side(border_style="thin", color="D1D5DB")
-
-    for col_idx, h in enumerate(headers, 1):
-        cell = ws.cell(row=2, column=col_idx, value=h)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = Border(bottom=thin)
-
-    alt_fill = PatternFill("solid", fgColor="F8FAFC")
-    for row_idx, row in enumerate(rows, 3):
-        for col_idx, val in enumerate(row, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
-            if row_idx % 2 == 0:
-                cell.fill = alt_fill
-            if isinstance(val, (int, float)) and col_idx > 1:
-                cell.number_format = '#,##0.00'
-                cell.alignment = Alignment(horizontal="right")
-
-    if summary:
-        gap_row = len(rows) + 4
-        ws.cell(row=gap_row, column=1, value="SUMMARY").font = Font(bold=True, size=11)
-        for i, (k, v) in enumerate(summary.items()):
-            r = gap_row + 1 + i
-            ws.cell(row=r, column=1, value=k).font = Font(bold=True)
-            cell = ws.cell(row=r, column=2, value=v)
-            if isinstance(v, (int, float)):
-                cell.number_format = '#,##0.00'
-
-    for col_idx in range(1, len(headers) + 1):
-        max_len = len(str(headers[col_idx - 1]))
-        for row in rows:
-            try:
-                max_len = max(max_len, len(str(row[col_idx - 1])))
-            except IndexError:
-                pass
-        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 40)
-
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
-
-
-# ── PDF builder ───────────────────────────────────────────────────────────────
-
-def build_pdf(title, headers, rows, summary=None):
-    try:
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib import colors
-        from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    except ImportError:
-        raise ImportError("reportlab is required: pip install reportlab")
-
-    buf = BytesIO()
-    page = landscape(A4) if len(headers) > 6 else A4
-    doc = SimpleDocTemplate(buf, pagesize=page,
-                            leftMargin=1.5*cm, rightMargin=1.5*cm,
-                            topMargin=2*cm, bottomMargin=2*cm)
-
-    styles = getSampleStyleSheet()
-    brand  = colors.HexColor('#1a3a6e')
-    accent = colors.HexColor('#2563EB')
-
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Title'],
-                                 fontSize=16, textColor=brand, spaceAfter=6)
-    sub_style   = ParagraphStyle('SubStyle', parent=styles['Normal'],
-                                 fontSize=9, textColor=colors.grey, spaceAfter=12)
-
-    story = [
-        Paragraph("Taurus Trade & Logistics ERP", sub_style),
-        Paragraph(title, title_style),
-        Paragraph(f"Generated: {date.today().strftime('%d %B %Y')}", sub_style),
-        Spacer(1, 0.3*cm),
-    ]
-
-    col_w = (page[0] - 3*cm) / len(headers)
-    table_data = [headers] + [list(map(str, r)) for r in rows]
-    tbl = Table(table_data, colWidths=[col_w] * len(headers), repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ('BACKGROUND',     (0, 0), (-1, 0),  accent),
-        ('TEXTCOLOR',      (0, 0), (-1, 0),  colors.white),
-        ('FONTNAME',       (0, 0), (-1, 0),  'Helvetica-Bold'),
-        ('FONTSIZE',       (0, 0), (-1, 0),  9),
-        ('ALIGN',          (0, 0), (-1, 0),  'CENTER'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-        ('FONTSIZE',       (0, 1), (-1, -1), 8),
-        ('GRID',           (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING',     (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING',  (0, 0), (-1, -1), 5),
-        ('LEFTPADDING',    (0, 0), (-1, -1), 6),
-    ]))
-    story.append(tbl)
-
-    if summary:
-        story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph("Summary", ParagraphStyle(
-            'SumHead', parent=styles['Heading2'], fontSize=11, textColor=brand)))
-        sum_data = [[str(k), f"GH\u20b5 {float(v):,.2f}" if isinstance(v, (int, float)) else str(v)]
-                    for k, v in summary.items()]
-        stbl = Table(sum_data, colWidths=[8*cm, 5*cm])
-        stbl.setStyle(TableStyle([
-            ('BACKGROUND',  (0, 0), (0, -1), colors.HexColor('#EFF6FF')),
-            ('FONTNAME',    (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE',    (0, 0), (-1, -1), 9),
-            ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor('#BFDBFE')),
-            ('TOPPADDING',  (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING',(0, 0),(-1, -1), 5),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        story.append(stbl)
-
-    doc.build(story)
-    buf.seek(0)
-    return buf
-
-
-# ================================================================
-# REPORT VIEWS
-# ================================================================
-
-class RevenueExpenditureReportView(APIView):
-    def get(self, request):
-        from apps.finance.models import Revenue, Expenditure
-        date_from, date_to = _parse_date_range(request)
-
-        rev_qs = (Revenue.objects.filter(date__range=[date_from, date_to])
-                  .values('source').annotate(total=Sum('amount')).order_by('-total'))
-        exp_qs = (Expenditure.objects.filter(date__range=[date_from, date_to])
-                  .values('category').annotate(total=Sum('amount')).order_by('-total'))
-
-        total_rev = sum(r['total'] or 0 for r in rev_qs)
-        total_exp = sum(e['total'] or 0 for e in exp_qs)
-        net = total_rev - total_exp
-        revenue_by_source = {r['source']: float(r['total'] or 0) for r in rev_qs}
-
-        headers = ['Category / Source', 'Type', 'Amount (GH\u20b5)']
-        rows = []
-        for r in rev_qs:
-            rows.append([r['source'].replace('_', ' '), 'REVENUE', float(r['total'] or 0)])
-        for e in exp_qs:
-            rows.append([e['category'].replace('_', ' '), 'EXPENDITURE', float(e['total'] or 0)])
-
-        summary = {
-            'Total Revenue (GH\u20b5)':     float(total_rev),
-            'Total Expenditure (GH\u20b5)': float(total_exp),
-            'Net Profit / Loss (GH\u20b5)': float(net),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Revenue vs Expenditure  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'pnl_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'pnl_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary,
-                         'revenue_by_source': revenue_by_source})
-
-
-class FuelReportView(APIView):
-    def get(self, request):
-        from apps.fuel.models import FuelLog
-        date_from, date_to = _parse_date_range(request)
-
-        logs = (FuelLog.objects.select_related('truck', 'trip')
-                .filter(date__range=[date_from, date_to]).order_by('-date'))
-
-        headers = ['Date', 'Truck', 'Trip', 'Litres', 'Limit (L)',
-                   'Excess (L)', 'Price/L', 'Total Cost', 'Excess Cost', 'Remark']
-        rows = []
-        total_litres = Decimal('0')
-        total_cost   = Decimal('0')
-        total_excess = Decimal('0')
-        excess_events = 0
-
-        for log in logs:
-            excess_cost = log.excess_fuel * log.price_per_litre
-            rows.append([
-                str(log.date),
-                log.truck.truck_number,
-                log.trip.waybill_no if log.trip else '—',
-                float(log.litres),
-                float(log.fuel_limit),
-                float(log.excess_fuel),
-                float(log.price_per_litre),
-                float(log.total_cost),
-                float(excess_cost),
-                log.remark or '—',
-            ])
-            total_litres += log.litres
-            total_cost   += log.total_cost
-            total_excess += log.excess_fuel
-            if log.excess_fuel > 0:
-                excess_events += 1
-
-        summary = {
-            'Total Litres Issued':    float(total_litres),
-            'Total Fuel Cost (GH\u20b5)': float(total_cost),
-            'Total Excess Litres':    float(total_excess),
-            'Excess Incidents':       excess_events,
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Fuel Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'fuel_report_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'fuel_report_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class TripReportView(APIView):
-    def get(self, request):
-        from apps.trips.models import Trip
-        date_from, date_to = _parse_date_range(request)
-
-        trips = (Trip.objects.select_related('truck', 'driver')
-                 .filter(loading_time__date__range=[date_from, date_to])
-                 .order_by('-loading_time'))
-
-        headers = ['Waybill', 'Date', 'Truck', 'Driver', 'Origin', 'Destination',
-                   'Material', 'Loaded (t)', 'Delivered (t)', 'Diff (t)', 'Revenue (GH\u20b5)', 'Status']
-        rows = []
-        total_revenue = Decimal('0')
-        total_loaded  = Decimal('0')
-
-        for t in trips:
-            rows.append([
-                t.waybill_no,
-                str(t.loading_time.date()),
-                t.truck.truck_number,
-                f"{t.driver.first_name} {t.driver.last_name}",
-                t.origin,
-                t.destination,
-                t.material_type,
-                float(t.loaded_qty),
-                float(t.delivered_qty or 0),
-                float(t.qty_difference or 0),
-                float(t.trip_revenue),
-                t.status,
-            ])
-            total_revenue += t.trip_revenue
-            total_loaded  += t.loaded_qty
-
-        summary = {
-            'Total Trips':             len(rows),
-            'Total Loaded (tonnes)':   float(total_loaded),
-            'Total Revenue (GH\u20b5)': float(total_revenue),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Trip Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'trips_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'trips_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class StockReportView(APIView):
-    def get(self, request):
-        from apps.inventory.models import Item
-
-        items = Item.objects.filter(deleted_at__isnull=True).order_by('item_type', 'name')
-
-        headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH\u20b5)', 'Reorder Level', 'Status']
-        rows = []
-        total_value = Decimal('0')
-
-        for item in items:
-            qty   = item.available_qty()
-            value = item.available_value()
-            total_value += value
-            status = 'LOW STOCK' if qty <= item.reorder_level and item.reorder_level > 0 else 'OK'
-            rows.append([
-                item.name,
-                item.get_item_type_display(),
-                item.unit,
-                float(qty),
-                float(value),
-                float(item.reorder_level),
-                status,
-            ])
-
-        summary = {
-            'Total Items':              len(rows),
-            'Total Stock Value (GH\u20b5)': float(total_value),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Stock Report \u2014 as of {date.today()}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'stock_{date.today()}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'stock_{date.today()}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class InvoiceReportView(APIView):
-    def get(self, request):
-        from apps.invoicing.models import Invoice
-        date_from, date_to = _parse_date_range(request)
-
-        invoices = (Invoice.objects.prefetch_related('lines').select_related('trip')
-                    .filter(invoice_date__range=[date_from, date_to])
-                    .order_by('-invoice_date'))
-
-        headers = ['Invoice #', 'Date', 'Client', 'Trip', 'Qty', 'Subtotal', 'VAT', 'Total', 'Status']
-        rows = []
-        total_invoiced = Decimal('0')
-        total_paid     = Decimal('0')
-
-        for inv in invoices:
-            qty = sum(l.quantity for l in inv.lines.all())
-            rows.append([
-                inv.invoice_number,
-                str(inv.invoice_date),
-                inv.client_name,
-                inv.trip.waybill_no if inv.trip else '—',
-                float(qty),
-                float(inv.subtotal),
-                float(inv.vat_amount),
-                float(inv.total_amount),
-                inv.status,
-            ])
-            total_invoiced += inv.total_amount
-            if inv.status == 'PAID':
-                total_paid += inv.total_amount
-
-        summary = {
-            'Total Invoiced (GH\u20b5)': float(total_invoiced),
-            'Received (GH\u20b5)':       float(total_paid),
-            'Outstanding (GH\u20b5)':    float(total_invoiced - total_paid),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Invoice Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'invoices_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'invoices_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class SparePartsReportView(APIView):
-    def get(self, request):
-        from apps.inventory.models import StockLedger
-        date_from, date_to = _parse_date_range(request)
-
-        ledger = (StockLedger.objects.select_related('item', 'location')
-                  .filter(item__item_type='SPARE_PART',
-                          created_at__date__range=[date_from, date_to])
-                  .order_by('-created_at'))
-
-        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location', 'Reference']
-        rows = []
-        total_in  = Decimal('0')
-        total_out = Decimal('0')
-
-        for entry in ledger:
-            rows.append([
-                str(entry.created_at.date()),
-                entry.item.name,
-                entry.get_transaction_type_display(),
-                float(entry.quantity),
-                float(entry.unit_price or 0),
-                float(entry.final_amount or 0),
-                entry.location.name if entry.location else '—',
-                entry.remark or '—',
-            ])
-            if entry.quantity > 0:
-                total_in  += entry.final_amount or 0
-            else:
-                total_out += abs(entry.final_amount or 0)
-
-        summary = {
-            'Total Inward Value (GH\u20b5)': float(total_in),
-            'Total Issued Value (GH\u20b5)': float(total_out),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Spare Parts Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'spare_parts_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'spare_parts_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class MaintenanceReportView(APIView):
-    def get(self, request):
-        from apps.maintenance.models import MaintenanceLog
-        date_from, date_to = _parse_date_range(request)
-
-        records = (MaintenanceLog.objects.select_related('truck', 'mechanic')
-                   .filter(service_date__range=[date_from, date_to])
-                   .order_by('-service_date'))
-
-        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH\u20b5)', 'Mechanic', 'Next Service Date']
-        rows = []
-        total_cost = Decimal('0')
-
-        for rec in records:
-            rows.append([
-                str(rec.service_date),
-                rec.truck.truck_number,
-                rec.maintenance_type,
-                rec.description[:60] if rec.description else '—',
-                float(rec.total_cost or 0),
-                rec.mechanic.name if rec.mechanic else '—',
-                str(rec.next_service_date) if rec.next_service_date else '—',
-            ])
-            total_cost += rec.total_cost or 0
-
-        summary = {'Total Maintenance Cost (GH\u20b5)': float(total_cost)}
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Maintenance Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'maintenance_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'maintenance_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class VATReportView(APIView):
-    def get(self, request):
-        from apps.invoicing.models import Invoice
-        date_from, date_to = _parse_date_range(request)
-
-        invoices = (Invoice.objects
-                    .filter(invoice_date__range=[date_from, date_to], vat_applicable=True)
-                    .order_by('-invoice_date'))
-
-        headers = ['Invoice #', 'Date', 'Client', 'Subtotal (GH\u20b5)', 'VAT %', 'VAT Amount (GH\u20b5)', 'Total (GH\u20b5)', 'Status']
-        rows = []
-        total_vat = Decimal('0')
-
-        for inv in invoices:
-            rows.append([
-                inv.invoice_number,
-                str(inv.invoice_date),
-                inv.client_name,
-                float(inv.subtotal),
-                float(inv.vat_percentage or 0),
-                float(inv.vat_amount),
-                float(inv.total_amount),
-                inv.status,
-            ])
-            total_vat += inv.vat_amount
-
-        summary = {'Total VAT Collected (GH\u20b5)': float(total_vat)}
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'VAT Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'vat_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'vat_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class TyreReportView(APIView):
-    def get(self, request):
-        from apps.inventory.models import StockLedger
-        date_from, date_to = _parse_date_range(request)
-
-        ledger = (StockLedger.objects.select_related('item', 'location')
-                  .filter(item__item_type='TYRE',
-                          created_at__date__range=[date_from, date_to])
-                  .order_by('-created_at'))
-
-        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location']
-        rows = []
-        total_value = Decimal('0')
-
-        for entry in ledger:
-            rows.append([
-                str(entry.created_at.date()),
-                entry.item.name,
-                entry.get_transaction_type_display(),
-                float(entry.quantity),
-                float(entry.unit_price or 0),
-                float(entry.final_amount or 0),
-                entry.location.name if entry.location else '—',
-            ])
-            total_value += abs(entry.final_amount or 0)
-
-        summary = {'Total Tyre Value (GH\u20b5)': float(total_value)}
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Tyre Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'tyres_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'tyres_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-class LubricantReportView(APIView):
-    def get(self, request):
-        from apps.inventory.models import StockLedger
-        date_from, date_to = _parse_date_range(request)
-
-        ledger = (StockLedger.objects.select_related('item', 'location')
-                  .filter(item__item_type='LUBRICANT',
-                          created_at__date__range=[date_from, date_to])
-                  .order_by('-created_at'))
-
-        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Price (GH\u20b5)', 'Amount (GH\u20b5)', 'Location', 'Reference']
-        rows = []
-        total_in  = Decimal('0')
-        total_out = Decimal('0')
-
-        for entry in ledger:
-            rows.append([
-                str(entry.created_at.date()),
-                entry.item.name,
-                entry.get_transaction_type_display(),
-                float(entry.quantity),
-                entry.item.unit,
-                float(entry.unit_price or 0),
-                float(entry.final_amount or 0),
-                entry.location.name if entry.location else '—',
-                entry.remark or '—',
-            ])
-            if entry.quantity > 0:
-                total_in  += entry.final_amount or 0
-            else:
-                total_out += abs(entry.final_amount or 0)
-
-        summary = {
-            'Total Purchased Value (GH\u20b5)': float(total_in),
-            'Total Issued Value (GH\u20b5)':    float(total_out),
-        }
-
-        fmt = request.query_params.get('export', 'json')
-        report_title = f'Lubricant Report  {date_from} \u2192 {date_to}'
-
-        if fmt == 'excel':
-            buf = build_excel(report_title, headers, rows, summary)
-            resp = _excel_response(f'lubricants_{date_from}_{date_to}.xlsx')
-            resp.write(buf.read()); return resp
-        if fmt == 'pdf':
-            buf = build_pdf(report_title, headers, rows, summary)
-            resp = _pdf_response(f'lubricants_{date_from}_{date_to}.pdf')
-            resp.write(buf.read()); return resp
-
-        return Response({'headers': headers, 'rows': rows, 'summary': summary})
-
-
-# ================================================================
-# DASHBOARD
-# ================================================================
-
-class DashboardSummaryView(APIView):
-    def get(self, request):
-        import traceback
-        from apps.trucks.models import Truck
-        from apps.drivers.models import Driver
-        from apps.trips.models import Trip
-        from apps.finance.models import Revenue, Expenditure
-        from apps.fuel.models import FuelLog
-        from apps.inventory.models import Item
-        from django.utils import timezone
-
-        try:
-            today       = timezone.now().date()
-            month_start = today.replace(day=1)
-
-            fuel_agg = (FuelLog.objects.filter(date__gte=month_start)
-                        .aggregate(litres=Sum('litres'),
-                                   excess_events=Count('id', filter=Q(excess_fuel__gt=0))))
-
-            items = Item.objects.all()
-            stock_value = sum(item.available_value() for item in items)
-            stock_items_count = items.count()
-
-            trucks = Truck.objects.filter(status='ACTIVE')
-            expiry_alerts = []
-            for truck in trucks:
-                for alert in truck.expiry_alerts():
-                    alert['truck_number'] = truck.truck_number
-                    expiry_alerts.append(alert)
-            expiry_alerts.sort(key=lambda a: a['days_remaining'])
-
-            trips_this_month = Trip.objects.filter(
-                loading_time__date__gte=month_start,
-                status='COMPLETED'
-            ).count()
-
-            return Response({
-                'fleet': {
-                    'active_trucks':  Truck.objects.filter(status='ACTIVE').count(),
-                    'active_drivers': Driver.objects.filter(status='ACTIVE').count(),
-                    'ongoing_trips':  Trip.objects.filter(status='EN_ROUTE').count(),
-                },
-                'this_month': {
-                    'revenue':            float(Revenue.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
-                    'expenditure':        float(Expenditure.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
-                    'trips':              trips_this_month,
-                    'fuel_litres':        float(fuel_agg.get('litres') or 0),
-                    'fuel_excess_events': fuel_agg.get('excess_events') or 0,
-                },
-                'stock_value': float(stock_value),
-                'stock_items': stock_items_count,
-                'expiry_alerts': expiry_alerts,
-            })
-
-        except Exception as exc:
-            tb = traceback.format_exc()
-            return Response(
-                {'detail': f'Dashboard error: {exc}', 'traceback': tb},
-                status=500
-            )
-
-
-# ================================================================
-# ADDITIONAL VIEWS
-# ================================================================
-
-class TruckWiseSummaryView(APIView):
-    def get(self, request):
-        from apps.trucks.models import Truck
-        from apps.trips.models import Trip
-        date_from, date_to = _parse_date_range(request, default_days=30)
-
-        trucks = Truck.objects.filter(status='ACTIVE')
-        rows = []
-        for truck in trucks:
-            trips = Trip.objects.filter(
-                truck=truck,
-                status='COMPLETED',
-                loading_time__date__range=[date_from, date_to]
-            )
-            revenue = trips.aggregate(t=Sum('trip_revenue'))['t'] or 0
-            rows.append({
-                'truck_number':    truck.truck_number,
-                'make':            truck.make,
-                'model':           truck.model,
-                'trips_completed': trips.count(),
-                'total_revenue':   float(revenue),
-            })
-        rows.sort(key=lambda r: r['total_revenue'], reverse=True)
-        return Response({'rows': rows, 'date_from': date_from, 'date_to': date_to})
-
-
-class TripDetailReportView(APIView):
-    def get(self, request):
-        from apps.trips.models import Trip
-        from apps.finance.models import Expenditure
-        date_from, date_to = _parse_date_range(request)
-
-        trips = (Trip.objects.select_related('truck', 'driver')
-                 .filter(
-                     loading_time__date__range=[date_from, date_to],
-                     status='COMPLETED'
-                 ).order_by('-loading_time'))
-
-        rows = []
-        for t in trips:
-            exp = Expenditure.objects.filter(
-                truck=t.truck,
-                date=t.loading_time.date()
-            ).aggregate(t=Sum('amount'))['t'] or 0
-            profit = float(t.trip_revenue) - float(exp)
-            rows.append({
-                'waybill_no':   t.waybill_no,
-                'date':         str(t.loading_time.date()),
-                'truck':        t.truck.truck_number,
-                'driver':       f"{t.driver.first_name} {t.driver.last_name}",
-                'origin':       t.origin,
-                'destination':  t.destination,
-                'loaded_qty':   float(t.loaded_qty),
-                'delivered_qty': float(t.delivered_qty or 0),
-                'revenue':      float(t.trip_revenue),
-                'expenditure':  float(exp),
-                'profit':       profit,
-            })
-
-        total_revenue = sum(r['revenue'] for r in rows)
-        total_profit  = sum(r['profit']  for r in rows)
-        return Response({
-            'rows': rows,
-            'summary': {
-                'total_trips':   len(rows),
-                'total_revenue': total_revenue,
-                'total_profit':  total_profit,
-            },
-            'date_from': date_from,
-            'date_to':   date_to,
-        })
-
-
-class CleanupOrphanedRevenueView(APIView):
-    def post(self, request):
-        from apps.finance.models import Revenue
-        deleted_count = 0
-        # Remove revenue entries linked to cancelled trips
-        qs = Revenue.objects.filter(
-            trip__isnull=False,
-            trip__status='CANCELLED'
-        )
-        deleted_count, _ = qs.delete()
-        return Response({
-            'deleted': deleted_count,
-            'message': f'Removed {deleted_count} orphaned revenue records linked to cancelled trips.'
-        })
-
-
-class PurgePhantomTripsView(APIView):
-    def post(self, request):
-        from apps.trips.models import Trip
-        from apps.finance.models import Revenue
-        phantom_qs = Trip.objects.filter(status='CANCELLED')
-        count = phantom_qs.count()
-        # Delete linked revenue first (CASCADE may handle it, but be explicit)
-        Revenue.objects.filter(trip__in=phantom_qs).delete()
-        phantom_qs.delete()
-        return Response({
-            'purged':  count,
-            'message': f'Purged {count} cancelled trips and their linked revenue records.'
-        })
+// src/pages/Reports.jsx – Professional Reports Center | Taurus ERP
+import { useState, useEffect } from 'react';
+import api from '../utils/api';
+import toast from 'react-hot-toast';
+
+const REPORTS = [
+  { key: 'truck-summary',       label: 'Truck-wise Summary',     icon: '🚛', color: 'var(--primary)',  colorHex: '#1a56db', desc: 'Revenue, fuel cost, spare parts and net profit per truck', hasTruckFilter: true },
+  { key: 'trip-pl',             label: 'Trip P&L Report',        icon: '💹', color: '#0694a2',         colorHex: '#0694a2', desc: 'Per-trip revenue, fuel cost, spare parts and net profit',  hasTruckFilter: true },
+  { key: 'revenue-expenditure', label: 'Revenue vs Expenditure', icon: '💰', color: 'var(--green)',     colorHex: '#0e9f6e', desc: 'Full financial P&L — all revenue sources vs all expenditure' },
+  { key: 'trips',               label: 'Trip Report',            icon: '🗺️', color: '#0694a2',         colorHex: '#0694a2', desc: 'Trip records with revenue, qty (tons) and delivery data' },
+  { key: 'fuel',                label: 'Fuel Report',            icon: '⛽', color: '#d97706',          colorHex: '#d97706', desc: 'Fuel consumption, costs and excess incidents' },
+  { key: 'stock',               label: 'Stock Report',           icon: '📦', color: 'var(--primary)',  colorHex: '#1a56db', desc: 'Full inventory stock levels and valuations' },
+  { key: 'spare-parts',         label: 'Spare Parts',            icon: '🔧', color: '#475569',          colorHex: '#475569', desc: 'Purchases and issues of spare parts' },
+  { key: 'lubricants',          label: 'Lubricant Report',       icon: '🛢️', color: '#0d9488',         colorHex: '#0d9488', desc: 'Lubricant purchases, issues and consumption' },
+  { key: 'tyres',               label: 'Tyre Report',            icon: '🛞', color: '#7c3aed',          colorHex: '#7c3aed', desc: 'Tyre inventory, fitment and wear status' },
+  { key: 'invoices',            label: 'Invoice Report',         icon: '🧾', color: '#059669',          colorHex: '#059669', desc: 'Invoice listing with quantities, units, VAT and payment status' },
+  { key: 'vat',                 label: 'VAT Report',             icon: '🧮', color: 'var(--red)',       colorHex: '#e02424', desc: 'VAT charged and applicable transactions' },
+  { key: 'maintenance',         label: 'Maintenance Report',     icon: '🛠️', color: '#0369a1',         colorHex: '#0369a1', desc: 'Service history and maintenance costs' },
+];
+
+const fmtCurrency = (v) => {
+  if (typeof v !== 'number') return String(v);
+  if (v % 1 !== 0) return `GH₵ ${v.toLocaleString('en-GH', { minimumFractionDigits: 2 })}`;
+  return v.toLocaleString();
+};
+
+export default function ReportsPage() {
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
+  const [dateFrom, setDateFrom] = useState(new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
+  const [dateTo,   setDateTo]   = useState(todayStr);
+  const [active,   setActive]   = useState('truck-summary');
+  const [data,     setData]     = useState(null);
+  const [loading,  setLoading]  = useState(false);
+  const [downloading, setDownloading] = useState('');
+  const [trucks,   setTrucks]   = useState([]);
+  const [truckFilter, setTruckFilter] = useState('');
+
+  useEffect(() => {
+    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data));
+  }, []);
+
+  const current = REPORTS.find(r => r.key === active);
+
+  const buildParams = (extra = {}) => {
+    const p = { date_from: dateFrom, date_to: dateTo, ...extra };
+    if (truckFilter && current?.hasTruckFilter) p.truck = truckFilter;
+    return p;
+  };
+
+  const doFetch = async () => {
+    setLoading(true);
+    setData(null);
+    try {
+      const resp = await api.get(`/reports/${active}/`, {
+        params: buildParams({ export: 'json' })
+      });
+      setData(resp.data);
+      if (!resp.data?.rows?.length && !resp.data?.summary) {
+        toast('No data found for the selected period.', { icon: 'ℹ️' });
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Report generation failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doDownload = async (fmt) => {
+    setDownloading(fmt);
+    try {
+      const ext  = fmt === 'pdf' ? 'pdf' : 'xlsx';
+      const mime = fmt === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const resp = await api.get(`/reports/${active}/`, {
+        params: buildParams({ export: fmt }),
+        responseType: 'blob',
+      });
+      const blob = new Blob([resp.data], { type: mime });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `taurus_${active.replace(/-/g, '_')}_${dateTo}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`${current.label} exported as ${fmt.toUpperCase()}.`);
+    } catch (e) {
+      const msg = e.response?.status === 404
+        ? 'Report endpoint not found. Check backend configuration.'
+        : 'Export failed. Please try again.';
+      toast.error(msg);
+    } finally {
+      setDownloading('');
+    }
+  };
+
+  const fmtCell = (cell) => {
+    if (cell === null || cell === undefined || cell === '') return '—';
+    if (typeof cell === 'number') {
+      return cell % 1 !== 0
+        ? cell.toLocaleString('en-GH', { minimumFractionDigits: 2 })
+        : cell.toLocaleString();
+    }
+    return String(cell);
+  };
+
+  const isCurrencyHeader = (h) => {
+    const k = h?.toLowerCase();
+    return k?.includes('amount') || k?.includes('cost') || k?.includes('gh₵') ||
+           k?.includes('revenue') || k?.includes('expenditure') || k?.includes('profit') ||
+           k?.includes('vat') || k?.includes('total') || k?.includes('wage') ||
+           k?.includes('subtotal') || k?.includes('balance');
+  };
+
+  const isNegativeCell = (headers, row, colIdx) => {
+    const h = headers[colIdx]?.toLowerCase() || '';
+    const v = row[colIdx];
+    return (h.includes('profit') || h.includes('net')) && typeof v === 'number' && v < 0;
+  };
+
+  return (
+    <div>
+      {/* Report selector */}
+      <div className="card mb16">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))', gap: 8 }}>
+          {REPORTS.map(r => (
+            <div key={r.key}
+              onClick={() => { setActive(r.key); setData(null); }}
+              style={{
+                cursor: 'pointer', padding: '10px 12px', borderRadius: 8,
+                border: `2px solid ${active === r.key ? r.colorHex : 'var(--border)'}`,
+                background: active === r.key ? `${r.colorHex}18` : 'var(--surface)',
+                transition: 'all 0.15s',
+              }}>
+              <div style={{ fontSize: 18 }}>{r.icon}</div>
+              <div style={{ fontWeight: 600, fontSize: 12, color: active === r.key ? r.colorHex : 'var(--text)', marginTop: 4 }}>{r.label}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{r.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="card mb16">
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          {current?.hasTruckFilter && (
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Truck (optional)</label>
+              <select value={truckFilter} onChange={e => setTruckFilter(e.target.value)}
+                style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minWidth: 160 }}>
+                <option value="">All Trucks</option>
+                {trucks.map(t => <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>)}
+              </select>
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={doFetch} disabled={loading} style={{ marginTop: 0 }}>
+            {loading ? '⏳ Generating…' : '📊 Generate Report'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => doDownload('excel')} disabled={!!downloading || !data}>
+            {downloading === 'excel' ? '⏳' : '⬇️ Excel'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => doDownload('pdf')} disabled={!!downloading || !data}>
+            {downloading === 'pdf' ? '⏳' : '⬇️ PDF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {data?.summary && (
+        <div className="mb16" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))', gap: 10 }}>
+          {Object.entries(data.summary).map(([k, v]) => (
+            <div key={k} className="kpi" style={{ border: `1px solid var(--border)` }}>
+              <div className="kpi-label">{k}</div>
+              <div className="kpi-val" style={{
+                fontSize: 16,
+                color: k.toLowerCase().includes('net') || k.toLowerCase().includes('profit')
+                  ? (v >= 0 ? 'var(--green)' : 'var(--red)')
+                  : k.toLowerCase().includes('revenue') ? 'var(--green)'
+                  : k.toLowerCase().includes('cost') || k.toLowerCase().includes('expenditure') ? 'var(--amber)'
+                  : 'var(--blue)'
+              }}>
+                {typeof v === 'number' ? fmtCurrency(v) : v}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      {data?.rows && data?.headers && (
+        <div className="card">
+          <div className="card-title">
+            <span className="card-title-ic">{current?.icon}</span>
+            {current?.label}
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
+              {data.rows.length} record{data.rows.length !== 1 ? 's' : ''} · {dateFrom} → {dateTo}
+              {truckFilter && current?.hasTruckFilter && (' · ' + (trucks.find(t => String(t.id) === String(truckFilter))?.truck_number || ''))}
+            </span>
+          </div>
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {data.headers.map((h, i) => (
+                    <th key={i} style={{ textAlign: isCurrencyHeader(h) ? 'right' : 'left' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.length === 0 && (
+                  <tr><td colSpan={data.headers.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No data for selected period</td></tr>
+                )}
+                {data.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} style={{
+                        textAlign: isCurrencyHeader(data.headers[ci]) ? 'right' : 'left',
+                        fontFamily: isCurrencyHeader(data.headers[ci]) ? 'monospace' : undefined,
+                        color: isNegativeCell(data.headers, row, ci) ? 'var(--red)'
+                          : data.headers[ci]?.toLowerCase().includes('profit') && typeof cell === 'number' && cell >= 0 ? 'var(--green)'
+                          : undefined,
+                        fontWeight: isNegativeCell(data.headers, row, ci) || (data.headers[ci]?.toLowerCase().includes('profit') && typeof cell === 'number' && cell >= 0) ? 600 : undefined,
+                      }}>
+                        {fmtCell(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!data && !loading && (
+        <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>{current?.icon}</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{current?.label}</div>
+          <div style={{ fontSize: 12 }}>{current?.desc}</div>
+          <div style={{ marginTop: 16, fontSize: 12 }}>Select a date range and click <strong>Generate Report</strong></div>
+        </div>
+      )}
+    </div>
+  );
+}
