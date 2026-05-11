@@ -18,7 +18,7 @@ export default function TripsPage() {
   const [trips,   setTrips]   = useState([]);
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: null });
   const [saving,  setSaving]  = useState(false);
-  const [tab,     setTab]     = useState('all');
+  const [tab,     setTab]     = useState('active');
   const [selectedTrip, setSelectedTrip] = useState(null);
 
   const { register, handleSubmit, watch, reset } = useForm({
@@ -38,6 +38,7 @@ export default function TripsPage() {
     loadTrips();
   }, []);
 
+  // Live auto-calculations
   useEffect(() => {
     const c = calcTrip(wLoaded, wDelivered, wRate);
     const d = calcDuration(wLoadTime, wUnloadTime);
@@ -54,8 +55,8 @@ export default function TripsPage() {
       await api.delete(`/trips/${id}/`);
       toast.success('Trip deleted.');
       loadTrips();
-      // Signal dashboard to refresh on next visit
-      sessionStorage.setItem('dashboard_refresh', Date.now());
+      // BUG FIX: notify Dashboard to re-fetch its stats so completed-trip count updates
+      window.dispatchEvent(new CustomEvent('taurus:dashboard:refresh'));
     } catch { toast.error('Cannot delete this trip.'); }
   };
 
@@ -72,7 +73,6 @@ export default function TripsPage() {
       reset({ status: 'PLANNED' });
       setComputed({ qty_difference: 0, trip_revenue: 0, duration: null });
       loadTrips();
-      sessionStorage.setItem('dashboard_refresh', Date.now());
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to save trip.');
     } finally {
@@ -86,6 +86,7 @@ export default function TripsPage() {
 
   const displayTrips = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips;
 
+  // KPI totals
   const totalRevenue   = trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
   const totalFuelCost  = trips.reduce((s,t) => s + parseFloat(t.fuel_cost||0), 0);
   const totalSpare     = trips.reduce((s,t) => s + parseFloat(t.spare_parts_cost||0), 0);
@@ -299,6 +300,7 @@ export default function TripsPage() {
             </table>
           </div>
 
+          {/* Trip detail panel */}
           {selectedTrip && (
             <div style={{ borderTop: '1px solid var(--border)', padding: 16, marginTop: 8 }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>📊 Trip P&L — {selectedTrip.waybill_no}</div>
@@ -325,6 +327,7 @@ export default function TripsPage() {
             </div>
           )}
 
+          {/* Completed trips summary */}
           {tab === 'completed' && completedTrips.length > 0 && (
             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
               {[
