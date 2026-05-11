@@ -21,19 +21,19 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  const loadDashboard = () => {
-    setLoading(true);
-    api.get('/reports/dashboard/')
-      .then(r => { setKpis(r.data); setError(null); })
-      .catch(e => setError(e.response?.data?.detail || 'Dashboard data failed to load.'))
-      .finally(() => setLoading(false));
-  };
-
   useEffect(() => {
-    loadDashboard();
-    // BUG FIX: re-fetch dashboard when a trip is deleted from the Trips page
-    window.addEventListener('taurus:dashboard:refresh', loadDashboard);
-    return () => window.removeEventListener('taurus:dashboard:refresh', loadDashboard);
+    api.get('/reports/dashboard/')
+      .then(r => {
+        // If the backend returned a 500 with a detail field, treat it as error
+        if (r.data?.detail) {
+          setError(r.data.detail);
+        } else {
+          setKpis(r.data);
+          setError(null);
+        }
+      })
+      .catch(e => setError(e.response?.data?.detail || e.message || 'Dashboard data failed to load.'))
+      .finally(() => setLoading(false));
   }, []);
 
   const fleet  = kpis?.fleet         || {};
@@ -66,7 +66,7 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <StatCard label="Active Trucks"      value={fleet.active_trucks}  color="var(--blue)"  sub={`🚛 ${fleet.ongoing_trips ?? 0} currently on trip`} pct={80} />
         <StatCard label="Active Drivers"     value={fleet.active_drivers} color="var(--sky)"   pct={75} />
-        <StatCard label="Trips This Month"   value={month.trips}          color="#7c3aed"       pct={60} />
+        <StatCard label="Trips This Month"   value={month.trips ?? 0}          color="#7c3aed"       pct={60} />
         <StatCard label="Monthly Revenue"    value={month.revenue  ? fmtGHS(month.revenue)  : null} color="var(--green)" pct={70} />
         <StatCard label="Monthly Expenditure"value={month.expenditure ? fmtGHS(month.expenditure) : null} color="var(--red)" pct={50} />
         <StatCard label="Fuel Usage"         value={month.fuel_litres != null ? `${month.fuel_litres.toLocaleString()} L` : null} color="var(--blue)" sub={`${month.fuel_excess_events ?? 0} excess events`} />
@@ -136,7 +136,7 @@ export default function Dashboard() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
 
             {[
-              { label: 'Trips Completed', val: month.trips ?? '—' },
+              { label: 'Trips Completed', val: month.trips ?? 0 },
               { label: 'Fuel Consumed',   val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
               { label: 'Fuel Excess Events', val: month.fuel_excess_events ?? '0' },
               { label: 'Stock Items',     val: kpis?.stock_items ?? '—' },
