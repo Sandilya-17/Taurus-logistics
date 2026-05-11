@@ -36,7 +36,10 @@ export default function ReportsPage() {
   const [truckFilter, setTruckFilter] = useState('');
 
   useEffect(() => {
-    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data));
+    api.get('/trucks/?status=ACTIVE').then(r => {
+      const data = r.data;
+      setTrucks(Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []);
+    }).catch(() => setTrucks([]));
   }, []);
 
   const current = REPORTS.find(r => r.key === active);
