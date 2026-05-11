@@ -700,7 +700,7 @@ class DashboardSummaryView(APIView):
 
             trips_this_month = Trip.objects.filter(
                 loading_time__date__gte=month_start,
-                status__in=['PLANNED', 'EN_ROUTE', 'DELAYED', 'COMPLETED']
+                status='COMPLETED'
             ).count()
 
             return Response({
