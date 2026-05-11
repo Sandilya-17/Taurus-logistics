@@ -4,8 +4,5 @@ cmds = ["npm install"]
 [phases.build]
 cmds = ["npm run build"]
 
-[variables]
-REACT_APP_API_URL = "https://taurus-logistics-production.up.railway.app/api"
-
 [start]
 cmd = "npx serve -s build -p ${PORT:-3000}"
