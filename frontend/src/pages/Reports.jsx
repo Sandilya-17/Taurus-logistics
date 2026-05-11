@@ -199,7 +199,7 @@ export default function ReportsPage() {
       )}
 
       {/* Table */}
-      {data?.rows && (
+      {data?.rows && data?.headers && (
         <div className="card">
           <div className="card-title">
             <span className="card-title-ic">{current?.icon}</span>
