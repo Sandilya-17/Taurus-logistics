@@ -27,27 +27,28 @@ class TripDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         """
-        BUG FIX: When a completed trip is deleted, its auto-posted Revenue and
-        Expenditure records must also be deleted, otherwise the dashboard counts
-        remain inflated after the trip row is gone.
+        When a completed trip is deleted, its auto-posted Revenue and
+        Expenditure records must also be deleted, otherwise the dashboard
+        counts remain inflated after the trip row is gone.
+
+        FIX: _sync_finance() saves Expenditure with reference=waybill_no
+        (no prefix). The old code used 'TRIP-{waybill_no}-FUEL' which
+        never matched anything — expenditures were never cleaned up on delete.
         """
         from apps.finance.models import Revenue, Expenditure
 
-        # Delete finance records that were auto-created for this trip
+        # Revenue has a trip FK — filter directly by trip instance
         Revenue.objects.filter(trip=instance).delete()
-        Expenditure.objects.filter(
-            reference__in=[
-                f"TRIP-{instance.waybill_no}-FUEL",
-                f"TRIP-{instance.waybill_no}-SPARE",
-            ]
-        ).delete()
+
+        # Expenditure has no trip FK; _sync_finance() sets reference=waybill_no
+        Expenditure.objects.filter(reference=instance.waybill_no).delete()
 
         # Now delete the trip itself
         instance.delete()
 
 
 class TripPreviewView(APIView):
-    """POST trip fields → returns computed values instantly (no DB write)."""
+    """POST trip fields -> returns computed values instantly (no DB write)."""
     permission_classes = []
 
     def post(self, request):
