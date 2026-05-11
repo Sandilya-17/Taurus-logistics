@@ -26,10 +26,23 @@ class TripDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TripSerializer
 
     def perform_destroy(self, instance):
-        """Delete revenue before removing the trip — guarantees dashboard accuracy."""
-        from apps.finance.models import Revenue
+        """
+        BUG FIX: When a completed trip is deleted, its auto-posted Revenue and
+        Expenditure records must also be deleted, otherwise the dashboard counts
+        remain inflated after the trip row is gone.
+        """
+        from apps.finance.models import Revenue, Expenditure
+
+        # Delete finance records that were auto-created for this trip
         Revenue.objects.filter(trip=instance).delete()
-        Revenue.objects.filter(invoice__trip=instance).delete()
+        Expenditure.objects.filter(
+            reference__in=[
+                f"TRIP-{instance.waybill_no}-FUEL",
+                f"TRIP-{instance.waybill_no}-SPARE",
+            ]
+        ).delete()
+
+        # Now delete the trip itself
         instance.delete()
 
 
