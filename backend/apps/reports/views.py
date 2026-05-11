@@ -907,3 +907,29 @@ class CleanupOrphanedRevenueView(APIView):
         r2 = Revenue.objects.filter(source=Revenue.HAULAGE, invoice__trip__isnull=True, invoice__isnull=False).delete()
         deleted += r2[0]
         return Response({'deleted': deleted, 'message': f'Removed {deleted} orphaned revenue record(s).'})
+
+class PurgePhantomTripsView(APIView):
+    """DELETE /reports/purge-trips/
+    Deletes COMPLETED trips that have no revenue and no invoice linked.
+    Safe to call any time — only removes financially empty trips.
+    """
+    def delete(self, request):
+        from apps.finance.models import Revenue
+        from apps.invoicing.models import Invoice
+        from apps.trips.models import Trip
+
+        # Find trip IDs that have revenue or invoice
+        trip_ids_with_revenue = set(
+            Revenue.objects.filter(trip__isnull=False).values_list('trip_id', flat=True)
+        )
+        trip_ids_with_invoice = set(
+            Invoice.objects.filter(trip__isnull=False).values_list('trip_id', flat=True)
+        )
+        accounted = trip_ids_with_revenue | trip_ids_with_invoice
+
+        # Delete COMPLETED trips with no financial records
+        qs = Trip.objects.filter(status='COMPLETED', trip_revenue=0)
+        if accounted:
+            qs = qs.exclude(id__in=accounted)
+        count, _ = qs.delete()
+        return Response({'deleted': count, 'message': f'Removed {count} phantom trip(s).'})
