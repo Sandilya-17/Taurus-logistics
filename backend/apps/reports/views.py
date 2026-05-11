@@ -405,3 +405,433 @@ class InvoiceReportView(APIView):
                 float(inv.subtotal),
                 float(inv.vat_amount),
                 float(inv.total_amount),
+                inv.status,
+            ])
+            total_invoiced += inv.total_amount
+            if inv.status == 'PAID':
+                total_paid += inv.total_amount
+
+        summary = {
+            'Total Invoiced (GH\u20b5)': float(total_invoiced),
+            'Received (GH\u20b5)':       float(total_paid),
+            'Outstanding (GH\u20b5)':    float(total_invoiced - total_paid),
+        }
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Invoice Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'invoices_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'invoices_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class SparePartsReportView(APIView):
+    def get(self, request):
+        from apps.inventory.models import StockLedger
+        date_from, date_to = _parse_date_range(request)
+
+        ledger = (StockLedger.objects.select_related('item', 'location')
+                  .filter(item__item_type='SPARE_PART',
+                          created_at__date__range=[date_from, date_to])
+                  .order_by('-created_at'))
+
+        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location', 'Reference']
+        rows = []
+        total_in  = Decimal('0')
+        total_out = Decimal('0')
+
+        for entry in ledger:
+            rows.append([
+                str(entry.created_at.date()),
+                entry.item.name,
+                entry.get_transaction_type_display(),
+                float(entry.quantity),
+                float(entry.unit_price or 0),
+                float(entry.final_amount or 0),
+                entry.location.name if entry.location else '—',
+                entry.remark or '—',
+            ])
+            if entry.quantity > 0:
+                total_in  += entry.final_amount or 0
+            else:
+                total_out += abs(entry.final_amount or 0)
+
+        summary = {
+            'Total Inward Value (GH\u20b5)': float(total_in),
+            'Total Issued Value (GH\u20b5)': float(total_out),
+        }
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Spare Parts Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'spare_parts_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'spare_parts_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class MaintenanceReportView(APIView):
+    def get(self, request):
+        from apps.maintenance.models import MaintenanceLog
+        date_from, date_to = _parse_date_range(request)
+
+        records = (MaintenanceLog.objects.select_related('truck', 'mechanic')
+                   .filter(service_date__range=[date_from, date_to])
+                   .order_by('-service_date'))
+
+        headers = ['Date', 'Truck', 'Type', 'Description', 'Cost (GH\u20b5)', 'Mechanic', 'Next Service Date']
+        rows = []
+        total_cost = Decimal('0')
+
+        for rec in records:
+            rows.append([
+                str(rec.service_date),
+                rec.truck.truck_number,
+                rec.maintenance_type,
+                rec.description[:60] if rec.description else '—',
+                float(rec.total_cost or 0),
+                rec.mechanic.name if rec.mechanic else '—',
+                str(rec.next_service_date) if rec.next_service_date else '—',
+            ])
+            total_cost += rec.total_cost or 0
+
+        summary = {'Total Maintenance Cost (GH\u20b5)': float(total_cost)}
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Maintenance Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'maintenance_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'maintenance_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class VATReportView(APIView):
+    def get(self, request):
+        from apps.invoicing.models import Invoice
+        date_from, date_to = _parse_date_range(request)
+
+        invoices = (Invoice.objects
+                    .filter(invoice_date__range=[date_from, date_to], vat_applicable=True)
+                    .order_by('-invoice_date'))
+
+        headers = ['Invoice #', 'Date', 'Client', 'Subtotal (GH\u20b5)', 'VAT %', 'VAT Amount (GH\u20b5)', 'Total (GH\u20b5)', 'Status']
+        rows = []
+        total_vat = Decimal('0')
+
+        for inv in invoices:
+            rows.append([
+                inv.invoice_number,
+                str(inv.invoice_date),
+                inv.client_name,
+                float(inv.subtotal),
+                float(inv.vat_percentage or 0),
+                float(inv.vat_amount),
+                float(inv.total_amount),
+                inv.status,
+            ])
+            total_vat += inv.vat_amount
+
+        summary = {'Total VAT Collected (GH\u20b5)': float(total_vat)}
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'VAT Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'vat_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'vat_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class TyreReportView(APIView):
+    def get(self, request):
+        from apps.inventory.models import StockLedger
+        date_from, date_to = _parse_date_range(request)
+
+        ledger = (StockLedger.objects.select_related('item', 'location')
+                  .filter(item__item_type='TYRE',
+                          created_at__date__range=[date_from, date_to])
+                  .order_by('-created_at'))
+
+        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Price', 'Amount (GH\u20b5)', 'Location']
+        rows = []
+        total_value = Decimal('0')
+
+        for entry in ledger:
+            rows.append([
+                str(entry.created_at.date()),
+                entry.item.name,
+                entry.get_transaction_type_display(),
+                float(entry.quantity),
+                float(entry.unit_price or 0),
+                float(entry.final_amount or 0),
+                entry.location.name if entry.location else '—',
+            ])
+            total_value += abs(entry.final_amount or 0)
+
+        summary = {'Total Tyre Value (GH\u20b5)': float(total_value)}
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Tyre Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'tyres_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'tyres_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+class LubricantReportView(APIView):
+    def get(self, request):
+        from apps.inventory.models import StockLedger
+        date_from, date_to = _parse_date_range(request)
+
+        ledger = (StockLedger.objects.select_related('item', 'location')
+                  .filter(item__item_type='LUBRICANT',
+                          created_at__date__range=[date_from, date_to])
+                  .order_by('-created_at'))
+
+        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Price (GH\u20b5)', 'Amount (GH\u20b5)', 'Location', 'Reference']
+        rows = []
+        total_in  = Decimal('0')
+        total_out = Decimal('0')
+
+        for entry in ledger:
+            rows.append([
+                str(entry.created_at.date()),
+                entry.item.name,
+                entry.get_transaction_type_display(),
+                float(entry.quantity),
+                entry.item.unit,
+                float(entry.unit_price or 0),
+                float(entry.final_amount or 0),
+                entry.location.name if entry.location else '—',
+                entry.remark or '—',
+            ])
+            if entry.quantity > 0:
+                total_in  += entry.final_amount or 0
+            else:
+                total_out += abs(entry.final_amount or 0)
+
+        summary = {
+            'Total Purchased Value (GH\u20b5)': float(total_in),
+            'Total Issued Value (GH\u20b5)':    float(total_out),
+        }
+
+        fmt = request.query_params.get('export', 'json')
+        report_title = f'Lubricant Report  {date_from} \u2192 {date_to}'
+
+        if fmt == 'excel':
+            buf = build_excel(report_title, headers, rows, summary)
+            resp = _excel_response(f'lubricants_{date_from}_{date_to}.xlsx')
+            resp.write(buf.read()); return resp
+        if fmt == 'pdf':
+            buf = build_pdf(report_title, headers, rows, summary)
+            resp = _pdf_response(f'lubricants_{date_from}_{date_to}.pdf')
+            resp.write(buf.read()); return resp
+
+        return Response({'headers': headers, 'rows': rows, 'summary': summary})
+
+
+# ================================================================
+# DASHBOARD
+# ================================================================
+
+class DashboardSummaryView(APIView):
+    def get(self, request):
+        import traceback
+        from apps.trucks.models import Truck
+        from apps.drivers.models import Driver
+        from apps.trips.models import Trip
+        from apps.finance.models import Revenue, Expenditure
+        from apps.fuel.models import FuelLog
+        from apps.inventory.models import Item
+        from django.utils import timezone
+
+        try:
+            today       = timezone.now().date()
+            month_start = today.replace(day=1)
+
+            fuel_agg = (FuelLog.objects.filter(date__gte=month_start)
+                        .aggregate(litres=Sum('litres'),
+                                   excess_events=Count('id', filter=Q(excess_fuel__gt=0))))
+
+            items = Item.objects.all()
+            stock_value = sum(item.available_value() for item in items)
+            stock_items_count = items.count()
+
+            trucks = Truck.objects.filter(status='ACTIVE')
+            expiry_alerts = []
+            for truck in trucks:
+                for alert in truck.expiry_alerts():
+                    alert['truck_number'] = truck.truck_number
+                    expiry_alerts.append(alert)
+            expiry_alerts.sort(key=lambda a: a['days_remaining'])
+
+            trips_this_month = Trip.objects.filter(
+                loading_time__date__gte=month_start,
+                status__in=['PLANNED', 'EN_ROUTE', 'DELAYED', 'COMPLETED']
+            ).count()
+
+            return Response({
+                'fleet': {
+                    'active_trucks':  Truck.objects.filter(status='ACTIVE').count(),
+                    'active_drivers': Driver.objects.filter(status='ACTIVE').count(),
+                    'ongoing_trips':  Trip.objects.filter(status='EN_ROUTE').count(),
+                },
+                'this_month': {
+                    'revenue':            float(Revenue.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
+                    'expenditure':        float(Expenditure.objects.filter(date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0),
+                    'trips':              trips_this_month,
+                    'fuel_litres':        float(fuel_agg.get('litres') or 0),
+                    'fuel_excess_events': fuel_agg.get('excess_events') or 0,
+                },
+                'stock_value': float(stock_value),
+                'stock_items': stock_items_count,
+                'expiry_alerts': expiry_alerts,
+            })
+
+        except Exception as exc:
+            tb = traceback.format_exc()
+            return Response(
+                {'detail': f'Dashboard error: {exc}', 'traceback': tb},
+                status=500
+            )
+
+
+# ================================================================
+# ADDITIONAL VIEWS
+# ================================================================
+
+class TruckWiseSummaryView(APIView):
+    def get(self, request):
+        from apps.trucks.models import Truck
+        from apps.trips.models import Trip
+        date_from, date_to = _parse_date_range(request, default_days=30)
+
+        trucks = Truck.objects.filter(status='ACTIVE')
+        rows = []
+        for truck in trucks:
+            trips = Trip.objects.filter(
+                truck=truck,
+                status='COMPLETED',
+                loading_time__date__range=[date_from, date_to]
+            )
+            revenue = trips.aggregate(t=Sum('trip_revenue'))['t'] or 0
+            rows.append({
+                'truck_number':    truck.truck_number,
+                'make':            truck.make,
+                'model':           truck.model,
+                'trips_completed': trips.count(),
+                'total_revenue':   float(revenue),
+            })
+        rows.sort(key=lambda r: r['total_revenue'], reverse=True)
+        return Response({'rows': rows, 'date_from': date_from, 'date_to': date_to})
+
+
+class TripDetailReportView(APIView):
+    def get(self, request):
+        from apps.trips.models import Trip
+        from apps.finance.models import Expenditure
+        date_from, date_to = _parse_date_range(request)
+
+        trips = (Trip.objects.select_related('truck', 'driver')
+                 .filter(
+                     loading_time__date__range=[date_from, date_to],
+                     status='COMPLETED'
+                 ).order_by('-loading_time'))
+
+        rows = []
+        for t in trips:
+            exp = Expenditure.objects.filter(
+                truck=t.truck,
+                date=t.loading_time.date()
+            ).aggregate(t=Sum('amount'))['t'] or 0
+            profit = float(t.trip_revenue) - float(exp)
+            rows.append({
+                'waybill_no':   t.waybill_no,
+                'date':         str(t.loading_time.date()),
+                'truck':        t.truck.truck_number,
+                'driver':       f"{t.driver.first_name} {t.driver.last_name}",
+                'origin':       t.origin,
+                'destination':  t.destination,
+                'loaded_qty':   float(t.loaded_qty),
+                'delivered_qty': float(t.delivered_qty or 0),
+                'revenue':      float(t.trip_revenue),
+                'expenditure':  float(exp),
+                'profit':       profit,
+            })
+
+        total_revenue = sum(r['revenue'] for r in rows)
+        total_profit  = sum(r['profit']  for r in rows)
+        return Response({
+            'rows': rows,
+            'summary': {
+                'total_trips':   len(rows),
+                'total_revenue': total_revenue,
+                'total_profit':  total_profit,
+            },
+            'date_from': date_from,
+            'date_to':   date_to,
+        })
+
+
+class CleanupOrphanedRevenueView(APIView):
+    def post(self, request):
+        from apps.finance.models import Revenue
+        deleted_count = 0
+        # Remove revenue entries linked to cancelled trips
+        qs = Revenue.objects.filter(
+            trip__isnull=False,
+            trip__status='CANCELLED'
+        )
+        deleted_count, _ = qs.delete()
+        return Response({
+            'deleted': deleted_count,
+            'message': f'Removed {deleted_count} orphaned revenue records linked to cancelled trips.'
+        })
+
+
+class PurgePhantomTripsView(APIView):
+    def post(self, request):
+        from apps.trips.models import Trip
+        from apps.finance.models import Revenue
+        phantom_qs = Trip.objects.filter(status='CANCELLED')
+        count = phantom_qs.count()
+        # Delete linked revenue first (CASCADE may handle it, but be explicit)
+        Revenue.objects.filter(trip__in=phantom_qs).delete()
+        phantom_qs.delete()
+        return Response({
+            'purged':  count,
+            'message': f'Purged {count} cancelled trips and their linked revenue records.'
+        })
