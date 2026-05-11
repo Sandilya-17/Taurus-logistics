@@ -692,24 +692,13 @@ class DashboardSummaryView(APIView):
         today       = timezone.now().date()
         month_start = today.replace(day=1)
 
-        # Auto-clean orphaned revenue on every dashboard load
-        # (Revenue whose trip was deleted but revenue row survived)
+        # Clean orphaned revenue rows (trip deleted but revenue survived)
         from apps.finance.models import Revenue as _Rev
-        _Rev.objects.filter(source=_Rev.TRIP_REVENUE, trip__isnull=True).delete()
-        _Rev.objects.filter(source=_Rev.HAULAGE, invoice__isnull=False, invoice__trip__isnull=True).delete()
-
-        # Clean up phantom COMPLETED trips: those with no revenue AND no invoice
-        # These are trips where the user deleted revenue/invoice but the trip row survived
-        from apps.invoicing.models import Invoice as _Inv
-        _trips_with_revenue = set(_Rev.objects.filter(trip__isnull=False).values_list('trip_id', flat=True))
-        _trips_with_invoice = set(_Inv.objects.filter(trip__isnull=False).values_list('trip_id', flat=True))
-        _accounted_trip_ids = _trips_with_revenue | _trips_with_invoice
-
-        Trip.objects.filter(
-            status='COMPLETED',
-            loading_time__date__gte=month_start,
-            trip_revenue=0,
-        ).exclude(id__in=_accounted_trip_ids).delete()
+        try:
+            _Rev.objects.filter(source=_Rev.TRIP_REVENUE, trip__isnull=True).delete()
+            _Rev.objects.filter(source=_Rev.HAULAGE, invoice__isnull=False, invoice__trip__isnull=True).delete()
+        except Exception:
+            pass
 
         completed_trips_this_month = Trip.objects.filter(
             loading_time__date__gte=month_start, status='COMPLETED'
