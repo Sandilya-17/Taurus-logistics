@@ -1,5 +1,5 @@
 // src/App.jsx – Taurus Trade & Logistics ERP v7 — Premium Dark Edition
-import { useState, createContext, useContext, useEffect } from 'react';
+import { useState, createContext, useContext, useEffect, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/main.css';
@@ -423,6 +423,21 @@ function Topbar() {
   );
 }
 
+// ── Error Boundary ──────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding: 32, color: 'var(--red)', background: 'var(--bg-card)', borderRadius: 12, margin: 16 }}>
+        <strong>⚠️ Page Error:</strong> {this.state.error?.message || 'Something went wrong.'}
+        <br/><button style={{ marginTop: 12 }} className="btn btn-ghost btn-sm" onClick={() => this.setState({ error: null })}>Try Again</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 // ── Protected layout ────────────────────────────────────────
 function ProtectedLayout({ children }) {
   const { user } = useAuth();
@@ -432,7 +447,7 @@ function ProtectedLayout({ children }) {
       <Sidebar />
       <div className="main-wrap">
         <Topbar />
-        <div className="page-body">{children}</div>
+        <div className="page-body"><ErrorBoundary>{children}</ErrorBoundary></div>
       </div>
     </div>
   );
