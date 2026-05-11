@@ -15,6 +15,7 @@ from .views import (
     TruckWiseSummaryView,
     TripDetailReportView,
     CleanupOrphanedRevenueView,
+    PurgePhantomTripsView,
 )
 
 urlpatterns = [
@@ -32,4 +33,5 @@ urlpatterns = [
     path('tyres/',                TyreReportView.as_view(),                name='report-tyres'),
     path('lubricants/',           LubricantReportView.as_view(),           name='report-lubricants'),
     path('cleanup-revenue/',      CleanupOrphanedRevenueView.as_view(),    name='cleanup-revenue'),
+    path('purge-trips/',          PurgePhantomTripsView.as_view(),         name='purge-trips'),
 ]
