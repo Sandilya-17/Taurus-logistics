@@ -1,5 +1,5 @@
 // src/pages/Dashboard.jsx – Enterprise Dashboard
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api, { fmtGHS } from '../utils/api';
 
@@ -21,10 +21,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  useEffect(() => {
+  const fetchDashboard = useCallback(() => {
+    setLoading(true);
+    setError(null);
     api.get('/reports/dashboard/')
       .then(r => {
-        // If the backend returned a 500 with a detail field, treat it as error
         if (r.data?.detail) {
           setError(r.data.detail);
         } else {
@@ -36,6 +37,8 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
   const alerts = kpis?.expiry_alerts || [];
@@ -44,8 +47,18 @@ export default function Dashboard() {
   const exp  = parseFloat(month.expenditure || 0);
   const margin = rev > 0 ? Math.round(((rev - exp) / rev) * 100) : 0;
 
+  // trips count: default to 0 (not null) so it shows "0" not "—" when no trips
+  const tripsCount = month.trips != null ? month.trips : 0;
+
   return (
     <div>
+      {/* Refresh button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button className="btn btn-ghost" onClick={fetchDashboard} disabled={loading}
+          style={{ fontSize: 12, padding: '5px 12px' }}>
+          {loading ? '⏳ Loading…' : '🔄 Refresh'}
+        </button>
+      </div>
       {error && (
         <div className="alert alert-warn mb16" style={{ borderRadius: 10, fontWeight: 500, color: 'var(--red)', background: '#fff5f5', borderColor: 'var(--red)' }}>
           ⚠️&nbsp; <strong>Dashboard error:</strong> {error}
@@ -66,7 +79,7 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <StatCard label="Active Trucks"      value={fleet.active_trucks}  color="var(--blue)"  sub={`🚛 ${fleet.ongoing_trips ?? 0} currently on trip`} pct={80} />
         <StatCard label="Active Drivers"     value={fleet.active_drivers} color="var(--sky)"   pct={75} />
-        <StatCard label="Trips This Month"   value={month.trips ?? 0}          color="#7c3aed"       pct={60} />
+        <StatCard label="Trips This Month"   value={tripsCount}                color="#7c3aed"       pct={60} />
         <StatCard label="Monthly Revenue"    value={month.revenue  ? fmtGHS(month.revenue)  : null} color="var(--green)" pct={70} />
         <StatCard label="Monthly Expenditure"value={month.expenditure ? fmtGHS(month.expenditure) : null} color="var(--red)" pct={50} />
         <StatCard label="Fuel Usage"         value={month.fuel_litres != null ? `${month.fuel_litres.toLocaleString()} L` : null} color="var(--blue)" sub={`${month.fuel_excess_events ?? 0} excess events`} />
@@ -136,7 +149,7 @@ export default function Dashboard() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
 
             {[
-              { label: 'Trips Completed', val: month.trips ?? 0 },
+              { label: 'Trips Completed', val: tripsCount },
               { label: 'Fuel Consumed',   val: month.fuel_litres ? `${month.fuel_litres.toLocaleString()} L` : '—' },
               { label: 'Fuel Excess Events', val: month.fuel_excess_events ?? '0' },
               { label: 'Stock Items',     val: kpis?.stock_items ?? '—' },
