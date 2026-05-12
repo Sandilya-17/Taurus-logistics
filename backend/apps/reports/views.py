@@ -152,9 +152,12 @@ class DashboardSummaryView(APIView):
         fuel_litres        = fuel_agg['litres'] or Decimal('0')
         fuel_excess_events = fuel_agg['excess_events'] or 0
 
-        stock_value = StockLedger.objects.filter(
-            quantity__gt=0
-        ).aggregate(total=Sum('final_amount'))['total'] or Decimal('0')
+        # Sum ALL ledger rows — issued rows have negative final_amount,
+        # so SUM(final_amount) gives the true closing stock value.
+        # Filtering quantity__gt=0 would skip issued rows and inflate the total.
+        stock_value = StockLedger.objects.aggregate(
+            total=Sum('final_amount')
+        )['total'] or Decimal('0')
 
         stock_items = Item.objects.count()
 
