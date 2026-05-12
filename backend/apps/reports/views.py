@@ -325,8 +325,6 @@ class TruckWiseSummaryView(APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
-        # Include ALL trucks (not just ACTIVE) so historical trips on
-        # decommissioned trucks still appear in the summary.
         qs = Truck.objects.all()
         if truck_id:
             qs = qs.filter(id=truck_id)
@@ -341,7 +339,6 @@ class TruckWiseSummaryView(APIView):
                 loading_time__date__lte=date_to,
             )
             trip_count = trips.count()
-            # Skip trucks with no trips in the period (unless a specific truck was requested)
             if trip_count == 0 and not truck_id:
                 continue
             agg   = trips.aggregate(rev=Sum('trip_revenue'), fuel=Sum('fuel_cost'), spare=Sum('spare_parts_cost'))
@@ -436,7 +433,7 @@ class SparePartsReportView(APIView):
                 entry.get_transaction_type_display(),
                 _fmt(entry.quantity), _fmt(entry.unit_price), _fmt(entry.final_amount),
                 entry.location.name if entry.location else '—',
-                entry.reference or '',
+                entry.reference_type or '',  # ← FIXED: was entry.reference
             ])
         agg = ledger.aggregate(total=Sum('final_amount'))
         summary = {'Total Value (GH₵)': _fmt(agg['total'])}
