@@ -1,6 +1,7 @@
 """apps/trips/models.py – Trip management."""
 from decimal import Decimal
 from django.db import models
+from django.db.models import Sum
 from apps.core.models import TimeStampedModel
 
 
@@ -138,3 +139,20 @@ class Trip(TimeStampedModel):
                     description=f"Trip {self.waybill_no} Spare Parts Cost",
                 ),
             )
+
+    def recalculate_costs(self):
+        """Re-aggregate fuel_cost and spare_parts_cost from linked records, then save."""
+        from apps.fuel.models import FuelLog
+        from apps.inventory.models import IssueItem
+
+        fuel_total  = FuelLog.objects.filter(trip=self).aggregate(
+            t=Sum('total_cost'))['t'] or Decimal('0')
+        spare_total = IssueItem.objects.filter(trip=self).aggregate(
+            t=Sum('final_amount'))['t'] or Decimal('0')
+
+        Trip.objects.filter(pk=self.pk).update(
+            fuel_cost=fuel_total,
+            spare_parts_cost=spare_total,
+        )
+        self.fuel_cost        = fuel_total
+        self.spare_parts_cost = spare_total
