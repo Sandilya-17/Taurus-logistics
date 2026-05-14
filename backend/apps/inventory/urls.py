@@ -17,4 +17,5 @@ urlpatterns = [
     path('issues/',                 IssueListCreate.as_view(),      name='issue-list'),
     path('issues/<int:pk>/',        IssueDetail.as_view(),          name='issue-detail'),
     path('opening-stock/',          post_opening_stock,             name='opening-stock'),
+    path('bulk-issue/',             bulk_issue_items,               name='bulk-issue'),
 ]
