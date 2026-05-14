@@ -152,6 +152,36 @@ class StockLedgerList(generics.ListAPIView):
     ordering_fields  = ('created_at',)
 
 
+class StockLedgerDetail(generics.RetrieveUpdateAPIView):
+    """PATCH /inventory/ledger/<pk>/ — allows editing qty & unit_price of an OPENING entry."""
+    queryset         = StockLedger.objects.all()
+    serializer_class = StockLedgerSerializer
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.transaction_type != StockLedger.OPENING:
+            return Response({'error': 'Only OPENING entries can be edited.'}, status=status.HTTP_400_BAD_REQUEST)
+        qty_raw   = request.data.get('quantity')
+        price_raw = request.data.get('unit_price')
+        try:
+            if qty_raw is not None:
+                qty = Decimal(str(qty_raw))
+                if qty <= 0:
+                    return Response({'error': 'Quantity must be > 0'}, status=400)
+                instance.quantity = qty
+            if price_raw is not None:
+                price = Decimal(str(price_raw))
+                if price <= 0:
+                    return Response({'error': 'Unit price must be > 0'}, status=400)
+                instance.unit_price = price
+            instance.save()
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Invalid quantity or unit_price'}, status=400)
+        return Response(StockLedgerSerializer(instance).data)
+
+
+
 # ── Closing Stock Report ──────────────────────────────────────────────────────
 class ClosingStockView(APIView):
     def get(self, request):
@@ -238,63 +268,6 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
         if trip:
             trip.recalculate_costs()
         return result
-
-
-# ── Bulk Issue (multiple items to a truck at once) ────────────────────────────
-@api_view(['POST'])
-def bulk_issue(request):
-    """
-    POST /inventory/bulk-issue/
-    Body: {
-      "items": [
-        { "item_id": 1, "location_id": 1, "quantity": 2, "remark": "" },
-        ...
-      ],
-      "truck_id": 5,
-      "trip_id": null,
-      "issue_type": "TRUCK",
-      "issue_date": "2026-05-14"
-    }
-    Returns list of created issues.
-    """
-    items_data  = request.data.get('items', [])
-    truck_id    = request.data.get('truck_id')
-    trip_id     = request.data.get('trip_id')
-    issue_type  = request.data.get('issue_type', 'TRUCK')
-    issue_date  = request.data.get('issue_date')
-
-    if not items_data:
-        return Response({'error': 'No items provided.'}, status=400)
-    if not issue_date:
-        return Response({'error': 'issue_date is required.'}, status=400)
-
-    created = []
-    errors  = []
-    for row in items_data:
-        if not row.get('item_id') or not row.get('location_id') or not row.get('quantity'):
-            errors.append({'row': row, 'error': 'item_id, location_id and quantity are required.'})
-            continue
-        try:
-            issue = IssueService.create_issue({
-                'item_id':    row['item_id'],
-                'location_id': row['location_id'],
-                'quantity':   row['quantity'],
-                'issue_type': issue_type,
-                'truck_id':   truck_id,
-                'trip_id':    trip_id,
-                'issue_date': issue_date,
-                'remark':     row.get('remark', ''),
-            }, user=request.user)
-            created.append(IssueItemSerializer(issue).data)
-        except ValueError as e:
-            errors.append({'row': row, 'error': str(e)})
-
-    return Response({
-        'created': created,
-        'errors':  errors,
-        'created_count': len(created),
-        'error_count':   len(errors),
-    }, status=207 if errors else 201)
 
 
 # ── Available Stock Check ─────────────────────────────────────────────────────
