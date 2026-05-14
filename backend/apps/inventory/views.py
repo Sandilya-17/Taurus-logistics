@@ -14,7 +14,6 @@ from apps.core.serializers import SupplierSerializer
 
 # ── Permission helpers ────────────────────────────────────────────────────────
 class IsAdminOrReadOnly(permissions.BasePermission):
-    """Read access for all authenticated users; write/delete for ADMIN only."""
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
@@ -109,10 +108,7 @@ class ItemListCreate(generics.ListCreateAPIView):
                 else:
                     loc = Location.objects.filter(deleted_at__isnull=True).first()
                     if not loc:
-                        loc = Location.objects.create(
-                            name='Main Store',
-                            location_type='STORE',
-                        )
+                        loc = Location.objects.create(name='Main Store', location_type='STORE')
                 StockLedger.objects.create(
                     item=item,
                     location=loc,
@@ -172,7 +168,6 @@ class PurchaseListCreate(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         try:
             data = request.data.copy()
-            # Handle manual supplier name: create or get supplier by name
             supplier_name = data.get('supplier_name', '').strip()
             if supplier_name and not data.get('supplier_id'):
                 supplier, _ = Supplier.objects.get_or_create(
@@ -202,7 +197,7 @@ class PurchaseDetail(generics.RetrieveUpdateDestroyAPIView):
         return self.update(request, *args, **kwargs)
 
 
-# ── Purchase Preview (auto-calc endpoint) ─────────────────────────────────────
+# ── Purchase Preview ──────────────────────────────────────────────────────────
 class PurchasePreviewView(APIView):
     def post(self, request):
         s = PurchasePreviewSerializer(data=request.data)
@@ -231,7 +226,7 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        trip = instance.trip  # save reference before delete
+        trip = instance.trip
         if instance.ledger_entry_id:
             StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
         result = super().destroy(request, *args, **kwargs)
@@ -251,11 +246,9 @@ def available_stock(request):
     return Response({'available_qty': float(qty)})
 
 
-# ── Opening Stock (standalone endpoint) ──────────────────────────────────────
+# ── Opening Stock ─────────────────────────────────────────────────────────────
 @api_view(['POST'])
 def post_opening_stock(request):
-    from decimal import Decimal, InvalidOperation
-
     item_id     = request.data.get('item_id')
     qty_raw     = request.data.get('quantity')
     price_raw   = request.data.get('unit_price')
@@ -270,8 +263,6 @@ def post_opening_stock(request):
     except (InvalidOperation, TypeError, ValueError):
         return Response({'error': 'Invalid quantity or unit_price'}, status=400)
 
-    if qty <= 0:
-        return Response({'error': 'Quantity must be greater than 0'}, status=400)
     if price <= 0:
         return Response({'error': 'Unit price must be greater than 0'}, status=400)
 
@@ -290,14 +281,18 @@ def post_opening_stock(request):
         if not loc:
             loc = Location.objects.create(name='Main Store', location_type='STORE')
 
+    # Support ADJUSTMENT transaction type from edit form
+    tx_type_raw = request.data.get('transaction_type', 'OPENING')
+    tx_type = StockLedger.ADJUSTMENT if tx_type_raw == 'ADJUSTMENT' else StockLedger.OPENING
+
     entry = StockLedger.objects.create(
         item=item,
         location=loc,
-        transaction_type=StockLedger.OPENING,
+        transaction_type=tx_type,
         quantity=qty,
         unit_price=price,
         created_by=request.user if request.user.is_authenticated else None,
-        remark='Opening Stock',
+        remark='Stock Adjustment' if tx_type == StockLedger.ADJUSTMENT else 'Opening Stock',
     )
 
     return Response({
@@ -307,5 +302,51 @@ def post_opening_stock(request):
         'quantity': float(qty),
         'unit_price': float(price),
         'final_amount': float(entry.final_amount),
-        'message': f'Opening stock of {qty} units posted for {item.name}',
+        'message': f'{"Adjustment" if tx_type == StockLedger.ADJUSTMENT else "Opening stock"} of {qty} units posted for {item.name}',
     }, status=201)
+
+
+# ── Bulk Issue ────────────────────────────────────────────────────────────────
+@api_view(['POST'])
+def bulk_issue_items(request):
+    """
+    Issue multiple items in one request.
+    Payload: { items: [{item_id, location_id, quantity, remark}], truck_id, trip_id, issue_type, issue_date }
+    """
+    items_data = request.data.get('items', [])
+    truck_id   = request.data.get('truck_id')
+    trip_id    = request.data.get('trip_id')
+    issue_type = request.data.get('issue_type', 'TRUCK')
+    issue_date = request.data.get('issue_date')
+
+    if not items_data:
+        return Response({'error': 'No items provided.'}, status=400)
+    if not issue_date:
+        return Response({'error': 'issue_date is required.'}, status=400)
+
+    created = []
+    errors  = []
+    for row in items_data:
+        try:
+            issue = IssueService.create_issue({
+                'item_id':     row['item_id'],
+                'location_id': row['location_id'],
+                'quantity':    row['quantity'],
+                'truck_id':    truck_id,
+                'trip_id':     trip_id,
+                'issue_type':  issue_type,
+                'issue_date':  issue_date,
+                'remark':      row.get('remark', ''),
+            }, user=request.user)
+            created.append(IssueItemSerializer(issue).data)
+        except Exception as e:
+            errors.append({'item_id': row.get('item_id'), 'error': str(e)})
+
+    if errors and not created:
+        return Response({'error': 'All items failed.', 'details': errors}, status=400)
+
+    return Response({
+        'created': created,
+        'errors':  errors,
+        'message': f'{len(created)} item(s) issued successfully.' + (f' {len(errors)} failed.' if errors else ''),
+    }, status=201 if created else 400)
