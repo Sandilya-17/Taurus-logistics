@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import api, { fmtGHS, fmtDate } from '../utils/api';
+import api, { fmtGHS } from '../utils/api';
 import { useAuth } from '../App';
 
 const SPARE_PARTS = [
