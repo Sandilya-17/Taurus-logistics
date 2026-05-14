@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import *  # includes bulk_issue
+from .views import *
 
 urlpatterns = [
     path('suppliers/',              SupplierListCreate.as_view(),  name='supplier-list'),
@@ -9,6 +9,7 @@ urlpatterns = [
     path('items/',                  ItemListCreate.as_view(),       name='item-list'),
     path('items/<int:pk>/',         ItemDetail.as_view(),           name='item-detail'),
     path('ledger/',                 StockLedgerList.as_view(),      name='ledger-list'),
+    path('ledger/<int:pk>/',        StockLedgerDetail.as_view(),    name='ledger-detail'),
     path('closing-stock/',          ClosingStockView.as_view(),     name='closing-stock'),
     path('available-stock/',        available_stock,                name='available-stock'),
     path('purchases/',              PurchaseListCreate.as_view(),   name='purchase-list'),
@@ -17,5 +18,4 @@ urlpatterns = [
     path('issues/',                 IssueListCreate.as_view(),      name='issue-list'),
     path('issues/<int:pk>/',        IssueDetail.as_view(),          name='issue-detail'),
     path('opening-stock/',          post_opening_stock,             name='opening-stock'),
-    path('bulk-issue/',             bulk_issue,                     name='bulk-issue'),
 ]
