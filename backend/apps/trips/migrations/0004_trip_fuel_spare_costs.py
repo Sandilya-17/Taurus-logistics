@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trips', '0003_trip_fuel_spare_costs'),
+        ('trips', '0002_initial'),
     ]
 
     operations = [
