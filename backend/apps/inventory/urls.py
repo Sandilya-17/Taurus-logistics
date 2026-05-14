@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import *
+from .views import *  # includes bulk_issue
 
 urlpatterns = [
     path('suppliers/',              SupplierListCreate.as_view(),  name='supplier-list'),
@@ -17,5 +17,5 @@ urlpatterns = [
     path('issues/',                 IssueListCreate.as_view(),      name='issue-list'),
     path('issues/<int:pk>/',        IssueDetail.as_view(),          name='issue-detail'),
     path('opening-stock/',          post_opening_stock,             name='opening-stock'),
-    path('bulk-issue/',             bulk_issue_items,               name='bulk-issue'),
+    path('bulk-issue/',             bulk_issue,                     name='bulk-issue'),
 ]
