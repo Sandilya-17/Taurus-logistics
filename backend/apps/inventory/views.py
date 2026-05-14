@@ -12,7 +12,6 @@ from apps.core.models import Supplier
 from apps.core.serializers import SupplierSerializer
 
 
-# ── Permission helpers ────────────────────────────────────────────────────────
 class IsAdminOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
@@ -28,7 +27,6 @@ class IsAdmin(permissions.BasePermission):
                     getattr(request.user, 'role', None) == 'ADMIN')
 
 
-# ── Suppliers ─────────────────────────────────────────────────────────────────
 class SupplierListCreate(generics.ListCreateAPIView):
     queryset         = Supplier.objects.all()
     serializer_class = SupplierSerializer
@@ -46,7 +44,6 @@ class SupplierDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
 
 
-# ── Locations ─────────────────────────────────────────────────────────────────
 class LocationListCreate(generics.ListCreateAPIView):
     queryset         = Location.objects.all()
     serializer_class = LocationSerializer
@@ -57,7 +54,6 @@ class LocationDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LocationSerializer
 
 
-# ── Items ─────────────────────────────────────────────────────────────────────
 class ItemListCreate(generics.ListCreateAPIView):
     queryset         = Item.objects.all()
     serializer_class = ItemSerializer
@@ -139,7 +135,6 @@ class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().destroy(request, *args, **kwargs)
 
 
-# ── Stock Ledger (read-only list) ─────────────────────────────────────────────
 class StockLedgerList(generics.ListAPIView):
     queryset         = StockLedger.objects.select_related('item', 'location', 'created_by')
     serializer_class = StockLedgerSerializer
@@ -148,7 +143,6 @@ class StockLedgerList(generics.ListAPIView):
     ordering_fields  = ('created_at',)
 
 
-# ── Closing Stock Report ──────────────────────────────────────────────────────
 class ClosingStockView(APIView):
     def get(self, request):
         item_id     = request.query_params.get('item')
@@ -158,7 +152,6 @@ class ClosingStockView(APIView):
         return Response(list(data))
 
 
-# ── Purchase ──────────────────────────────────────────────────────────────────
 class PurchaseListCreate(generics.ListCreateAPIView):
     queryset         = Purchase.objects.select_related('supplier', 'item', 'location')
     serializer_class = PurchaseSerializer
@@ -197,7 +190,6 @@ class PurchaseDetail(generics.RetrieveUpdateDestroyAPIView):
         return self.update(request, *args, **kwargs)
 
 
-# ── Purchase Preview ──────────────────────────────────────────────────────────
 class PurchasePreviewView(APIView):
     def post(self, request):
         s = PurchasePreviewSerializer(data=request.data)
@@ -205,7 +197,6 @@ class PurchasePreviewView(APIView):
         return Response(s.validated_data)
 
 
-# ── Issue ─────────────────────────────────────────────────────────────────────
 class IssueListCreate(generics.ListCreateAPIView):
     queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
     serializer_class = IssueItemSerializer
@@ -235,7 +226,6 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
         return result
 
 
-# ── Available Stock Check ─────────────────────────────────────────────────────
 @api_view(['GET'])
 def available_stock(request):
     item_id     = request.query_params.get('item')
@@ -246,7 +236,6 @@ def available_stock(request):
     return Response({'available_qty': float(qty)})
 
 
-# ── Opening Stock ─────────────────────────────────────────────────────────────
 @api_view(['POST'])
 def post_opening_stock(request):
     item_id     = request.data.get('item_id')
@@ -263,6 +252,13 @@ def post_opening_stock(request):
     except (InvalidOperation, TypeError, ValueError):
         return Response({'error': 'Invalid quantity or unit_price'}, status=400)
 
+    tx_type_raw = request.data.get('transaction_type', 'OPENING')
+
+    # Allow negative qty for ADJUSTMENT (stock reduction), but not zero
+    if qty == 0:
+        return Response({'error': 'Quantity cannot be zero'}, status=400)
+    if tx_type_raw != 'ADJUSTMENT' and qty < 0:
+        return Response({'error': 'Quantity must be greater than 0'}, status=400)
     if price <= 0:
         return Response({'error': 'Unit price must be greater than 0'}, status=400)
 
@@ -281,8 +277,6 @@ def post_opening_stock(request):
         if not loc:
             loc = Location.objects.create(name='Main Store', location_type='STORE')
 
-    # Support ADJUSTMENT transaction type from edit form
-    tx_type_raw = request.data.get('transaction_type', 'OPENING')
     tx_type = StockLedger.ADJUSTMENT if tx_type_raw == 'ADJUSTMENT' else StockLedger.OPENING
 
     entry = StockLedger.objects.create(
@@ -306,7 +300,6 @@ def post_opening_stock(request):
     }, status=201)
 
 
-# ── Bulk Issue ────────────────────────────────────────────────────────────────
 @api_view(['POST'])
 def bulk_issue_items(request):
     """
