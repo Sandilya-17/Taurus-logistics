@@ -57,7 +57,10 @@ export default function TripsPage() {
       loadTrips();
       // BUG FIX: notify Dashboard to re-fetch its stats so completed-trip count updates
       window.dispatchEvent(new CustomEvent('taurus:dashboard:refresh'));
-    } catch { toast.error('Cannot delete this trip.'); }
+    } catch (e) {
+      const msg = e.response?.data?.error || 'Cannot delete this trip.';
+      toast.error(msg);
+    }
   };
 
   const onSubmit = async (data) => {
