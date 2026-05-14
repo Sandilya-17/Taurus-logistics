@@ -436,38 +436,39 @@ export default function StockPage() {
                 </div>
 
                 {/* ── Opening Stock Section ── */}
-                <div className="fg" style={{ gridColumn: 'span 2' }}>
-                  <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0 12px', paddingTop: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-                      📦 Opening Stock {editing ? '(Post Additional Opening Balance)' : '(Optional — set now or later)'}
-                    </div>
-                    <div className="fgrid">
-                      <div className="fg">
-                        <label>Opening Quantity</label>
-                        <input
-                          type="number" step="0.001" min="0"
-                          placeholder="e.g. 10"
-                          {...register('opening_qty')}
-                        />
-                      </div>
-                      <div className="fg">
-                        <label>Unit Cost (GH₵)</label>
-                        <input
-                          type="number" step="0.01" min="0"
-                          placeholder="e.g. 250.00"
-                          {...register('opening_unit_price')}
-                        />
-                      </div>
-                    </div>
-                    {watch('opening_qty') && watch('opening_unit_price') &&
-                      parseFloat(watch('opening_qty')) > 0 &&
-                      parseFloat(watch('opening_unit_price')) > 0 && (
-                      <div className="alert alert-success" style={{ marginTop: 8, fontSize: 12 }}>
-                        ✅ Opening value: <strong>GH₵ {(parseFloat(watch('opening_qty')) * parseFloat(watch('opening_unit_price'))).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</strong>
-                      </div>
-                    )}
+                <div className="fg" style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                    📦 Opening Stock {editing ? '(Post Additional Opening Balance)' : '(Optional — set now or later)'}
                   </div>
                 </div>
+
+                <div className="fg">
+                  <label>Opening Quantity</label>
+                  <input
+                    type="number" step="0.001" min="0"
+                    placeholder="e.g. 10"
+                    {...register('opening_qty')}
+                  />
+                </div>
+
+                <div className="fg">
+                  <label>Unit Cost (GH₵)</label>
+                  <input
+                    type="number" step="0.01" min="0"
+                    placeholder="e.g. 250.00"
+                    {...register('opening_unit_price')}
+                  />
+                </div>
+
+                {watch('opening_qty') && watch('opening_unit_price') &&
+                  parseFloat(watch('opening_qty')) > 0 &&
+                  parseFloat(watch('opening_unit_price')) > 0 && (
+                  <div className="fg" style={{ gridColumn: 'span 2' }}>
+                    <div className="alert alert-success" style={{ fontSize: 12 }}>
+                      ✅ Opening value: <strong>GH₵ {(parseFloat(watch('opening_qty')) * parseFloat(watch('opening_unit_price'))).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                  </div>
+                )}
               </div>
 
 
