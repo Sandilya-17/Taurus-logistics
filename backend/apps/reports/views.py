@@ -178,7 +178,34 @@ class DashboardSummaryView(APIView):
             'stock_value': _fmt(stock_value),
             'stock_items': stock_items,
             'expiry_alerts': alerts,
+            'truck_breakdown': self._truck_breakdown(month_start, today),
         })
+
+    def _truck_breakdown(self, date_from, date_to):
+        rows = []
+        for truck in Truck.objects.filter(status=Truck.ACTIVE):
+            trips = Trip.objects.filter(
+                truck=truck,
+                loading_time__date__gte=date_from,
+                loading_time__date__lte=date_to,
+            )
+            trip_rev = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
+            total_exp = _fmt(
+                Expenditure.objects.filter(
+                    truck=truck, date__gte=date_from, date__lte=date_to
+                ).aggregate(t=Sum('amount'))['t']
+            )
+            net = round(trip_rev - total_exp, 2)
+            rows.append({
+                'truck':     truck.truck_number,
+                'model':     truck.model,
+                'trips':     trips.count(),
+                'revenue':   trip_rev,
+                'expenditure': total_exp,
+                'net':       net,
+            })
+        rows.sort(key=lambda r: -r['revenue'])
+        return rows
 
 
 # ── Revenue vs Expenditure ───────────────────────────────────────────────
@@ -194,14 +221,16 @@ class RevenueExpenditureReportView(APIView):
         total_exp = expenditures.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         net       = total_rev - total_exp
 
-        headers = ['Date', 'Type', 'Category / Source', 'Description', 'Reference', 'Amount (GH₵)']
+        headers = ['Date', 'Type', 'Category / Source', 'Truck', 'Description', 'Reference', 'Amount (GH₵)']
         rows = []
         for r in revenues.order_by('date'):
+            truck_num = r.trip.truck.truck_number if r.trip_id and r.trip else '—'
             rows.append([str(r.date), 'Revenue', r.get_source_display(),
-                         r.description or '', r.reference or '', _fmt(r.amount)])
+                         truck_num, r.description or '', r.reference or '', _fmt(r.amount)])
         for e in expenditures.order_by('date'):
+            truck_num = e.truck.truck_number if e.truck_id else '—'
             rows.append([str(e.date), 'Expenditure', e.get_category_display(),
-                         e.description or '', e.reference or '', _fmt(e.amount)])
+                         truck_num, e.description or '', e.reference or '', _fmt(e.amount)])
         rows.sort(key=lambda x: x[0])
 
         summary = {
@@ -329,8 +358,13 @@ class TruckWiseSummaryView(APIView):
         if truck_id:
             qs = qs.filter(id=truck_id)
 
-        headers = ['Truck', 'Model', 'Status', 'Trips', 'Revenue (GH₵)',
-                   'Fuel Cost (GH₵)', 'Spare Parts (GH₵)', 'Net Profit (GH₵)']
+        headers = [
+            'Truck', 'Model', 'Status', 'Trips',
+            'Trip Revenue (GH₵)', 'Other Revenue (GH₵)', 'Total Revenue (GH₵)',
+            'Fuel Cost (GH₵)', 'Maintenance (GH₵)', 'Tyre (GH₵)',
+            'Spare Parts (GH₵)', 'Driver Wage (GH₵)', 'Toll (GH₵)',
+            'Other Exp. (GH₵)', 'Total Expenditure (GH₵)', 'Net Profit (GH₵)',
+        ]
         rows = []
         for truck in qs:
             trips = Trip.objects.filter(
@@ -339,21 +373,57 @@ class TruckWiseSummaryView(APIView):
                 loading_time__date__lte=date_to,
             )
             trip_count = trips.count()
-            if trip_count == 0 and not truck_id:
+
+            # Revenue: trip-linked + direct revenue entries on this truck's trips
+            trip_rev_agg = trips.aggregate(t=Sum('trip_revenue'))
+            trip_rev = _fmt(trip_rev_agg['t'])
+
+            # Revenue linked via trip FK on Revenue model
+            other_rev_agg = Revenue.objects.filter(
+                date__gte=date_from, date__lte=date_to,
+                trip__truck=truck,
+            ).exclude(
+                source='TRIP_REVENUE'
+            ).aggregate(t=Sum('amount'))
+            other_rev = _fmt(other_rev_agg['t'])
+
+            total_rev = round(trip_rev + other_rev, 2)
+
+            # Expenditure: all categories per truck
+            exp_qs = Expenditure.objects.filter(
+                truck=truck,
+                date__gte=date_from, date__lte=date_to,
+            )
+            def _exp_cat(cat):
+                return _fmt(exp_qs.filter(category=cat).aggregate(t=Sum('amount'))['t'])
+
+            fuel_exp  = _exp_cat(Expenditure.FUEL)
+            maint_exp = _exp_cat(Expenditure.MAINTENANCE)
+            tyre_exp  = _exp_cat(Expenditure.TYRE)
+            spare_exp = _exp_cat(Expenditure.SPARE_PART)
+            wage_exp  = _exp_cat(Expenditure.DRIVER_WAGE)
+            toll_exp  = _exp_cat(Expenditure.TOLL)
+            other_exp = round(
+                _fmt(exp_qs.filter(category__in=[Expenditure.ADMIN, Expenditure.OTHER])
+                     .aggregate(t=Sum('amount'))['t']), 2
+            )
+            total_exp = round(fuel_exp + maint_exp + tyre_exp + spare_exp + wage_exp + toll_exp + other_exp, 2)
+            net = round(total_rev - total_exp, 2)
+
+            if trip_count == 0 and total_rev == 0 and total_exp == 0 and not truck_id:
                 continue
-            agg   = trips.aggregate(rev=Sum('trip_revenue'), fuel=Sum('fuel_cost'), spare=Sum('spare_parts_cost'))
-            rev   = _fmt(agg['rev'])
-            fuel  = _fmt(agg['fuel'])
-            spare = _fmt(agg['spare'])
-            net   = round(rev - fuel - spare, 2)
-            rows.append([truck.truck_number, truck.model, truck.get_status_display(),
-                         trip_count, rev, fuel, spare, net])
+
+            rows.append([
+                truck.truck_number, truck.model, truck.get_status_display(), trip_count,
+                trip_rev, other_rev, total_rev,
+                fuel_exp, maint_exp, tyre_exp, spare_exp, wage_exp, toll_exp, other_exp,
+                total_exp, net,
+            ])
 
         summary = {
-            'Total Revenue (GH₵)':     round(sum(float(r[4]) for r in rows), 2),
-            'Total Fuel Cost (GH₵)':   round(sum(float(r[5]) for r in rows), 2),
-            'Total Spare Parts (GH₵)': round(sum(float(r[6]) for r in rows), 2),
-            'Net Profit (GH₵)':        round(sum(float(r[7]) for r in rows), 2),
+            'Total Revenue (GH₵)':     round(sum(float(r[6])  for r in rows), 2),
+            'Total Expenditure (GH₵)': round(sum(float(r[14]) for r in rows), 2),
+            'Net Profit (GH₵)':        round(sum(float(r[15]) for r in rows), 2),
         }
         return _respond(request, headers, rows, summary, 'Truck-wise Summary')
 
