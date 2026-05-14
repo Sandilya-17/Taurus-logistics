@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import api, { fmtGHS } from '../utils/api';
+import api, { fmtGHS, fmtDate } from '../utils/api';
 import { useAuth } from '../App';
 
 const SPARE_PARTS = [
@@ -104,8 +104,7 @@ export default function StockPage() {
     defaultValues: {
       item_type: 'SPARE_PART', unit: 'pcs',
       reorder_level: 0,
-      name: '', tyre_size: '', description: '',
-      opening_qty: '', opening_unit_price: '',
+      name: '', tyre_size: '', description: ''
     }
   });
 
@@ -169,33 +168,13 @@ export default function StockPage() {
 
       if (editing) {
         await api.patch(`/inventory/items/${editing}/`, payload);
-
-        // If opening stock fields provided while editing, post opening stock
-        const oQty   = parseFloat(data.opening_qty         || 0);
-        const oPrice = parseFloat(data.opening_unit_price  || 0);
-        if (oQty > 0 && oPrice > 0) {
-          await api.post('/inventory/opening-stock/', {
-            item_id:    editing,
-            quantity:   oQty,
-            unit_price: oPrice,
-          });
-          toast.success('Item updated + opening stock posted.');
-        } else {
-          toast.success('Item updated successfully.');
-        }
+        toast.success('Item updated successfully.');
       } else {
-        // For new items include opening stock fields so backend posts ledger entry
-        if (data.opening_qty && parseFloat(data.opening_qty) > 0) {
-          payload.opening_qty   = parseFloat(data.opening_qty);
-          payload.unit_price    = parseFloat(data.opening_unit_price || 0);
-        }
         await api.post('/inventory/items/', payload);
-        toast.success(payload.opening_qty
-          ? 'Item created with opening stock.'
-          : 'Item created. Use "Set Stock" to post opening stock.');
+        toast.success('Item created. Use "Set Stock" to post opening stock.');
       }
 
-      reset({ item_type: 'SPARE_PART', unit: 'pcs', reorder_level: 0, tyre_size: '', name: '', description: '', opening_qty: '', opening_unit_price: '' });
+      reset({ item_type: 'SPARE_PART', unit: 'pcs', reorder_level: 0, tyre_size: '', name: '', description: '' });
       setEditing(null);
       setShowForm(false);
       loadData();
@@ -206,29 +185,55 @@ export default function StockPage() {
     }
   };
 
-  // Post opening stock for an existing item (no-stock items)
-  const [openingModal, setOpeningModal] = useState(null);
+  // Post / Edit opening stock for an existing item
+  const [openingModal, setOpeningModal] = useState(null);   // { id, name, ledgerId? }
   const [openingForm,  setOpeningForm]  = useState({ qty: '', price: '' });
   const [savingOpening, setSavingOpening] = useState(false);
+
+  const openSetStock = (s, ld) => {
+    // Find the OPENING ledger entry id so we can PATCH it for editing
+    const openingEntry = ledger.find(
+      e => parseInt(e.item, 10) === parseInt(s.item__id, 10) && e.transaction_type === 'OPENING'
+    );
+    setOpeningModal({
+      id: s.item__id,
+      name: s.item__name,
+      ledgerId: openingEntry?.id || null,
+      isEdit: ld.openQty > 0,
+    });
+    setOpeningForm({
+      qty:   ld.openQty > 0   ? String(ld.openQty)   : '',
+      price: ld.openVal > 0 && ld.openQty > 0 ? String((ld.openVal / ld.openQty).toFixed(4)) : '',
+    });
+  };
 
   const submitOpeningStock = async () => {
     const qty   = parseFloat(openingForm.qty   || 0);
     const price = parseFloat(openingForm.price || 0);
-    if (!qty || qty <= 0)   { toast.error('Enter a valid quantity.');   return; }
+    if (!qty || qty <= 0)     { toast.error('Enter a valid quantity.');   return; }
     if (!price || price <= 0) { toast.error('Enter a valid unit price.'); return; }
     setSavingOpening(true);
     try {
-      await api.post('/inventory/opening-stock/', {
-        item_id:    openingModal.id,
-        quantity:   qty,
-        unit_price: price,
-      });
-      toast.success(`Opening stock of ${qty} units posted for ${openingModal.name}.`);
+      if (openingModal.isEdit && openingModal.ledgerId) {
+        // PATCH the existing ledger entry
+        await api.patch(`/inventory/ledger/${openingModal.ledgerId}/`, {
+          quantity:   qty,
+          unit_price: price,
+        });
+        toast.success(`Opening stock updated for ${openingModal.name}.`);
+      } else {
+        await api.post('/inventory/opening-stock/', {
+          item_id:    openingModal.id,
+          quantity:   qty,
+          unit_price: price,
+        });
+        toast.success(`Opening stock of ${qty} units posted for ${openingModal.name}.`);
+      }
       setOpeningModal(null);
       setOpeningForm({ qty: '', price: '' });
       loadData();
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Failed to post opening stock.');
+      toast.error(e.response?.data?.error || e.response?.data?.detail || 'Failed to save opening stock.');
     } finally {
       setSavingOpening(false);
     }
@@ -243,7 +248,7 @@ export default function StockPage() {
       tyreSize = parts.pop();
       name = parts.join(' - ');
     }
-    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, reorder_level: s.item__reorder_level, description: '', opening_qty: '', opening_unit_price: '' });
+    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, reorder_level: s.item__reorder_level, description: '' });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -434,41 +439,6 @@ export default function StockPage() {
                   <label>Description / Notes</label>
                   <input type="text" placeholder="Optional description…" {...register('description')} />
                 </div>
-
-                {/* ── Opening Stock Section ── */}
-                <div className="fg" style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-                    📦 Opening Stock {editing ? '(Post Additional Opening Balance)' : '(Optional — set now or later)'}
-                  </div>
-                </div>
-
-                <div className="fg">
-                  <label>Opening Quantity</label>
-                  <input
-                    type="number" step="0.001" min="0"
-                    placeholder="e.g. 10"
-                    {...register('opening_qty')}
-                  />
-                </div>
-
-                <div className="fg">
-                  <label>Unit Cost (GH₵)</label>
-                  <input
-                    type="number" step="0.01" min="0"
-                    placeholder="e.g. 250.00"
-                    {...register('opening_unit_price')}
-                  />
-                </div>
-
-                {watch('opening_qty') && watch('opening_unit_price') &&
-                  parseFloat(watch('opening_qty')) > 0 &&
-                  parseFloat(watch('opening_unit_price')) > 0 && (
-                  <div className="fg" style={{ gridColumn: 'span 2' }}>
-                    <div className="alert alert-success" style={{ fontSize: 12 }}>
-                      ✅ Opening value: <strong>GH₵ {(parseFloat(watch('opening_qty')) * parseFloat(watch('opening_unit_price'))).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                  </div>
-                )}
               </div>
 
 
@@ -597,14 +567,12 @@ export default function StockPage() {
 
                     <td>
                       <div className="flex gap4" style={{ flexWrap: 'wrap' }}>
-                        {(neverHadStock || ld.openQty === 0) && (
-                          <button
-                            className="btn btn-sm btn-amber"
-                            style={{ fontSize: 10.5, padding: '3px 8px' }}
-                            onClick={() => { setOpeningModal({ id: s.item__id, name: s.item__name }); setOpeningForm({ qty: '', price: '' }); }}
-                            title="Set opening stock"
-                          >📦 Set Stock</button>
-                        )}
+                        <button
+                          className={ld.openQty > 0 ? 'btn btn-sm btn-ghost' : 'btn btn-sm btn-amber'}
+                          style={{ fontSize: 10.5, padding: '3px 8px' }}
+                          onClick={() => openSetStock(s, ld)}
+                          title={ld.openQty > 0 ? 'Edit opening stock' : 'Set opening stock'}
+                        >{ld.openQty > 0 ? '✏️ Edit Stock' : '📦 Set Stock'}</button>
                         {isAdmin && <button className="btn btn-ghost btn-xs" onClick={() => startEdit(s)} title="Edit item">✏️ Edit</button>}
                         {isAdmin && <button className="btn btn-danger btn-xs" onClick={() => deleteItem(s.item__id)} title="Delete">🗑️</button>}
                       </div>
@@ -647,12 +615,18 @@ export default function StockPage() {
         <div className="modal-overlay" onClick={() => setOpeningModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">
-              <span>📦 Set Opening Stock</span>
+              <span>{openingModal.isEdit ? '✏️ Edit Opening Stock' : '📦 Set Opening Stock'}</span>
               <button className="modal-close" onClick={() => setOpeningModal(null)}>✕</button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
-              Posting opening stock for: <strong style={{ color: 'var(--text)' }}>{openingModal.name}</strong>
+              {openingModal.isEdit ? 'Editing opening stock for:' : 'Posting opening stock for:'}{' '}
+              <strong style={{ color: 'var(--text)' }}>{openingModal.name}</strong>
             </p>
+            {openingModal.isEdit && (
+              <div className="alert" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid var(--amber)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: 'var(--text)', marginBottom: 12 }}>
+                ⚠️ Editing will update the opening ledger entry. This affects the closing balance.
+              </div>
+            )}
             <div className="fgrid">
               <div className="fg">
                 <label>Opening Quantity *</label>
@@ -681,7 +655,7 @@ export default function StockPage() {
             )}
             <div className="flex gap8 mt16">
               <button className="btn btn-primary" onClick={submitOpeningStock} disabled={savingOpening}>
-                {savingOpening ? '⏳ Posting…' : '✓ Post Opening Stock'}
+                {savingOpening ? '⏳ Saving…' : openingModal.isEdit ? '✓ Update Opening Stock' : '✓ Post Opening Stock'}
               </button>
               <button className="btn btn-ghost" onClick={() => { setOpeningModal(null); setOpeningForm({ qty: '', price: '' }); }}>
                 Cancel
