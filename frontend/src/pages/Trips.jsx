@@ -86,10 +86,10 @@ export default function TripsPage() {
 
   const displayTrips = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : allTrips;
 
-  // KPI totals
-  const totalRevenue   = trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
-  const totalFuelCost  = trips.reduce((s,t) => s + parseFloat(t.fuel_cost||0), 0);
-  const totalSpare     = trips.reduce((s,t) => s + parseFloat(t.spare_parts_cost||0), 0);
+  // KPI totals — only COMPLETED trips count toward revenue and net profit
+  const totalRevenue   = completedTrips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
+  const totalFuelCost  = completedTrips.reduce((s,t) => s + parseFloat(t.fuel_cost||0), 0);
+  const totalSpare     = completedTrips.reduce((s,t) => s + parseFloat(t.spare_parts_cost||0), 0);
   const totalNet       = totalRevenue - totalFuelCost - totalSpare;
 
   return (
