@@ -42,6 +42,7 @@ export default function Dashboard() {
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
   const alerts = kpis?.expiry_alerts || [];
+  const truckBreakdown = kpis?.truck_breakdown || [];
 
   const rev  = parseFloat(month.revenue     || 0);
   const exp  = parseFloat(month.expenditure || 0);
@@ -162,6 +163,63 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Truck-wise Breakdown ── */}
+      {truckBreakdown.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-title"><span className="card-title-ic">🚛</span>Truck-wise Performance (This Month)</div>
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Truck</th>
+                  <th>Model</th>
+                  <th style={{ textAlign: 'center' }}>Trips</th>
+                  <th style={{ textAlign: 'right' }}>Revenue (GH₵)</th>
+                  <th style={{ textAlign: 'right' }}>Expenditure (GH₵)</th>
+                  <th style={{ textAlign: 'right' }}>Net Profit (GH₵)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {truckBreakdown.map((t, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 700 }}>{t.truck}</td>
+                    <td style={{ color: 'var(--muted)', fontSize: 12 }}>{t.model}</td>
+                    <td style={{ textAlign: 'center' }}>{t.trips}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--green)', fontWeight: 600 }}>
+                      {t.revenue > 0 ? fmtGHS(t.revenue) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--red)', fontWeight: 600 }}>
+                      {t.expenditure > 0 ? fmtGHS(t.expenditure) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700,
+                      color: t.net >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                      {fmtGHS(t.net)}
+                    </td>
+                  </tr>
+                ))}
+                {/* Totals row */}
+                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface)' }}>
+                  <td colSpan={2} style={{ fontWeight: 700, fontSize: 12 }}>Total</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                    {truckBreakdown.reduce((s, t) => s + t.trips, 0)}
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--green)' }}>
+                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.revenue, 0))}
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--red)' }}>
+                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.expenditure, 0))}
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700,
+                    color: truckBreakdown.reduce((s, t) => s + t.net, 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.net, 0))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ── Quick Links ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 10, marginTop: 16 }}>
