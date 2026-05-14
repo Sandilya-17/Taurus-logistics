@@ -61,11 +61,16 @@ export default function IssuePage() {
     try {
       const [sRes, lRes] = await Promise.all([
         api.get('/inventory/available-stock/', { params: { item: itemId, location: locationId } }),
-        api.get('/inventory/ledger/', { params: { item: itemId, transaction_type: 'PURCHASE' } }),
+        api.get('/inventory/ledger/', { params: { item: itemId, location: locationId, page_size: 50 } }),
       ]);
-      const avail     = parseFloat(sRes.data.available_qty || 0);
-      const rows      = lRes.data.results || lRes.data;
-      const unitPrice = rows.length > 0 ? parseFloat(rows[0].unit_price) || 0 : 0;
+      const avail = parseFloat(sRes.data.available_qty || 0);
+      const rows  = lRes.data.results || lRes.data;
+      // Find the most recent PURCHASE or OPENING entry with a valid unit price
+      const priceRow  = rows.find(r =>
+        (r.transaction_type === 'PURCHASE' || r.transaction_type === 'OPENING') &&
+        parseFloat(r.unit_price) > 0
+      );
+      const unitPrice = priceRow ? parseFloat(priceRow.unit_price) || 0 : 0;
       setLines(prev => prev.map((l, i) => {
         if (i !== idx) return l;
         const qty      = parseFloat(l.quantity) || 0;
