@@ -1,20 +1,20 @@
-// src/pages/Issue.jsx – Issue items with multi-item bulk support + trip linkage
+// src/pages/Issue.jsx – Issue items with trip linkage; supports multi-item bulk issue
 import { useState, useEffect, useCallback } from 'react';
+import { useForm } from 'react-hook-form';
 import api, { fmtGHS } from '../utils/api';
 import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
-const EMPTY_ROW = () => ({
-  _key:        Math.random().toString(36).slice(2),
+// ── Helper: empty issue line ─────────────────────────────────────────────────
+const emptyLine = () => ({
+  _key:        Date.now() + Math.random(),
   item_id:     '',
   location_id: '',
   quantity:    '',
-  remark:      '',
   avail:       null,
   unitPrice:   0,
   totalVal:    0,
   stockErr:    false,
-  loadingAvail: false,
 });
 
 export default function IssuePage() {
@@ -29,128 +29,128 @@ export default function IssuePage() {
   const [saving,    setSaving]    = useState(false);
   const [editRec,   setEditRec]   = useState(null);
 
-  // Shared header fields
-  const [issueDate,  setIssueDate]  = useState('');
-  const [issueType,  setIssueType]  = useState('TRUCK');
-  const [truckId,    setTruckId]    = useState('');
-  const [tripId,     setTripId]     = useState('');
-  const [sharedLoc,  setSharedLoc]  = useState('');
+  // ── Multi-item lines ────────────────────────────────────────────────────────
+  const [lines, setLines] = useState([emptyLine()]);
 
-  // Item rows
-  const [rows, setRows] = useState([EMPTY_ROW()]);
+  const { register, handleSubmit, watch, reset, setValue } = useForm({
+    defaultValues: { issue_type: 'TRUCK', issue_date: '', truck_id: '', trip_id: '', remark: '' }
+  });
 
-  // Edit mode fields
-  const [editDate,   setEditDate]   = useState('');
-  const [editRemark, setEditRemark] = useState('');
+  const watchedType  = watch('issue_type');
+  const watchedTruck = watch('truck_id');
 
-  const loadData = useCallback(() => {
-    api.get('/inventory/items/?page_size=2000').then(r  => setItems(r.data.results    || r.data));
-    api.get('/inventory/locations/').then(r             => setLocations(r.data.results || r.data));
-    api.get('/trucks/?status=ACTIVE').then(r            => setTrucks(r.data.results   || r.data));
-    api.get('/trips/?status=EN_ROUTE').then(r           => setTrips(r.data.results    || r.data));
-    api.get('/inventory/issues/?page_size=200').then(r  => setHistory(r.data.results  || r.data));
-  }, []);
+  const loadData = () => {
+    api.get('/inventory/items/').then(r       => setItems(r.data.results    || r.data));
+    api.get('/inventory/locations/').then(r   => setLocations(r.data.results || r.data));
+    api.get('/trucks/?status=ACTIVE').then(r  => setTrucks(r.data.results   || r.data));
+    api.get('/trips/?status=EN_ROUTE').then(r => setTrips(r.data.results    || r.data));
+    api.get('/inventory/issues/?page_size=200').then(r => setHistory(r.data.results || r.data));
+  };
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(); }, []);
 
-  const truckTrips = truckId
-    ? trips.filter(t => String(t.truck) === String(truckId))
+  const truckTrips = watchedTruck
+    ? trips.filter(t => String(t.truck) === String(watchedTruck))
     : trips;
 
-  const fetchAvail = useCallback(async (key, itemId, locationId) => {
+  // ── Stock check for a single line ──────────────────────────────────────────
+  const checkStock = useCallback(async (idx, itemId, locationId) => {
     if (!itemId) {
-      setRows(prev => prev.map(r => r._key === key
-        ? { ...r, avail: null, unitPrice: 0, totalVal: 0, stockErr: false }
-        : r));
+      setLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, avail: null, unitPrice: 0, totalVal: 0, stockErr: false }));
       return;
     }
-    setRows(prev => prev.map(r => r._key === key ? { ...r, loadingAvail: true } : r));
     try {
       const params = { item: itemId };
       if (locationId) params.location = locationId;
-      const [stockRes, ledgerRes] = await Promise.all([
-        api.get('/inventory/available-stock/', { params }),
-        api.get('/inventory/ledger/', { params: { item: itemId, transaction_type: 'PURCHASE' } }),
-      ]);
-      const avail = stockRes.data.available_qty;
-      const ledgerRows = ledgerRes.data.results || ledgerRes.data;
-      const unitPrice = ledgerRows.length > 0 ? parseFloat(ledgerRows[0].unit_price) || 0 : 0;
-      setRows(prev => prev.map(r => {
-        if (r._key !== key) return r;
-        const qty = parseFloat(r.quantity) || 0;
-        return { ...r, avail, unitPrice, totalVal: qty * unitPrice, stockErr: qty > parseFloat(avail), loadingAvail: false };
+      const r  = await api.get('/inventory/available-stock/', { params });
+      const avail = r.data.available_qty;
+
+      // Get latest purchase price
+      const lr = await api.get('/inventory/ledger/', { params: { item: itemId, transaction_type: 'PURCHASE' } });
+      const rows = lr.data.results || lr.data;
+      const unitPrice = rows.length > 0 ? (parseFloat(rows[0].unit_price) || 0) : 0;
+
+      setLines(prev => prev.map((l, i) => {
+        if (i !== idx) return l;
+        const qty      = parseFloat(l.quantity) || 0;
+        const totalVal = qty * unitPrice;
+        const stockErr = qty > parseFloat(avail);
+        return { ...l, avail, unitPrice, totalVal, stockErr };
       }));
     } catch {
-      setRows(prev => prev.map(r => r._key === key ? { ...r, avail: null, loadingAvail: false } : r));
+      setLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, avail: null, unitPrice: 0 }));
     }
   }, []);
 
-  const updateRow = (key, field, value) => {
-    setRows(prev => prev.map(r => {
-      if (r._key !== key) return r;
-      const updated = { ...r, [field]: value };
+  // ── Line field change handlers ─────────────────────────────────────────────
+  const updateLine = (idx, field, value) => {
+    setLines(prev => {
+      const next = prev.map((l, i) => i !== idx ? l : { ...l, [field]: value });
+      const line = next[idx];
+
       if (field === 'quantity') {
-        const qty = parseFloat(value) || 0;
-        updated.totalVal = qty * r.unitPrice;
-        updated.stockErr = r.avail !== null && qty > parseFloat(r.avail);
+        const qty      = parseFloat(value) || 0;
+        const totalVal = qty * line.unitPrice;
+        const stockErr = line.avail !== null && qty > parseFloat(line.avail);
+        next[idx] = { ...line, quantity: value, totalVal, stockErr };
       }
-      return updated;
-    }));
-    if (field === 'item_id') {
-      const row = rows.find(r => r._key === key);
-      fetchAvail(key, value, row?.location_id || sharedLoc || '');
-    }
-    if (field === 'location_id') {
-      const row = rows.find(r => r._key === key);
-      fetchAvail(key, row?.item_id || '', value);
-    }
-  };
 
-  useEffect(() => {
-    rows.forEach(r => {
-      if (r.item_id && !r.location_id) {
-        fetchAvail(r._key, r.item_id, sharedLoc);
+      if (field === 'item_id' || field === 'location_id') {
+        // re-check stock after state update
+        const updatedLine = next[idx];
+        setTimeout(() => checkStock(idx, updatedLine.item_id, updatedLine.location_id), 0);
       }
+
+      return next;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharedLoc]);
-
-  const addRow    = () => setRows(prev => [...prev, EMPTY_ROW()]);
-  const removeRow = (key) => setRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
-
-  const resetForm = () => {
-    setRows([EMPTY_ROW()]);
-    setIssueDate(''); setIssueType('TRUCK'); setTruckId(''); setTripId(''); setSharedLoc('');
   };
 
-  const onSubmit = async () => {
-    if (!issueDate) { toast.error('Please select an issue date.'); return; }
-    if (rows.some(r => r.stockErr)) { toast.error('One or more rows have insufficient stock.'); return; }
-    const validRows = rows.filter(r => r.item_id && (r.location_id || sharedLoc) && parseFloat(r.quantity) > 0);
-    if (validRows.length === 0) { toast.error('Add at least one item with quantity > 0.'); return; }
+  const addLine    = () => setLines(prev => [...prev, emptyLine()]);
+  const removeLine = (idx) => setLines(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  const onSubmit = async (data) => {
+    if (editRec) {
+      // Edit mode: single-record patch
+      setSaving(true);
+      try {
+        await api.patch(`/inventory/issues/${editRec.id}/`, {
+          remark:     data.remark,
+          issue_date: data.issue_date,
+        });
+        toast.success('Issue updated.');
+        setEditRec(null);
+        reset({ issue_type: 'TRUCK', issue_date: '', truck_id: '', trip_id: '', remark: '' });
+        loadData();
+      } catch (e) {
+        toast.error(e.response?.data?.error || 'Failed to update issue.');
+      } finally { setSaving(false); }
+      return;
+    }
+
+    // Validate lines
+    const validLines = lines.filter(l => l.item_id && l.location_id && parseFloat(l.quantity) > 0);
+    if (validLines.length === 0) { toast.error('Add at least one item to issue.'); return; }
+    const hasStockErr = validLines.some(l => l.stockErr);
+    if (hasStockErr) { toast.error('One or more items exceed available stock.'); return; }
 
     setSaving(true);
     try {
-      const res = await api.post('/inventory/bulk-issue/', {
-        items: validRows.map(r => ({
-          item_id:     r.item_id,
-          location_id: r.location_id || sharedLoc,
-          quantity:    parseFloat(r.quantity),
-          remark:      r.remark,
-        })),
-        truck_id:   truckId   || null,
-        trip_id:    tripId    || null,
-        issue_type: issueType,
-        issue_date: issueDate,
-      });
-      const { created_count, error_count, errors } = res.data;
-      if (error_count === 0) {
-        toast.success(`✅ ${created_count} item(s) issued.${tripId ? ' Trip spare parts cost updated.' : ''}`);
-      } else {
-        toast.success(`⚠️ ${created_count} issued, ${error_count} failed.`);
-        errors.forEach(e => toast.error(`Item ${e.row?.item_id}: ${e.error}`));
-      }
-      resetForm();
+      await Promise.all(validLines.map(line =>
+        api.post('/inventory/issues/', {
+          item_id:    line.item_id,
+          location_id: line.location_id,
+          quantity:   parseFloat(line.quantity),
+          issue_type: data.issue_type,
+          truck_id:   data.truck_id  || null,
+          trip_id:    data.trip_id   || null,
+          issue_date: data.issue_date,
+          remark:     data.remark,
+        })
+      ));
+      toast.success(`${validLines.length} item${validLines.length > 1 ? 's' : ''} issued successfully.${data.trip_id ? ' Trip spare parts cost updated.' : ''}`);
+      reset({ issue_type: 'TRUCK', issue_date: '', truck_id: '', trip_id: '', remark: '' });
+      setLines([emptyLine()]);
       loadData();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Failed to record issue.');
@@ -159,21 +159,9 @@ export default function IssuePage() {
 
   const startEdit = (i) => {
     setEditRec(i);
-    setEditDate(i.issue_date || '');
-    setEditRemark(i.remark || '');
+    setValue('issue_date', i.issue_date || '');
+    setValue('remark',     i.remark || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const submitEdit = async () => {
-    setSaving(true);
-    try {
-      await api.patch(`/inventory/issues/${editRec.id}/`, { remark: editRemark, issue_date: editDate });
-      toast.success('Issue updated.');
-      setEditRec(null);
-      loadData();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Failed to update.');
-    } finally { setSaving(false); }
   };
 
   const deleteIssue = async (id) => {
@@ -185,33 +173,78 @@ export default function IssuePage() {
     } catch { toast.error('Failed to delete issue.'); }
   };
 
-  const grandTotal = rows.reduce((s, r) => s + (r.totalVal || 0), 0);
-  const readyCount = rows.filter(r => r.item_id && parseFloat(r.quantity) > 0).length;
+  const cancelEdit = () => {
+    setEditRec(null);
+    reset({ issue_type: 'TRUCK', issue_date: '', truck_id: '', trip_id: '', remark: '' });
+    setLines([emptyLine()]);
+  };
+
+  const grandTotal = lines.reduce((s, l) => s + (l.totalVal || 0), 0);
+  const anyStockErr = lines.some(l => l.stockErr);
 
   return (
     <div>
-      {editRec && (
-        <div className="alert alert-warn mb16" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>✏️ Editing issue <strong>ISS-{editRec.id}</strong> — only date and remark are editable.</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditRec(null)}>✕ Cancel Edit</button>
-        </div>
-      )}
+      <div className="flex justify-between items-center mb16">
+        <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+          {editRec
+            ? '✏️ Editing issue — only date and remark are editable (quantity is locked to protect ledger integrity).'
+            : 'Add multiple items at once for a truck. Stock is validated live per line.'}
+        </p>
+      </div>
 
       <div className="g2">
-        {/* ── Form ── */}
+        {/* ── Issue Form ── */}
         <div className="card">
           <div className="card-title">
             <span className="card-title-ic">{editRec ? '✏️' : '📤'}</span>
             {editRec ? 'Edit Issue Record' : 'Issue Items from Stock'}
           </div>
+          <form onSubmit={handleSubmit(onSubmit)}>
 
-          {editRec ? (
-            <div>
-              <div className="fgrid">
-                <div className="fg">
-                  <label>Issue Date *</label>
-                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
-                </div>
+            {/* ── Header fields (date, type, truck, trip, remark) ── */}
+            <div className="sec-div">Issue Details</div>
+            <div className="fgrid">
+              <div className="fg">
+                <label>Issue Date *</label>
+                <input type="date" {...register('issue_date', { required: true })} />
+              </div>
+
+              {!editRec && (
+                <>
+                  <div className="fg">
+                    <label>Issue Type *</label>
+                    <select {...register('issue_type', { required: true })}>
+                      <option value="TRUCK">TRUCK</option>
+                      <option value="WORKSHOP">WORKSHOP</option>
+                      <option value="BREAKDOWN">BREAKDOWN</option>
+                    </select>
+                  </div>
+
+                  {watchedType === 'TRUCK' && (
+                    <div className="fg">
+                      <label>Truck</label>
+                      <select {...register('truck_id')}>
+                        <option value="">— Select Truck —</option>
+                        {trucks.map(t => (
+                          <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="fg">
+                    <label>Link to Trip <span style={{ fontSize: 10, color: 'var(--muted)' }}>(auto-updates trip cost)</span></label>
+                    <select {...register('trip_id')}>
+                      <option value="">— None / Not Trip-Specific —</option>
+                      {truckTrips.map(t => (
+                        <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin} → {t.destination}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {editRec && (
                 <div className="fg" style={{ gridColumn: 'span 2' }}>
                   <div className="alert" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--muted)' }}>
                     📦 <strong style={{ color: 'var(--text)' }}>{editRec.item_name}</strong> · Qty: {editRec.quantity} · Type: {editRec.issue_type}
@@ -219,182 +252,140 @@ export default function IssuePage() {
                     {editRec.trip_waybill && ` · Trip: ${editRec.trip_waybill}`}
                   </div>
                 </div>
-                <div className="fg" style={{ gridColumn: 'span 3' }}>
-                  <label>Remark</label>
-                  <input type="text" value={editRemark} onChange={e => setEditRemark(e.target.value)} placeholder="Purpose / job reference" />
-                </div>
-              </div>
-              <div className="flex gap8 mt16">
-                <button className="btn btn-amber" onClick={submitEdit} disabled={saving}>
-                  {saving ? '⏳ Saving…' : '✓ Update Issue'}
-                </button>
-                <button className="btn btn-ghost" onClick={() => setEditRec(null)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              {/* Header */}
-              <div className="sec-div">Issue Header</div>
-              <div className="fgrid" style={{ marginBottom: 12 }}>
-                <div className="fg">
-                  <label>Issue Date *</label>
-                  <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
-                </div>
-                <div className="fg">
-                  <label>Issue Type *</label>
-                  <select value={issueType} onChange={e => setIssueType(e.target.value)}>
-                    <option value="TRUCK">TRUCK</option>
-                    <option value="WORKSHOP">WORKSHOP</option>
-                    <option value="BREAKDOWN">BREAKDOWN</option>
-                  </select>
-                </div>
-                {issueType === 'TRUCK' && (
-                  <div className="fg">
-                    <label>Truck</label>
-                    <select value={truckId} onChange={e => { setTruckId(e.target.value); setTripId(''); }}>
-                      <option value="">— Select Truck —</option>
-                      {trucks.map(t => (
-                        <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div className="fg">
-                  <label>Link to Trip <span style={{ fontSize: 10, color: 'var(--muted)' }}>(auto-updates trip cost)</span></label>
-                  <select value={tripId} onChange={e => setTripId(e.target.value)}>
-                    <option value="">— None —</option>
-                    {truckTrips.map(t => (
-                      <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin} → {t.destination}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="fg">
-                  <label>Default Location <span style={{ fontSize: 10, color: 'var(--muted)' }}>(shared for all rows)</span></label>
-                  <select value={sharedLoc} onChange={e => setSharedLoc(e.target.value)}>
-                    <option value="">— Select Default —</option>
-                    {locations.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Item rows */}
-              <div className="sec-div" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>📋 Items to Issue</span>
-                <button type="button" className="btn btn-sm"
-                  style={{ background: 'var(--navy,#1e3a5f)', color: '#fff', fontSize: 11 }}
-                  onClick={addRow}>
-                  + Add Row
-                </button>
-              </div>
-
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ padding: '8px', textAlign: 'left', width: 28, color: 'var(--muted)' }}>#</th>
-                      <th style={{ padding: '8px', textAlign: 'left', minWidth: 190 }}>Item *</th>
-                      <th style={{ padding: '8px', textAlign: 'left', minWidth: 140 }}>Location</th>
-                      <th style={{ padding: '8px', textAlign: 'right', width: 100 }}>Available</th>
-                      <th style={{ padding: '8px', textAlign: 'right', width: 95 }}>Unit Price</th>
-                      <th style={{ padding: '8px', textAlign: 'right', width: 90 }}>Qty *</th>
-                      <th style={{ padding: '8px', textAlign: 'right', width: 100 }}>Total (GH₵)</th>
-                      <th style={{ padding: '8px', textAlign: 'left', minWidth: 120 }}>Remark</th>
-                      <th style={{ padding: '8px', width: 30 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, idx) => (
-                      <tr key={row._key} style={{
-                        background: row.stockErr ? 'rgba(220,38,38,0.04)' : idx % 2 === 0 ? undefined : 'rgba(0,0,0,0.015)',
-                        borderBottom: '1px solid var(--border)',
-                      }}>
-                        <td style={{ padding: '5px 8px', color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
-                        <td style={{ padding: '4px 5px' }}>
-                          <select value={row.item_id}
-                            onChange={e => updateRow(row._key, 'item_id', e.target.value)}
-                            style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}>
-                            <option value="">— Select Item —</option>
-                            {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                          </select>
-                        </td>
-                        <td style={{ padding: '4px 5px' }}>
-                          <select value={row.location_id}
-                            onChange={e => updateRow(row._key, 'location_id', e.target.value)}
-                            style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}>
-                            <option value="">{sharedLoc ? '(shared default)' : '— Select —'}</option>
-                            {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                        </td>
-                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                          {row.loadingAvail
-                            ? <span style={{ color: 'var(--muted)', fontSize: 11 }}>…</span>
-                            : row.avail === null
-                              ? <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>
-                              : <span style={{ color: parseFloat(row.avail) > 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-                                  {parseFloat(row.avail).toFixed(3)}
-                                </span>
-                          }
-                        </td>
-                        <td style={{ padding: '5px 8px', textAlign: 'right', color: 'var(--muted)' }}>
-                          {row.unitPrice > 0 ? fmtGHS(row.unitPrice) : <span style={{ color: '#cbd5e1' }}>—</span>}
-                        </td>
-                        <td style={{ padding: '4px 5px' }}>
-                          <input type="number" step="0.001" min="0.001" placeholder="0"
-                            value={row.quantity}
-                            onChange={e => updateRow(row._key, 'quantity', e.target.value)}
-                            style={{ width: '100%', fontSize: 12, padding: '5px 6px', textAlign: 'right',
-                              borderColor: row.stockErr ? 'var(--red)' : undefined }} />
-                        </td>
-                        <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600 }}>
-                          {row.totalVal > 0
-                            ? <span style={{ color: row.stockErr ? 'var(--red)' : 'var(--text)' }}>{fmtGHS(row.totalVal)}</span>
-                            : <span style={{ color: '#cbd5e1' }}>—</span>}
-                        </td>
-                        <td style={{ padding: '4px 5px' }}>
-                          <input type="text" placeholder="Optional…"
-                            value={row.remark}
-                            onChange={e => updateRow(row._key, 'remark', e.target.value)}
-                            style={{ width: '100%', fontSize: 12, padding: '5px 6px' }} />
-                        </td>
-                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                          <button type="button" onClick={() => removeRow(row._key)}
-                            style={{ background: 'none', border: 'none', cursor: rows.length === 1 ? 'not-allowed' : 'pointer',
-                              color: rows.length === 1 ? '#cbd5e1' : 'var(--red)', fontSize: 15, padding: '2px 4px' }}
-                            disabled={rows.length === 1} title="Remove row">✕</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {rows.length > 1 && (
-                    <tfoot>
-                      <tr style={{ background: 'var(--surface)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
-                        <td colSpan={6} style={{ padding: '8px 12px', fontSize: 12, color: 'var(--muted)' }}>
-                          {readyCount} item(s) ready to issue
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmtGHS(grandTotal)}</td>
-                        <td colSpan={2}></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-
-              {rows.some(r => r.stockErr) && (
-                <div className="excess-warn" style={{ marginTop: 8 }}>
-                  ⛔ One or more rows have insufficient stock. Please reduce quantities or remove those rows.
-                </div>
               )}
 
-              <div className="flex gap8 mt16">
-                <button type="button" className="btn btn-amber" onClick={onSubmit} disabled={saving}>
-                  {saving ? '⏳ Processing…' : `↗ Issue ${readyCount > 0 ? readyCount : ''} Item(s)`}
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={resetForm}>Clear All</button>
+              <div className="fg" style={{ gridColumn: 'span 2' }}>
+                <label>Remark</label>
+                <input type="text" placeholder="Purpose / job reference" {...register('remark')} />
               </div>
             </div>
-          )}
+
+            {/* ── Multi-item lines (only in new-issue mode) ── */}
+            {!editRec && (
+              <>
+                <div className="sec-div" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Items to Issue ({lines.length})</span>
+                  <button type="button" className="btn btn-sm btn-ghost" style={{ fontSize: 11 }} onClick={addLine}>
+                    + Add Another Item
+                  </button>
+                </div>
+
+                {/* Column headers */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1.5fr 0.8fr 0.9fr 0.9fr 28px',
+                  gap: 6, padding: '4px 0', fontSize: 10.5, fontWeight: 700,
+                  color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em'
+                }}>
+                  <span>Item *</span>
+                  <span>Location *</span>
+                  <span style={{ textAlign: 'right' }}>Avail</span>
+                  <span style={{ textAlign: 'right' }}>Qty *</span>
+                  <span style={{ textAlign: 'right' }}>Value</span>
+                  <span></span>
+                </div>
+
+                {lines.map((line, idx) => (
+                  <div key={line._key} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1.5fr 0.8fr 0.9fr 0.9fr 28px',
+                    gap: 6, marginBottom: 6,
+                    background: line.stockErr ? 'rgba(220,38,38,0.04)' : 'transparent',
+                    borderRadius: 6, padding: '4px 0',
+                  }}>
+                    {/* Item */}
+                    <select
+                      value={line.item_id}
+                      onChange={e => updateLine(idx, 'item_id', e.target.value)}
+                      style={{ fontSize: 12 }}
+                    >
+                      <option value="">— Select Item —</option>
+                      {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                    </select>
+
+                    {/* Location */}
+                    <select
+                      value={line.location_id}
+                      onChange={e => updateLine(idx, 'location_id', e.target.value)}
+                      style={{ fontSize: 12 }}
+                    >
+                      <option value="">— Location —</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+
+                    {/* Available */}
+                    <div className="calc-box" style={{
+                      fontSize: 11, textAlign: 'right',
+                      color: line.avail === null ? 'var(--muted)' : parseFloat(line.avail) > 0 ? 'var(--green)' : 'var(--red)'
+                    }}>
+                      {line.avail === null ? '—' : parseFloat(line.avail).toFixed(2)}
+                    </div>
+
+                    {/* Quantity */}
+                    <input
+                      type="number" step="0.001" min="0.001"
+                      placeholder="0"
+                      value={line.quantity}
+                      onChange={e => updateLine(idx, 'quantity', e.target.value)}
+                      style={{
+                        fontSize: 12, textAlign: 'right',
+                        borderColor: line.stockErr ? 'var(--red)' : undefined
+                      }}
+                    />
+
+                    {/* Value */}
+                    <div className="calc-box" style={{ fontSize: 11, textAlign: 'right' }}>
+                      {line.totalVal > 0 ? fmtGHS(line.totalVal) : '—'}
+                    </div>
+
+                    {/* Remove */}
+                    <button
+                      type="button"
+                      onClick={() => removeLine(idx)}
+                      disabled={lines.length === 1}
+                      style={{
+                        background: 'none', border: 'none', cursor: lines.length > 1 ? 'pointer' : 'default',
+                        color: lines.length > 1 ? 'var(--red)' : 'var(--muted)',
+                        fontSize: 15, padding: 0, lineHeight: 1,
+                      }}
+                      title="Remove line"
+                    >✕</button>
+                  </div>
+                ))}
+
+                {/* Stock error summary */}
+                {anyStockErr && (
+                  <div className="excess-warn" style={{ marginTop: 4 }}>
+                    ⛔ One or more lines exceed available stock. Fix quantities before issuing.
+                  </div>
+                )}
+
+                {/* Grand total */}
+                {grandTotal > 0 && (
+                  <div style={{
+                    display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+                    gap: 8, marginTop: 6, padding: '6px 8px',
+                    background: 'var(--surface)', borderRadius: 6, fontSize: 12, fontWeight: 700
+                  }}>
+                    <span style={{ color: 'var(--muted)' }}>Total Issue Value:</span>
+                    <span style={{ color: 'var(--green)', fontSize: 14 }}>{fmtGHS(grandTotal)}</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 11 }}>
+                      ({lines.filter(l => l.item_id && parseFloat(l.quantity) > 0).length} line{lines.filter(l => l.item_id).length !== 1 ? 's' : ''})
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="flex gap8 mt16">
+              <button type="submit" className="btn btn-amber" disabled={saving || (!editRec && anyStockErr)}>
+                {saving ? '⏳ Processing…' : editRec ? '✓ Update Issue' : `↗ Issue ${lines.filter(l => l.item_id && parseFloat(l.quantity) > 0).length || ''} Item${lines.filter(l => l.item_id && parseFloat(l.quantity) > 0).length !== 1 ? 's' : ''}`}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={cancelEdit}>
+                {editRec ? 'Cancel Edit' : 'Clear'}
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* ── Issue History ── */}
