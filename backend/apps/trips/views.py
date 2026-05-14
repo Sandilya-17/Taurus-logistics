@@ -3,6 +3,8 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import ProtectedError
 from .models import Trip
 from .serializers import TripSerializer, TripPreviewSerializer
 
@@ -25,26 +27,44 @@ class TripDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset         = Trip.objects.all()
     serializer_class = TripSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ProtectedError as e:
+            return Response(
+                {'error': f'Cannot delete trip — it has protected linked records: {str(e)}'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Delete failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     def perform_destroy(self, instance):
         """
-        When a completed trip is deleted, its auto-posted Revenue and
-        Expenditure records must also be deleted, otherwise the dashboard
-        counts remain inflated after the trip row is gone.
-
-        FIX: _sync_finance() saves Expenditure with reference=waybill_no
-        (no prefix). The old code used 'TRIP-{waybill_no}-FUEL' which
-        never matched anything — expenditures were never cleaned up on delete.
+        Delete a trip and all its linked finance/invoice records.
+        Uses a transaction so it's all-or-nothing.
         """
         from apps.finance.models import Revenue, Expenditure
+        from apps.invoicing.models import Invoice
 
-        # Revenue has a trip FK — filter directly by trip instance
-        Revenue.objects.filter(trip=instance).delete()
+        with transaction.atomic():
+            # 1. Nullify invoice trip FK (SET_NULL, but do it explicitly first
+            #    so any invoice-side signals don't fire against a deleted trip)
+            Invoice.objects.filter(trip=instance).update(trip=None)
 
-        # Expenditure has no trip FK; _sync_finance() sets reference=waybill_no
-        Expenditure.objects.filter(reference=instance.waybill_no).delete()
+            # 2. Delete auto-posted Revenue entries linked to this trip
+            Revenue.objects.filter(trip=instance).delete()
 
-        # Now delete the trip itself
-        instance.delete()
+            # 3. Delete auto-posted Expenditure entries keyed by waybill_no
+            Expenditure.objects.filter(reference=instance.waybill_no).delete()
+
+            # 4. Delete the trip itself (fuel_logs and spare_issues use SET_NULL
+            #    so Django handles them automatically on instance.delete())
+            instance.delete()
 
 
 class TripPreviewView(APIView):
