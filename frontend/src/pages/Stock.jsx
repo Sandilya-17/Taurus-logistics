@@ -215,13 +215,14 @@ export default function StockPage() {
     setSavingOpening(true);
     try {
       if (openingModal.isEdit && openingModal.ledgerId) {
-        // PATCH the existing ledger entry
+        // PATCH the existing OPENING ledger entry
         await api.patch(`/inventory/ledger/${openingModal.ledgerId}/`, {
           quantity:   qty,
           unit_price: price,
         });
         toast.success(`Opening stock updated for ${openingModal.name}.`);
       } else {
+        // No existing opening entry — create one
         await api.post('/inventory/opening-stock/', {
           item_id:    openingModal.id,
           quantity:   qty,
@@ -568,13 +569,23 @@ export default function StockPage() {
                     <td>
                       <div className="flex gap4" style={{ flexWrap: 'wrap' }}>
                         <button
-                          className={ld.openQty > 0 ? 'btn btn-sm btn-ghost' : 'btn btn-sm btn-amber'}
-                          style={{ fontSize: 10.5, padding: '3px 8px' }}
+                          className={ld.openQty > 0 ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-amber'}
+                          style={{ fontSize: 10.5, padding: '3px 8px', whiteSpace: 'nowrap' }}
                           onClick={() => openSetStock(s, ld)}
-                          title={ld.openQty > 0 ? 'Edit opening stock' : 'Set opening stock'}
-                        >{ld.openQty > 0 ? '✏️ Edit Stock' : '📦 Set Stock'}</button>
-                        {isAdmin && <button className="btn btn-ghost btn-xs" onClick={() => startEdit(s)} title="Edit item">✏️ Edit</button>}
-                        {isAdmin && <button className="btn btn-danger btn-xs" onClick={() => deleteItem(s.item__id)} title="Delete">🗑️</button>}
+                          title={ld.openQty > 0 ? 'Edit opening quantity & unit cost' : 'Set opening stock'}
+                        >
+                          {ld.openQty > 0 ? '✏️ Edit Stock' : '📦 Set Stock'}
+                        </button>
+                        {isAdmin && (
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            onClick={() => startEdit(s)}
+                            title="Edit item name / type / unit"
+                          >✏️ Item</button>
+                        )}
+                        {isAdmin && (
+                          <button className="btn btn-danger btn-xs" onClick={() => deleteItem(s.item__id)} title="Delete">🗑️</button>
+                        )}
                       </div>
                     </td>
                   </tr>
