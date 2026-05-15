@@ -141,14 +141,24 @@ class Trip(TimeStampedModel):
             )
 
     def recalculate_costs(self):
-        """Re-aggregate fuel_cost and spare_parts_cost from linked records, then save."""
+        """Re-aggregate fuel_cost and spare_parts_cost from linked records, then save.
+
+        Guards against the case where issue_items.trip_id has not yet been
+        migrated on the live database by catching OperationalError / ProgrammingError.
+        """
+        from django.db import OperationalError, ProgrammingError
         from apps.fuel.models import FuelLog
         from apps.inventory.models import IssueItem
 
-        fuel_total  = FuelLog.objects.filter(trip=self).aggregate(
+        fuel_total = FuelLog.objects.filter(trip=self).aggregate(
             t=Sum('total_cost'))['t'] or Decimal('0')
-        spare_total = IssueItem.objects.filter(trip=self).aggregate(
-            t=Sum('final_amount'))['t'] or Decimal('0')
+
+        try:
+            spare_total = IssueItem.objects.filter(trip=self).aggregate(
+                t=Sum('final_amount'))['t'] or Decimal('0')
+        except (OperationalError, ProgrammingError):
+            # Column issue_items.trip_id not yet in DB — skip spare parts calc
+            spare_total = Decimal('0')
 
         Trip.objects.filter(pk=self.pk).update(
             fuel_cost=fuel_total,
