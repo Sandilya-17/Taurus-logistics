@@ -1,12 +1,27 @@
 """apps/trips/views.py"""
+from django.db import connection
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import ProtectedError
 from .models import Trip
 from .serializers import TripSerializer, TripPreviewSerializer
+
+
+def _issue_items_trip_column_exists():
+    """Return True if issue_items.trip_id column is present in the DB.
+    Cached per process to avoid repeated INFORMATION_SCHEMA queries.
+    """
+    if not hasattr(_issue_items_trip_column_exists, '_cache'):
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'issue_items'
+                  AND column_name = 'trip_id'
+            """)
+            _issue_items_trip_column_exists._cache = cur.fetchone()[0] > 0
+    return _issue_items_trip_column_exists._cache
 
 
 class TripListCreate(generics.ListCreateAPIView):
@@ -22,49 +37,53 @@ class TripListCreate(generics.ListCreateAPIView):
         except ValueError as e:
             raise ValidationError({'error': str(e)})
 
+    def perform_update(self, serializer):
+        try:
+            serializer.save()
+        except ValueError as e:
+            raise ValidationError({'error': str(e)})
+
 
 class TripDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset         = Trip.objects.all()
     serializer_class = TripSerializer
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
+    def perform_update(self, serializer):
         try:
-            self.perform_destroy(instance)
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except ProtectedError as e:
-            return Response(
-                {'error': f'Cannot delete trip — it has protected linked records: {str(e)}'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        except Exception as e:
-            return Response(
-                {'error': f'Delete failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            serializer.save()
+        except ValueError as e:
+            raise ValidationError({'error': str(e)})
 
     def perform_destroy(self, instance):
         """
-        Delete a trip and all its linked finance/invoice records.
-        Uses a transaction so it's all-or-nothing.
+        Delete a trip and its linked Finance records cleanly.
+
+        Guards against the case where issue_items.trip_id column has not
+        yet been migrated to the live database: we use raw SQL to null out
+        the FK before Django's ORM cascade tries to query it.
         """
         from apps.finance.models import Revenue, Expenditure
-        from apps.invoicing.models import Invoice
 
-        with transaction.atomic():
-            # 1. Nullify invoice trip FK (SET_NULL, but do it explicitly first
-            #    so any invoice-side signals don't fire against a deleted trip)
-            Invoice.objects.filter(trip=instance).update(trip=None)
+        # ── 1. Clean up Finance records ──────────────────────────────────
+        Revenue.objects.filter(trip=instance).delete()
+        Expenditure.objects.filter(reference=instance.waybill_no).delete()
 
-            # 2. Delete auto-posted Revenue entries linked to this trip
-            Revenue.objects.filter(trip=instance).delete()
+        # ── 2. Null out IssueItem.trip_id if column exists ───────────────
+        # Avoids "Unknown column 'issue_items.trip_id'" when the migration
+        # hasn't run yet on the production database.
+        if _issue_items_trip_column_exists():
+            with connection.cursor() as cur:
+                cur.execute(
+                    "UPDATE issue_items SET trip_id = NULL WHERE trip_id = %s",
+                    [instance.pk]
+                )
+        else:
+            # Column missing — invalidate cache so next deploy re-checks
+            if hasattr(_issue_items_trip_column_exists, '_cache'):
+                del _issue_items_trip_column_exists._cache
 
-            # 3. Delete auto-posted Expenditure entries keyed by waybill_no
-            Expenditure.objects.filter(reference=instance.waybill_no).delete()
-
-            # 4. Delete the trip itself (fuel_logs and spare_issues use SET_NULL
-            #    so Django handles them automatically on instance.delete())
-            instance.delete()
+        # ── 3. Delete the trip ───────────────────────────────────────────
+        instance.delete()
 
 
 class TripPreviewView(APIView):
