@@ -1,27 +1,11 @@
 """apps/trips/views.py"""
 from django.db import connection
-from rest_framework import generics, status
+from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from .models import Trip
 from .serializers import TripSerializer, TripPreviewSerializer
-
-
-def _issue_items_trip_column_exists():
-    """Return True if issue_items.trip_id column is present in the DB.
-    Cached per process to avoid repeated INFORMATION_SCHEMA queries.
-    """
-    if not hasattr(_issue_items_trip_column_exists, '_cache'):
-        with connection.cursor() as cur:
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM information_schema.columns
-                WHERE table_name = 'issue_items'
-                  AND column_name = 'trip_id'
-            """)
-            _issue_items_trip_column_exists._cache = cur.fetchone()[0] > 0
-    return _issue_items_trip_column_exists._cache
 
 
 class TripListCreate(generics.ListCreateAPIView):
@@ -56,34 +40,55 @@ class TripDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         """
-        Delete a trip and its linked Finance records cleanly.
+        Delete a trip safely using raw SQL for ALL related-record cleanup.
 
-        Guards against the case where issue_items.trip_id column has not
-        yet been migrated to the live database: we use raw SQL to null out
-        the FK before Django's ORM cascade tries to query it.
+        We bypass Django ORM cascades entirely because several FK migrations
+        may not have applied on the live DB (mismatched migration numbers
+        between apps), which causes 'Unknown column' or constraint errors.
+
+        Order:
+          1. DELETE revenues linked to this trip
+          2. DELETE expenditures linked by waybill_no
+          3. NULL fuel_logs.trip_id
+          4. NULL issue_items.trip_id  (guarded - column may not exist)
+          5. NULL invoices.trip_id     (guarded - column may not exist)
+          6. DELETE the trip row
         """
-        from apps.finance.models import Revenue, Expenditure
+        pk         = instance.pk
+        waybill_no = instance.waybill_no
 
-        # ── 1. Clean up Finance records ──────────────────────────────────
-        Revenue.objects.filter(trip=instance).delete()
-        Expenditure.objects.filter(reference=instance.waybill_no).delete()
+        with connection.cursor() as cur:
+            # 1. Revenue rows (trip FK is CASCADE - must delete before trip)
+            cur.execute("DELETE FROM revenues WHERE trip_id = %s", [pk])
 
-        # ── 2. Null out IssueItem.trip_id if column exists ───────────────
-        # Avoids "Unknown column 'issue_items.trip_id'" when the migration
-        # hasn't run yet on the production database.
-        if _issue_items_trip_column_exists():
-            with connection.cursor() as cur:
+            # 2. Expenditure rows keyed by waybill (no trip FK column)
+            cur.execute("DELETE FROM expenditures WHERE reference = %s", [waybill_no])
+
+            # 3. Fuel logs — trip_id column always exists
+            cur.execute("UPDATE fuel_logs SET trip_id = NULL WHERE trip_id = %s", [pk])
+
+            # 4. Issue items — trip_id column may not exist yet
+            cur.execute(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                "WHERE table_name='issue_items' AND column_name='trip_id'"
+            )
+            if cur.fetchone()[0]:
                 cur.execute(
-                    "UPDATE issue_items SET trip_id = NULL WHERE trip_id = %s",
-                    [instance.pk]
+                    "UPDATE issue_items SET trip_id = NULL WHERE trip_id = %s", [pk]
                 )
-        else:
-            # Column missing — invalidate cache so next deploy re-checks
-            if hasattr(_issue_items_trip_column_exists, '_cache'):
-                del _issue_items_trip_column_exists._cache
 
-        # ── 3. Delete the trip ───────────────────────────────────────────
-        instance.delete()
+            # 5. Invoices — trip_id column may not exist
+            cur.execute(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                "WHERE table_name='invoices' AND column_name='trip_id'"
+            )
+            if cur.fetchone()[0]:
+                cur.execute(
+                    "UPDATE invoices SET trip_id = NULL WHERE trip_id = %s", [pk]
+                )
+
+            # 6. Delete the trip itself
+            cur.execute("DELETE FROM trips WHERE id = %s", [pk])
 
 
 class TripPreviewView(APIView):
