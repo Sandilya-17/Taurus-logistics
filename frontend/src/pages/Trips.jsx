@@ -293,7 +293,7 @@ export default function TripsPage() {
       setTrips(prev => prev.filter(t => t.id !== id));
       window.dispatchEvent(new CustomEvent('taurus:dashboard:refresh'));
     } catch (e) {
-      const msg = e.response?.data?.detail || e.response?.data?.error || 'Cannot delete this trip.';
+      const errData = e.response?.data; const msg = errData?.detail || errData?.error || JSON.stringify(errData) || 'Cannot delete this trip.';
       toast.error(msg);
     }
   };
