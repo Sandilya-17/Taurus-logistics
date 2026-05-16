@@ -174,7 +174,8 @@ class IssueItem(TimeStampedModel):
     TRUCK     = 'TRUCK'
     WORKSHOP  = 'WORKSHOP'
     BREAKDOWN = 'BREAKDOWN'
-    ISSUE_TYPE_CHOICES = [(TRUCK,'Truck'),(WORKSHOP,'Workshop'),(BREAKDOWN,'Breakdown')]
+    OTHER     = 'OTHER'
+    ISSUE_TYPE_CHOICES = [(TRUCK,'Truck'),(WORKSHOP,'Workshop'),(BREAKDOWN,'Breakdown'),(OTHER,'Other')]
 
     item         = models.ForeignKey(Item,     on_delete=models.PROTECT, related_name='issues')
     location     = models.ForeignKey(Location, on_delete=models.PROTECT)
