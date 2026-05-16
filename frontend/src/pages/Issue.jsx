@@ -5,18 +5,20 @@ import api, { fmtGHS } from '../utils/api';
 import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
+const OTHER_ITEM = '__OTHER__';
+
 const newLine = () => ({
-  _key:          Math.random().toString(36).slice(2),
-  item_id:       '',
-  location_id:   '',
-  quantity:      '',
-  other_purpose: '',   // used when issue_type === 'OTHER'
-  avail:         null,
-  fifoBatches:   [],   // FIFO batch breakdown
-  unitPrice:     0,    // weighted-average FIFO price
-  lineTotal:     0,
-  stockErr:      false,
-  checking:      false,
+  _key:            Math.random().toString(36).slice(2),
+  item_id:         '',
+  location_id:     '',
+  quantity:        '',
+  other_item_name: '',   // typed when item_id === OTHER_ITEM
+  avail:           null,
+  fifoBatches:     [],
+  unitPrice:       0,
+  lineTotal:       0,
+  stockErr:        false,
+  checking:        false,
 });
 
 /** Compute FIFO weighted-average price for qty from batch list */
@@ -66,9 +68,9 @@ export default function IssuePage() {
     ? trips.filter(t => String(t.truck) === String(watchTruck))
     : trips;
 
-  /** Fetch FIFO batch breakdown for a line; recompute price from qty */
-  const checkStock = async (idx, itemId, locationId, qty) => {
-    if (!itemId || !locationId) {
+  /** Fetch FIFO batch breakdown; skip for OTHER items (no ledger) */
+  const checkStock = async (idx, itemId, locationId) => {
+    if (!itemId || !locationId || itemId === OTHER_ITEM) {
       setLines(prev => prev.map((l, i) => i !== idx ? l
         : { ...l, avail: null, fifoBatches: [], unitPrice: 0, lineTotal: 0, stockErr: false, checking: false }));
       return;
@@ -80,20 +82,11 @@ export default function IssuePage() {
       });
       const { total_available, batches } = res.data;
       const avail = parseFloat(total_available || 0);
-
       setLines(prev => prev.map((l, i) => {
         if (i !== idx) return l;
-        const lineQty  = parseFloat(qty !== undefined ? qty : l.quantity) || 0;
-        const up       = fifoPrice(batches, Math.min(lineQty, avail));
-        return {
-          ...l,
-          avail,
-          fifoBatches: batches,
-          unitPrice:   up,
-          lineTotal:   lineQty * up,
-          stockErr:    lineQty > avail,
-          checking:    false,
-        };
+        const lineQty = parseFloat(l.quantity) || 0;
+        const up      = fifoPrice(batches, Math.min(lineQty, avail));
+        return { ...l, avail, fifoBatches: batches, unitPrice: up, lineTotal: lineQty * up, stockErr: lineQty > avail, checking: false };
       }));
     } catch {
       setLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, avail: null, checking: false }));
@@ -107,17 +100,26 @@ export default function IssuePage() {
 
       if (field === 'quantity') {
         const qty = parseFloat(value) || 0;
-        const up  = fifoPrice(line.fifoBatches, Math.min(qty, line.avail || 0));
-        next[idx] = {
-          ...line,
-          unitPrice: up,
-          lineTotal: qty * up,
-          stockErr:  line.avail !== null && qty > line.avail,
-        };
+        if (line.item_id === OTHER_ITEM) {
+          // OTHER items: no stock check, no FIFO price
+          next[idx] = { ...line, lineTotal: 0, stockErr: false };
+        } else {
+          const up = fifoPrice(line.fifoBatches, Math.min(qty, line.avail || 0));
+          next[idx] = { ...line, unitPrice: up, lineTotal: qty * up, stockErr: line.avail !== null && qty > line.avail };
+        }
         return next;
       }
-      if (field === 'item_id' || field === 'location_id') {
-        setTimeout(() => checkStock(idx, next[idx].item_id, next[idx].location_id), 0);
+      if (field === 'item_id') {
+        // Reset stock info when item changes
+        next[idx] = { ...next[idx], avail: null, fifoBatches: [], unitPrice: 0, lineTotal: 0, stockErr: false };
+        if (value !== OTHER_ITEM) {
+          setTimeout(() => checkStock(idx, value, next[idx].location_id), 0);
+        }
+      }
+      if (field === 'location_id') {
+        if (next[idx].item_id && next[idx].item_id !== OTHER_ITEM) {
+          setTimeout(() => checkStock(idx, next[idx].item_id, value), 0);
+        }
       }
       return next;
     });
@@ -138,27 +140,38 @@ export default function IssuePage() {
       return;
     }
     if (!data.issue_date) { toast.error('Select an issue date.'); return; }
-    const valid = lines.filter(l => l.item_id && l.location_id && parseFloat(l.quantity) > 0);
+    const valid = lines.filter(l => {
+      if (l.item_id === OTHER_ITEM) return l.other_item_name?.trim() && l.location_id && parseFloat(l.quantity) > 0;
+      return l.item_id && l.location_id && parseFloat(l.quantity) > 0;
+    });
     if (!valid.length) { toast.error('Fill in at least one complete item row.'); return; }
-    if (valid.some(l => l.stockErr)) { toast.error('Fix stock errors before issuing.'); return; }
-    if (data.issue_type === 'OTHER' && valid.some(l => !l.other_purpose?.trim())) {
-      toast.error('Fill in a Purpose/Reason for every item when using "OTHER" type.'); return;
-    }
+    if (valid.some(l => l.item_id !== OTHER_ITEM && l.stockErr)) { toast.error('Fix stock errors before issuing.'); return; }
+
     setSaving(true);
     try {
-      await Promise.all(valid.map(line => api.post('/inventory/issues/', {
-        item_id:     line.item_id,
-        location_id: line.location_id,
-        quantity:    parseFloat(line.quantity),
-        issue_type:  data.issue_type,
-        truck_id:    data.truck_id || null,
-        trip_id:     data.trip_id  || null,
-        issue_date:  data.issue_date,
-        remark:      data.issue_type === 'OTHER'
-                       ? (line.other_purpose?.trim() || data.remark)
-                       : data.remark,
-      })));
-      toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued (FIFO costing applied).${data.trip_id ? ' Trip cost updated.' : ''}`);
+      await Promise.all(valid.map(line => {
+        const payload = {
+          location_id: line.location_id,
+          quantity:    parseFloat(line.quantity),
+          issue_type:  data.issue_type,
+          truck_id:    data.truck_id || null,
+          trip_id:     data.trip_id  || null,
+          issue_date:  data.issue_date,
+          remark:      line.item_id === OTHER_ITEM
+                         ? (line.other_item_name?.trim() + (data.remark ? ' – ' + data.remark : ''))
+                         : data.remark,
+        };
+        if (line.item_id === OTHER_ITEM) {
+          // For OTHER items, find or use the first item as placeholder — or skip ledger
+          // Best practice: post with remark only, no item_id (backend must allow null or use a generic item)
+          payload.item_id = null;
+          payload.other_item_name = line.other_item_name?.trim();
+        } else {
+          payload.item_id = line.item_id;
+        }
+        return api.post('/inventory/issues/', payload);
+      }));
+      toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued successfully.${data.trip_id ? ' Trip cost updated.' : ''}`);
       reset({ issue_date: '', issue_type: 'TRUCK', truck_id: '', trip_id: '', remark: '' });
       setLines([newLine()]);
       loadData();
@@ -186,12 +199,15 @@ export default function IssuePage() {
   };
 
   const grandTotal  = lines.reduce((s, l) => s + (l.lineTotal || 0), 0);
-  const anyStockErr = lines.some(l => l.stockErr);
-  const readyLines  = lines.filter(l => l.item_id && l.location_id && parseFloat(l.quantity) > 0);
+  const anyStockErr = lines.some(l => l.item_id !== OTHER_ITEM && l.stockErr);
+  const readyLines  = lines.filter(l => {
+    if (l.item_id === OTHER_ITEM) return l.other_item_name?.trim() && l.location_id && parseFloat(l.quantity) > 0;
+    return l.item_id && l.location_id && parseFloat(l.quantity) > 0;
+  });
 
-  /** Small FIFO badge showing batch breakdown for a line */
+  /** FIFO badge below each normal item row */
   const FifoBadge = ({ line }) => {
-    if (!line.fifoBatches?.length || !parseFloat(line.quantity)) return null;
+    if (line.item_id === OTHER_ITEM || !line.fifoBatches?.length || !parseFloat(line.quantity)) return null;
     const qty = parseFloat(line.quantity) || 0;
     let need = qty;
     const consumed = [];
@@ -201,7 +217,7 @@ export default function IssuePage() {
       consumed.push({ take, unit_price: b.unit_price });
       need -= take;
     }
-    if (consumed.length === 0) return null;
+    if (!consumed.length) return null;
     return (
       <div style={{
         fontSize: 10, color: 'var(--muted)', marginTop: 4, padding: '4px 8px',
@@ -216,14 +232,10 @@ export default function IssuePage() {
             borderRadius: 4, padding: '1px 6px', fontWeight: 600,
           }}>
             {c.take.toFixed(3)} × {fmtGHS(c.unit_price)}
-            {i === 0 && consumed.length > 1 ? ' (old stock)' : i === 0 ? ' (old stock)' : ' (new stock)'}
+            {i === 0 ? ' (old stock)' : ' (new stock)'}
           </span>
         ))}
-        {need > 0 && (
-          <span style={{ color: 'var(--red)', fontWeight: 700 }}>
-            ⛔ {need.toFixed(3)} units short
-          </span>
-        )}
+        {need > 0 && <span style={{ color: 'var(--red)', fontWeight: 700 }}>⛔ {need.toFixed(3)} units short</span>}
       </div>
     );
   };
@@ -274,15 +286,39 @@ export default function IssuePage() {
 
               {!editRec && (
                 <>
-                  <div className="fg">
+                  <div className="fg" style={{ gridColumn: 'span 2' }}>
                     <label>Issue Type *</label>
-                    <select {...register('issue_type', { required: true })}>
-                      <option value="TRUCK">TRUCK</option>
-                      <option value="WORKSHOP">WORKSHOP</option>
-                      <option value="BREAKDOWN">BREAKDOWN</option>
-                      <option value="OTHER">OTHER</option>
-                    </select>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                      {['TRUCK','WORKSHOP','BREAKDOWN','OTHER'].map(t => (
+                        <label key={t} style={{
+                          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                          padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                          border: `2px solid ${watchType === t
+                            ? t === 'TRUCK' ? 'var(--primary)'
+                            : t === 'WORKSHOP' ? 'var(--amber)'
+                            : t === 'BREAKDOWN' ? 'var(--red)'
+                            : '#8b5cf6'
+                            : 'var(--border)'}`,
+                          background: watchType === t
+                            ? t === 'TRUCK' ? 'rgba(59,130,246,0.12)'
+                            : t === 'WORKSHOP' ? 'rgba(245,158,11,0.12)'
+                            : t === 'BREAKDOWN' ? 'rgba(220,38,38,0.12)'
+                            : 'rgba(139,92,246,0.12)'
+                            : 'var(--surface)',
+                          color: watchType === t
+                            ? t === 'TRUCK' ? 'var(--primary)'
+                            : t === 'WORKSHOP' ? 'var(--amber)'
+                            : t === 'BREAKDOWN' ? 'var(--red)'
+                            : '#8b5cf6'
+                            : 'var(--muted)',
+                        }}>
+                          <input type="radio" value={t} {...register('issue_type')} style={{ display: 'none' }} />
+                          {t === 'TRUCK' ? '🚛' : t === 'WORKSHOP' ? '🔧' : t === 'BREAKDOWN' ? '⚠️' : '📋'} {t}
+                        </label>
+                      ))}
+                    </div>
                   </div>
+
                   {watchType === 'TRUCK' && (
                     <div className="fg">
                       <label>Truck</label>
@@ -301,7 +337,6 @@ export default function IssuePage() {
                       </select>
                     </div>
                   )}
-
                 </>
               )}
 
@@ -319,11 +354,7 @@ export default function IssuePage() {
 
               <div className="fg" style={{ gridColumn: 'span 2' }}>
                 <label>Remark / Purpose</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Routine maintenance, breakdown repair…"
-                  {...register('remark')}
-                />
+                <input type="text" placeholder="e.g. Routine maintenance, breakdown repair…" {...register('remark')} />
               </div>
             </div>
 
@@ -340,10 +371,7 @@ export default function IssuePage() {
 
                 {/* Column Headers */}
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: watchType === 'OTHER'
-                    ? '1.8fr 1.2fr 1.6fr 76px 84px 100px 28px'
-                    : '2.4fr 1.4fr 76px 84px 100px 28px',
+                  display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
                   gap: 6, padding: '0 4px 6px',
                   fontSize: 10, fontWeight: 700, color: 'var(--muted)',
                   textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -351,7 +379,6 @@ export default function IssuePage() {
                 }}>
                   <span>Item *</span>
                   <span>Location *</span>
-                  {watchType === 'OTHER' && <span style={{ color: 'var(--amber)' }}>Purpose / Reason *</span>}
                   <span style={{ textAlign: 'center' }}>In Stock</span>
                   <span style={{ textAlign: 'center' }}>Qty *</span>
                   <span style={{ textAlign: 'right' }}>Line Value</span>
@@ -362,22 +389,44 @@ export default function IssuePage() {
                 {lines.map((line, idx) => (
                   <div key={line._key} style={{ marginBottom: 10 }}>
                     <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: watchType === 'OTHER'
-                        ? '1.8fr 1.2fr 1.6fr 76px 84px 100px 28px'
-                        : '2.4fr 1.4fr 76px 84px 100px 28px',
+                      display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
                       gap: 6, alignItems: 'center',
                       padding: '8px 10px',
                       background: line.stockErr ? 'rgba(220,38,38,0.04)' : 'var(--surface)',
                       border: `1.5px solid ${line.stockErr ? 'rgba(220,38,38,0.4)' : 'var(--border)'}`,
                       borderRadius: 8,
                     }}>
-                      {/* Item */}
-                      <select value={line.item_id} onChange={e => updateLine(idx, 'item_id', e.target.value)}
-                        style={{ fontSize: 12, width: '100%' }}>
-                        <option value="">— Select Item —</option>
-                        {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                      </select>
+
+                      {/* Item dropdown — with OTHER at bottom */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <select
+                          value={line.item_id}
+                          onChange={e => updateLine(idx, 'item_id', e.target.value)}
+                          style={{ fontSize: 12, width: '100%' }}
+                        >
+                          <option value="">— Select Item —</option>
+                          {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                          <option disabled>──────────────</option>
+                          <option value={OTHER_ITEM}>📋 Other (specify below)</option>
+                        </select>
+
+                        {/* Text box appears below dropdown when OTHER is selected */}
+                        {line.item_id === OTHER_ITEM && (
+                          <input
+                            type="text"
+                            placeholder="Type item name…"
+                            value={line.other_item_name}
+                            onChange={e => updateLine(idx, 'other_item_name', e.target.value)}
+                            autoFocus
+                            style={{
+                              fontSize: 12, padding: '6px 8px', borderRadius: 6, width: '100%',
+                              border: '1.5px solid #8b5cf6',
+                              background: 'rgba(139,92,246,0.07)',
+                              color: 'var(--text)',
+                            }}
+                          />
+                        )}
+                      </div>
 
                       {/* Location */}
                       <select value={line.location_id} onChange={e => updateLine(idx, 'location_id', e.target.value)}
@@ -386,35 +435,25 @@ export default function IssuePage() {
                         {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                       </select>
 
-                      {/* Purpose — only when OTHER */}
-                      {watchType === 'OTHER' && (
-                        <input
-                          type="text"
-                          placeholder="e.g. Office use, Donation…"
-                          value={line.other_purpose}
-                          onChange={e => updateLine(idx, 'other_purpose', e.target.value)}
-                          style={{
-                            fontSize: 12, width: '100%', padding: '6px 8px', borderRadius: 6,
-                            border: `1.5px solid ${!line.other_purpose && line.item_id ? 'var(--amber)' : 'var(--border)'}`,
-                            background: 'var(--bg)',
-                          }}
-                        />
-                      )}
-
                       {/* Available stock */}
                       <div style={{
                         textAlign: 'center', fontSize: 11, fontWeight: 700,
                         padding: '5px 4px', borderRadius: 6,
-                        background: line.checking ? 'rgba(100,100,100,0.07)'
+                        background: line.item_id === OTHER_ITEM ? 'rgba(139,92,246,0.08)'
+                          : line.checking ? 'rgba(100,100,100,0.07)'
                           : line.avail === null ? 'rgba(100,100,100,0.07)'
                           : parseFloat(line.avail) > 0 ? 'rgba(16,185,129,0.1)'
                           : 'rgba(220,38,38,0.1)',
-                        color: line.checking ? 'var(--muted)'
+                        color: line.item_id === OTHER_ITEM ? '#8b5cf6'
+                          : line.checking ? 'var(--muted)'
                           : line.avail === null ? 'var(--muted)'
                           : parseFloat(line.avail) > 0 ? 'var(--green)'
                           : 'var(--red)',
                       }}>
-                        {line.checking ? '…' : line.avail === null ? '—' : parseFloat(line.avail).toFixed(2)}
+                        {line.item_id === OTHER_ITEM ? 'N/A'
+                          : line.checking ? '…'
+                          : line.avail === null ? '—'
+                          : parseFloat(line.avail).toFixed(2)}
                       </div>
 
                       {/* Quantity */}
@@ -429,10 +468,12 @@ export default function IssuePage() {
                         }}
                       />
 
-                      {/* Line total (FIFO weighted price) */}
+                      {/* Line total */}
                       <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, color: line.lineTotal > 0 ? 'var(--text)' : 'var(--muted)' }}>
-                        {line.lineTotal > 0 ? fmtGHS(line.lineTotal) : '—'}
-                        {line.unitPrice > 0 && (
+                        {line.item_id === OTHER_ITEM
+                          ? <span style={{ color: '#8b5cf6', fontSize: 10 }}>no ledger</span>
+                          : line.lineTotal > 0 ? fmtGHS(line.lineTotal) : '—'}
+                        {line.unitPrice > 0 && line.item_id !== OTHER_ITEM && (
                           <div style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
                             @{fmtGHS(line.unitPrice)}/u
                           </div>
