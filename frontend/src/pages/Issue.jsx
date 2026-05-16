@@ -6,16 +6,17 @@ import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
 const newLine = () => ({
-  _key:        Math.random().toString(36).slice(2),
-  item_id:     '',
-  location_id: '',
-  quantity:    '',
-  avail:       null,
-  fifoBatches: [],   // FIFO batch breakdown
-  unitPrice:   0,    // weighted-average FIFO price
-  lineTotal:   0,
-  stockErr:    false,
-  checking:    false,
+  _key:          Math.random().toString(36).slice(2),
+  item_id:       '',
+  location_id:   '',
+  quantity:      '',
+  other_purpose: '',   // used when issue_type === 'OTHER'
+  avail:         null,
+  fifoBatches:   [],   // FIFO batch breakdown
+  unitPrice:     0,    // weighted-average FIFO price
+  lineTotal:     0,
+  stockErr:      false,
+  checking:      false,
 });
 
 /** Compute FIFO weighted-average price for qty from batch list */
@@ -140,6 +141,9 @@ export default function IssuePage() {
     const valid = lines.filter(l => l.item_id && l.location_id && parseFloat(l.quantity) > 0);
     if (!valid.length) { toast.error('Fill in at least one complete item row.'); return; }
     if (valid.some(l => l.stockErr)) { toast.error('Fix stock errors before issuing.'); return; }
+    if (data.issue_type === 'OTHER' && valid.some(l => !l.other_purpose?.trim())) {
+      toast.error('Fill in a Purpose/Reason for every item when using "OTHER" type.'); return;
+    }
     setSaving(true);
     try {
       await Promise.all(valid.map(line => api.post('/inventory/issues/', {
@@ -150,7 +154,9 @@ export default function IssuePage() {
         truck_id:    data.truck_id || null,
         trip_id:     data.trip_id  || null,
         issue_date:  data.issue_date,
-        remark:      data.remark,
+        remark:      data.issue_type === 'OTHER'
+                       ? (line.other_purpose?.trim() || data.remark)
+                       : data.remark,
       })));
       toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued (FIFO costing applied).${data.trip_id ? ' Trip cost updated.' : ''}`);
       reset({ issue_date: '', issue_type: 'TRUCK', truck_id: '', trip_id: '', remark: '' });
@@ -295,16 +301,7 @@ export default function IssuePage() {
                       </select>
                     </div>
                   )}
-                  {watchType === 'OTHER' && (
-                    <div className="fg" style={{ gridColumn: 'span 2' }}>
-                      <div style={{
-                        background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)',
-                        borderRadius: 8, padding: '8px 12px', fontSize: 11, color: 'var(--muted)',
-                      }}>
-                        ℹ️ <strong style={{ color: 'var(--amber)' }}>Other</strong> — use the Remark field below to describe the purpose of this issue (e.g. "Office use", "Site maintenance", "Donation").
-                      </div>
-                    </div>
-                  )}
+
                 </>
               )}
 
@@ -321,13 +318,11 @@ export default function IssuePage() {
               )}
 
               <div className="fg" style={{ gridColumn: 'span 2' }}>
-                <label>Remark / Purpose{watchType === 'OTHER' ? ' *' : ''}</label>
+                <label>Remark / Purpose</label>
                 <input
                   type="text"
-                  placeholder={watchType === 'OTHER'
-                    ? 'Required: describe the purpose of this issue…'
-                    : 'e.g. Routine maintenance, breakdown repair…'}
-                  {...register('remark', { required: watchType === 'OTHER' })}
+                  placeholder="e.g. Routine maintenance, breakdown repair…"
+                  {...register('remark')}
                 />
               </div>
             </div>
@@ -345,7 +340,10 @@ export default function IssuePage() {
 
                 {/* Column Headers */}
                 <div style={{
-                  display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
+                  display: 'grid',
+                  gridTemplateColumns: watchType === 'OTHER'
+                    ? '1.8fr 1.2fr 1.6fr 76px 84px 100px 28px'
+                    : '2.4fr 1.4fr 76px 84px 100px 28px',
                   gap: 6, padding: '0 4px 6px',
                   fontSize: 10, fontWeight: 700, color: 'var(--muted)',
                   textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -353,6 +351,7 @@ export default function IssuePage() {
                 }}>
                   <span>Item *</span>
                   <span>Location *</span>
+                  {watchType === 'OTHER' && <span style={{ color: 'var(--amber)' }}>Purpose / Reason *</span>}
                   <span style={{ textAlign: 'center' }}>In Stock</span>
                   <span style={{ textAlign: 'center' }}>Qty *</span>
                   <span style={{ textAlign: 'right' }}>Line Value</span>
@@ -363,7 +362,10 @@ export default function IssuePage() {
                 {lines.map((line, idx) => (
                   <div key={line._key} style={{ marginBottom: 10 }}>
                     <div style={{
-                      display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
+                      display: 'grid',
+                      gridTemplateColumns: watchType === 'OTHER'
+                        ? '1.8fr 1.2fr 1.6fr 76px 84px 100px 28px'
+                        : '2.4fr 1.4fr 76px 84px 100px 28px',
                       gap: 6, alignItems: 'center',
                       padding: '8px 10px',
                       background: line.stockErr ? 'rgba(220,38,38,0.04)' : 'var(--surface)',
@@ -383,6 +385,21 @@ export default function IssuePage() {
                         <option value="">— Location —</option>
                         {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                       </select>
+
+                      {/* Purpose — only when OTHER */}
+                      {watchType === 'OTHER' && (
+                        <input
+                          type="text"
+                          placeholder="e.g. Office use, Donation…"
+                          value={line.other_purpose}
+                          onChange={e => updateLine(idx, 'other_purpose', e.target.value)}
+                          style={{
+                            fontSize: 12, width: '100%', padding: '6px 8px', borderRadius: 6,
+                            border: `1.5px solid ${!line.other_purpose && line.item_id ? 'var(--amber)' : 'var(--border)'}`,
+                            background: 'var(--bg)',
+                          }}
+                        />
+                      )}
 
                       {/* Available stock */}
                       <div style={{
