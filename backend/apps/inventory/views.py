@@ -1,203 +1,371 @@
-"""apps/inventory/models.py – Items, Locations, Stock Ledger (transaction-based)."""
-from decimal import Decimal
-from django.db import models
-from django.db.models import Sum
-from apps.core.models import SoftDeleteModel, TimeStampedModel
+"""apps/inventory/views.py"""
+from decimal import Decimal, InvalidOperation
+from rest_framework import generics, status, permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
+from .models import Item, Location, StockLedger, Purchase, IssueItem
+from .serializers import (ItemSerializer, LocationSerializer, StockLedgerSerializer,
+                           PurchaseSerializer, IssueItemSerializer, PurchasePreviewSerializer)
+from .services import PurchaseService, IssueService, StockService
+from apps.core.models import Supplier
+from apps.core.serializers import SupplierSerializer
 
 
-class Location(SoftDeleteModel):
-    STORE     = 'STORE'
-    WORKSHOP  = 'WORKSHOP'
-    BREAKDOWN = 'BREAKDOWN'
-    TYPE_CHOICES = [(STORE,'Store'),(WORKSHOP,'Workshop'),(BREAKDOWN,'Breakdown')]
-
-    name          = models.CharField(max_length=100)
-    location_type = models.CharField(max_length=15, choices=TYPE_CHOICES)
-    address       = models.TextField(blank=True)
-
-    class Meta:
-        db_table = 'locations'
-
-    def __str__(self): return f"{self.name} ({self.location_type})"
+# ── Permission helpers ────────────────────────────────────────────────────────
+class IsAdminOrReadOnly(permissions.BasePermission):
+    """Read access for all authenticated users; write/delete for ADMIN only."""
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return getattr(request.user, 'role', None) == 'ADMIN'
 
 
-class Item(SoftDeleteModel):
-    SPARE_PART = 'SPARE_PART'
-    TYRE       = 'TYRE'
-    MATERIAL   = 'MATERIAL'
-    LUBRICANT  = 'LUBRICANT'
-    TYPE_CHOICES = [(SPARE_PART,'Spare Part'),(TYRE,'Tyre'),(MATERIAL,'Material'),(LUBRICANT,'Lubricant')]
-
-    name        = models.CharField(max_length=200, unique=True)
-    item_type   = models.CharField(max_length=15, choices=TYPE_CHOICES)
-    unit        = models.CharField(max_length=30, default='pcs', help_text='e.g. pcs, litres, kg')
-    description = models.TextField(blank=True)
-    reorder_level = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
-    class Meta:
-        db_table = 'items'
-
-    def __str__(self): return self.name
-
-    def available_qty(self, location=None, as_of=None):
-        """Dynamically calculate current stock from ledger."""
-        qs = StockLedger.objects.filter(item=self)
-        if location:
-            qs = qs.filter(location=location)
-        if as_of:
-            qs = qs.filter(created_at__lte=as_of)
-        result = qs.aggregate(total=Sum('quantity'))['total']
-        return result or Decimal('0')
-
-    def available_value(self, location=None, as_of=None):
-        """Dynamically calculate current stock value from ledger."""
-        qs = StockLedger.objects.filter(item=self)
-        if location:
-            qs = qs.filter(location=location)
-        if as_of:
-            qs = qs.filter(created_at__lte=as_of)
-        result = qs.aggregate(total=Sum('final_amount'))['total']
-        return result or Decimal('0')
+class IsAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and
+                    getattr(request.user, 'role', None) == 'ADMIN')
 
 
-class StockLedger(TimeStampedModel):
+# ── Suppliers ─────────────────────────────────────────────────────────────────
+class SupplierListCreate(generics.ListCreateAPIView):
+    queryset         = Supplier.objects.all()
+    serializer_class = SupplierSerializer
+    search_fields    = ('name',)
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsAdmin()]
+
+
+class SupplierDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = Supplier.objects.all()
+    serializer_class = SupplierSerializer
+    permission_classes = [IsAdmin]
+
+
+# ── Locations ─────────────────────────────────────────────────────────────────
+class LocationListCreate(generics.ListCreateAPIView):
+    queryset         = Location.objects.all()
+    serializer_class = LocationSerializer
+
+
+class LocationDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = Location.objects.all()
+    serializer_class = LocationSerializer
+
+
+# ── Items ─────────────────────────────────────────────────────────────────────
+class ItemListCreate(generics.ListCreateAPIView):
+    queryset         = Item.objects.all()
+    serializer_class = ItemSerializer
+    search_fields    = ('name', 'item_type')
+    filterset_fields = ('item_type',)
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsAdmin()]
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        if hasattr(data, 'dict'):
+            data = data.dict()
+
+        opening_qty_raw = data.pop('opening_qty', None)
+        unit_price_raw  = data.pop('unit_price',  None)
+        location_id     = data.pop('location_id', None)
+
+        def _scalar(v):
+            if isinstance(v, (list, tuple)):
+                v = v[0] if v else None
+            return v
+
+        opening_qty_raw = _scalar(opening_qty_raw)
+        unit_price_raw  = _scalar(unit_price_raw)
+        location_id     = _scalar(location_id)
+
+        try:
+            opening_qty = Decimal(str(opening_qty_raw)) if opening_qty_raw not in (None, '', '0', 0, '0.0') else None
+        except (InvalidOperation, TypeError):
+            opening_qty = None
+
+        try:
+            unit_price = Decimal(str(unit_price_raw)) if unit_price_raw not in (None, '', '0', 0, '0.0') else None
+        except (InvalidOperation, TypeError):
+            unit_price = None
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        item = serializer.save()
+
+        if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
+            try:
+                if location_id:
+                    loc = Location.objects.get(id=location_id)
+                else:
+                    loc = Location.objects.filter(deleted_at__isnull=True).first()
+                    if not loc:
+                        loc = Location.objects.create(
+                            name='Main Store',
+                            location_type='STORE',
+                        )
+                StockLedger.objects.create(
+                    item=item,
+                    location=loc,
+                    transaction_type=StockLedger.OPENING,
+                    quantity=opening_qty,
+                    unit_price=unit_price,
+                    created_by=request.user if request.user.is_authenticated else None,
+                    remark='Initial Opening Stock',
+                )
+            except Exception as ex:
+                import logging
+                logging.getLogger(__name__).error(
+                    "Failed to create opening stock ledger for item %s: %s", item.pk, ex
+                )
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = Item.objects.all()
+    serializer_class = ItemSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        StockLedger.objects.filter(item=instance).delete()
+        return super().destroy(request, *args, **kwargs)
+
+
+# ── Stock Ledger (read-only list) ─────────────────────────────────────────────
+class StockLedgerList(generics.ListAPIView):
+    queryset         = StockLedger.objects.select_related('item', 'location', 'created_by')
+    serializer_class = StockLedgerSerializer
+    filterset_fields = ('item', 'location', 'transaction_type')
+    search_fields    = ('item__name', 'reference_type')
+    ordering_fields  = ('created_at',)
+
+
+class StockLedgerDetail(generics.RetrieveUpdateAPIView):
+    """PATCH /inventory/ledger/<pk>/ — allows editing qty & unit_price of an OPENING entry."""
+    queryset         = StockLedger.objects.all()
+    serializer_class = StockLedgerSerializer
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.transaction_type != StockLedger.OPENING:
+            return Response({'error': 'Only OPENING entries can be edited.'}, status=status.HTTP_400_BAD_REQUEST)
+        qty_raw   = request.data.get('quantity')
+        price_raw = request.data.get('unit_price')
+        try:
+            if qty_raw is not None:
+                qty = Decimal(str(qty_raw))
+                if qty <= 0:
+                    return Response({'error': 'Quantity must be > 0'}, status=400)
+                instance.quantity = qty
+            if price_raw is not None:
+                price = Decimal(str(price_raw))
+                if price <= 0:
+                    return Response({'error': 'Unit price must be > 0'}, status=400)
+                instance.unit_price = price
+            instance.save()
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Invalid quantity or unit_price'}, status=400)
+        return Response(StockLedgerSerializer(instance).data)
+
+
+
+# ── Closing Stock Report ──────────────────────────────────────────────────────
+class ClosingStockView(APIView):
+    def get(self, request):
+        item_id     = request.query_params.get('item')
+        location_id = request.query_params.get('location')
+        as_of       = request.query_params.get('as_of')
+        data = StockService.get_closing_stock(item_id, location_id, as_of)
+        return Response(list(data))
+
+
+# ── Purchase ──────────────────────────────────────────────────────────────────
+class PurchaseListCreate(generics.ListCreateAPIView):
+    queryset         = Purchase.objects.select_related('supplier', 'item', 'location')
+    serializer_class = PurchaseSerializer
+    filterset_fields = ('supplier', 'item', 'location', 'purchase_date')
+    search_fields    = ('invoice_number', 'item__name', 'supplier__name')
+
+    def create(self, request, *args, **kwargs):
+        try:
+            data = request.data.copy()
+            # Handle manual supplier name: create or get supplier by name
+            supplier_name = data.get('supplier_name', '').strip()
+            if supplier_name and not data.get('supplier_id'):
+                supplier, _ = Supplier.objects.get_or_create(
+                    name__iexact=supplier_name,
+                    defaults={'name': supplier_name}
+                )
+                data['supplier_id'] = supplier.pk
+            purchase = PurchaseService.create_purchase(data, user=request.user)
+            return Response(PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PurchaseDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = Purchase.objects.all()
+    serializer_class = PurchaseSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.ledger_entry_id:
+            StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
+        return super().destroy(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+
+# ── Purchase Preview (auto-calc endpoint) ─────────────────────────────────────
+class PurchasePreviewView(APIView):
+    def post(self, request):
+        s = PurchasePreviewSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        return Response(s.validated_data)
+
+
+# ── Issue ─────────────────────────────────────────────────────────────────────
+class IssueListCreate(generics.ListCreateAPIView):
+    queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
+    serializer_class = IssueItemSerializer
+    filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
+
+    def create(self, request, *args, **kwargs):
+        try:
+            issue = IssueService.create_issue(request.data, user=request.user)
+            return Response(IssueItemSerializer(issue).data, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = IssueItem.objects.all()
+    serializer_class = IssueItemSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        trip = instance.trip  # save reference before delete
+        if instance.ledger_entry_id:
+            StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
+        result = super().destroy(request, *args, **kwargs)
+        if trip:
+            trip.recalculate_costs()
+        return result
+
+
+# ── Available Stock Check ─────────────────────────────────────────────────────
+@api_view(['GET'])
+def available_stock(request):
+    item_id     = request.query_params.get('item')
+    location_id = request.query_params.get('location')
+    if not item_id:
+        return Response({'error': 'item param required'}, status=400)
+    qty = StockService.get_available_qty(item_id, location_id)
+    return Response({'available_qty': float(qty)})
+
+
+# ── FIFO Stock Breakdown ──────────────────────────────────────────────────────
+@api_view(['GET'])
+def fifo_stock_breakdown(request):
     """
-    TRANSACTION-BASED stock ledger.
-    ─ Inward  : positive quantity (OPENING, PURCHASE, TRANSFER_IN)
-    ─ Outward : negative quantity (ISSUE, TRANSFER_OUT)
+    Returns the FIFO batch breakdown for a given item/location.
+    Used by the Issue page to show which batches will be consumed and at what price.
 
-    Closing stock = SUM(quantity)
-    Closing value = SUM(final_amount)
-
-    NEVER store closing stock as a field. Always compute dynamically.
+    Query params:
+        item     (required) – item ID
+        location (optional) – location ID
     """
-    OPENING      = 'OPENING'
-    PURCHASE     = 'PURCHASE'
-    ISSUE        = 'ISSUE'
-    TRANSFER_IN  = 'TRANSFER_IN'
-    TRANSFER_OUT = 'TRANSFER_OUT'
-    ADJUSTMENT   = 'ADJUSTMENT'
+    item_id     = request.query_params.get('item')
+    location_id = request.query_params.get('location')
+    if not item_id:
+        return Response({'error': 'item param required'}, status=400)
+    batches = StockService.get_fifo_batches(item_id, location_id)
+    total_available = sum(b['remaining'] for b in batches)
+    return Response({
+        'total_available': float(total_available),
+        'batches': [
+            {
+                'ledger_id':  b['ledger_id'],
+                'unit_price': float(b['unit_price']),
+                'remaining':  float(b['remaining']),
+            }
+            for b in batches
+        ],
+    })
 
-    TRANSACTION_CHOICES = [
-        (OPENING,      'Opening Balance'),
-        (PURCHASE,     'Purchase'),
-        (ISSUE,        'Issue'),
-        (TRANSFER_IN,  'Transfer In'),
-        (TRANSFER_OUT, 'Transfer Out'),
-        (ADJUSTMENT,   'Adjustment'),
-    ]
 
-    item             = models.ForeignKey(Item,     on_delete=models.PROTECT, related_name='ledger_entries')
-    location         = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='ledger_entries')
-    transaction_type = models.CharField(max_length=15, choices=TRANSACTION_CHOICES)
+# ── Opening Stock (standalone endpoint) ──────────────────────────────────────
+@api_view(['POST'])
+def post_opening_stock(request):
+    from decimal import Decimal, InvalidOperation
 
-    # Quantity: positive = inward, negative = outward
-    quantity         = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price       = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    item_id     = request.data.get('item_id')
+    qty_raw     = request.data.get('quantity')
+    price_raw   = request.data.get('unit_price')
+    location_id = request.data.get('location_id')
 
-    # VAT fields
-    vat_applicable   = models.BooleanField(default=False)
-    vat_percentage   = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    vat_amount       = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    if not item_id:
+        return Response({'error': 'item_id is required'}, status=400)
 
-    # Computed (stored for reporting performance)
-    base_amount      = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    final_amount     = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    try:
+        qty   = Decimal(str(qty_raw))
+        price = Decimal(str(price_raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return Response({'error': 'Invalid quantity or unit_price'}, status=400)
 
-    # Reference to originating transaction
-    reference_type   = models.CharField(max_length=50, blank=True)
-    reference_id     = models.BigIntegerField(null=True, blank=True)
-    remark           = models.TextField(blank=True)
+    if qty <= 0:
+        return Response({'error': 'Quantity must be greater than 0'}, status=400)
+    if price <= 0:
+        return Response({'error': 'Unit price must be greater than 0'}, status=400)
 
-    created_by       = models.ForeignKey(
-        'users.User', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='stock_ledger_entries'
+    try:
+        item = Item.objects.get(pk=item_id)
+    except Item.DoesNotExist:
+        return Response({'error': 'Item not found'}, status=404)
+
+    if location_id:
+        try:
+            loc = Location.objects.get(pk=location_id)
+        except Location.DoesNotExist:
+            return Response({'error': 'Location not found'}, status=404)
+    else:
+        loc = Location.objects.filter(deleted_at__isnull=True).first()
+        if not loc:
+            loc = Location.objects.create(name='Main Store', location_type='STORE')
+
+    entry = StockLedger.objects.create(
+        item=item,
+        location=loc,
+        transaction_type=StockLedger.OPENING,
+        quantity=qty,
+        unit_price=price,
+        created_by=request.user if request.user.is_authenticated else None,
+        remark='Opening Stock',
     )
 
-    class Meta:
-        db_table = 'stock_ledger'
-        ordering = ['-created_at']
-        indexes  = [
-            models.Index(fields=['item', 'location', 'created_at']),
-            models.Index(fields=['transaction_type', 'created_at']),
-        ]
-
-    def save(self, *args, **kwargs):
-        # ── Auto-calculate amounts before saving ──
-        self.base_amount = abs(self.quantity) * self.unit_price
-        if self.vat_applicable and self.vat_percentage:
-            self.vat_amount  = self.base_amount * (self.vat_percentage / 100)
-        else:
-            self.vat_amount  = Decimal('0')
-            self.vat_percentage = Decimal('0')
-        self.final_amount = self.base_amount + self.vat_amount
-        # Preserve sign of quantity in final_amount
-        if self.quantity < 0:
-            self.final_amount = -self.final_amount
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.transaction_type} | {self.item.name} | qty={self.quantity}"
-
-
-class Purchase(TimeStampedModel):
-    """Purchase order – creates a StockLedger entry on save."""
-    supplier    = models.ForeignKey('core.Supplier', on_delete=models.PROTECT, related_name='purchases')
-    item        = models.ForeignKey(Item,            on_delete=models.PROTECT, related_name='purchases')
-    location    = models.ForeignKey(Location,        on_delete=models.PROTECT)
-    quantity    = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price  = models.DecimalField(max_digits=12, decimal_places=2)
-
-    vat_applicable  = models.BooleanField(default=False)
-    vat_percentage  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    vat_amount      = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    base_amount     = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    final_amount    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-
-    invoice_number  = models.CharField(max_length=100, blank=True)
-    purchase_date   = models.DateField()
-    remark          = models.TextField(blank=True)
-    ledger_entry    = models.OneToOneField(StockLedger, null=True, blank=True, on_delete=models.SET_NULL, related_name='purchase')
-    created_by      = models.ForeignKey('users.User', null=True, blank=True, on_delete=models.SET_NULL)
-
-    class Meta:
-        db_table = 'purchases'
-        ordering = ['-purchase_date']
-
-    def __str__(self): return f"PUR-{self.pk} | {self.item.name} | {self.quantity}"
-
-
-class IssueItem(TimeStampedModel):
-    """Issue – reduces stock via negative StockLedger entry.
-    Can be linked to a trip so the cost auto-updates the trip's spare_parts_cost.
-    """
-    TRUCK     = 'TRUCK'
-    WORKSHOP  = 'WORKSHOP'
-    BREAKDOWN = 'BREAKDOWN'
-    OTHER     = 'OTHER'
-    ISSUE_TYPE_CHOICES = [(TRUCK,'Truck'),(WORKSHOP,'Workshop'),(BREAKDOWN,'Breakdown'),(OTHER,'Other')]
-
-    item         = models.ForeignKey(Item,     on_delete=models.PROTECT, related_name='issues')
-    location     = models.ForeignKey(Location, on_delete=models.PROTECT)
-    truck        = models.ForeignKey('trucks.Truck', null=True, blank=True, on_delete=models.SET_NULL, related_name='issues')
-    trip         = models.ForeignKey('trips.Trip',   null=True, blank=True, on_delete=models.SET_NULL, related_name='spare_issues')
-    issue_type   = models.CharField(max_length=15, choices=ISSUE_TYPE_CHOICES)
-    quantity     = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    final_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    issue_date   = models.DateField()
-    remark       = models.TextField(blank=True)
-    ledger_entry = models.OneToOneField(StockLedger, null=True, blank=True, on_delete=models.SET_NULL, related_name='issue')
-    created_by   = models.ForeignKey('users.User', null=True, blank=True, on_delete=models.SET_NULL)
-
-    class Meta:
-        db_table = 'issue_items'
-        ordering = ['-issue_date']
-
-    def __str__(self): return f"ISS-{self.pk} | {self.item.name} | {self.quantity}"
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # Auto-update trip's spare_parts_cost when linked to a trip
-        if self.trip_id:
-            self.trip.recalculate_costs()
+    return Response({
+        'id': entry.pk,
+        'item': item.name,
+        'location': loc.name,
+        'quantity': float(qty),
+        'unit_price': float(price),
+        'final_amount': float(entry.final_amount),
+        'message': f'Opening stock of {qty} units posted for {item.name}',
+    }, status=201)
