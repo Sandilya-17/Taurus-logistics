@@ -1,9 +1,113 @@
-"""apps/inventory/services.py – Stock ledger business logic."""
+"""apps/inventory/services.py – Stock ledger business logic.
+
+FIFO COSTING
+------------
+When issuing stock, oldest inward batches (OPENING first, then PURCHASE,
+ordered by created_at ASC) are consumed first.  The unit_price stored on
+the IssueItem and its ledger entry is a **weighted-average** of the batches
+consumed, so final_amount = sum(batch_qty_consumed × batch_price).
+"""
 from decimal import Decimal
 from django.db import transaction
 from django.db.models import Sum
 from .models import Item, Location, StockLedger, Purchase, IssueItem
 
+
+# ── FIFO helpers ─────────────────────────────────────────────────────────────
+
+def _fifo_batches(item_id, location_id=None):
+    """
+    Return still-available inward batches for this item/location, oldest-first.
+
+    Each element:
+        { 'ledger_id': int, 'unit_price': Decimal, 'remaining': Decimal }
+
+    Algorithm
+    ---------
+    1. Fetch all OPENING / PURCHASE entries ordered by created_at ASC.
+    2. Compute total units already issued (all ISSUE / TRANSFER_OUT).
+    3. Walk batches oldest-first, subtracting issued units, to find how much
+       remains in each batch.
+    """
+    # 1. Inward batches (oldest first)
+    inward_qs = (
+        StockLedger.objects
+        .filter(
+            item_id=item_id,
+            transaction_type__in=[StockLedger.OPENING, StockLedger.PURCHASE],
+            quantity__gt=0,
+        )
+    )
+    if location_id:
+        inward_qs = inward_qs.filter(location_id=location_id)
+    inward_batches = list(
+        inward_qs.order_by('created_at')
+                 .values('id', 'unit_price', 'quantity')
+    )
+
+    # 2. Total outward already issued
+    outward_qs = StockLedger.objects.filter(
+        item_id=item_id,
+        transaction_type__in=[StockLedger.ISSUE, StockLedger.TRANSFER_OUT],
+        quantity__lt=0,
+    )
+    if location_id:
+        outward_qs = outward_qs.filter(location_id=location_id)
+    total_issued = abs(
+        outward_qs.aggregate(t=Sum('quantity'))['t'] or Decimal('0')
+    )
+
+    # 3. Walk batches, compute remaining
+    remaining_to_deduct = total_issued
+    available_batches = []
+
+    for batch in inward_batches:
+        batch_qty = Decimal(str(batch['quantity']))
+        if remaining_to_deduct >= batch_qty:
+            remaining_to_deduct -= batch_qty   # fully consumed by prior issues
+        else:
+            remaining = batch_qty - remaining_to_deduct
+            remaining_to_deduct = Decimal('0')
+            available_batches.append({
+                'ledger_id':  batch['id'],
+                'unit_price': Decimal(str(batch['unit_price'])),
+                'remaining':  remaining,
+            })
+
+    return available_batches
+
+
+def _fifo_weighted_price(item_id, qty_needed, location_id=None):
+    """
+    Consume qty_needed units from FIFO batches (oldest first) and return the
+    weighted-average unit price across batches consumed.
+
+    Raises ValueError if insufficient stock.
+    """
+    batches = _fifo_batches(item_id, location_id)
+
+    total_available = sum(b['remaining'] for b in batches)
+    if total_available < qty_needed:
+        raise ValueError(
+            f"Insufficient stock. Available: {total_available:.3f}, "
+            f"Requested: {qty_needed:.3f}"
+        )
+
+    remaining_need = qty_needed
+    weighted_sum   = Decimal('0')
+
+    for batch in batches:
+        if remaining_need <= 0:
+            break
+        take = min(batch['remaining'], remaining_need)
+        weighted_sum   += take * batch['unit_price']
+        remaining_need -= take
+
+    avg_price = (weighted_sum / qty_needed).quantize(Decimal('0.000001'))
+    return avg_price
+
+
+# ── StockService ──────────────────────────────────────────────────────────────
 
 class StockService:
 
@@ -15,7 +119,7 @@ class StockService:
         qs = Item.objects.all()
         if item_id:
             qs = qs.filter(id=item_id)
-        
+
         from django.db.models import Q
         ledger_filter = Q()
         if location_id:
@@ -34,15 +138,18 @@ class StockService:
         out = []
         for r in result:
             out.append({
-                'item__id': r['id'],
-                'item__name': r['name'],
-                'item__item_type': r['item_type'],
+                'item__id':            r['id'],
+                'item__name':          r['name'],
+                'item__item_type':     r['item_type'],
                 'item__reorder_level': r['reorder_level'],
-                'item__unit': r['unit'],
-                'location__id': location_id or '',
-                'location__name': 'All Locations' if not location_id else Location.objects.get(id=location_id).name,
-                'closing_qty': r['closing_qty'],
-                'closing_value': r['closing_value']
+                'item__unit':          r['unit'],
+                'location__id':        location_id or '',
+                'location__name':      (
+                    'All Locations' if not location_id
+                    else Location.objects.get(id=location_id).name
+                ),
+                'closing_qty':         r['closing_qty'],
+                'closing_value':       r['closing_value'],
             })
         return out
 
@@ -63,6 +170,13 @@ class StockService:
             )
         return available
 
+    @staticmethod
+    def get_fifo_batches(item_id, location_id=None):
+        """Public helper — returns FIFO batch breakdown for API/frontend preview."""
+        return _fifo_batches(item_id, location_id)
+
+
+# ── PurchaseService ───────────────────────────────────────────────────────────
 
 class PurchaseService:
 
@@ -99,7 +213,6 @@ class PurchaseService:
             created_by     = user,
         )
 
-        # Post to ledger (positive quantity = inward)
         ledger = StockLedger.objects.create(
             item_id          = data['item_id'],
             location_id      = data['location_id'],
@@ -118,32 +231,42 @@ class PurchaseService:
         return purchase
 
 
+# ── IssueService ──────────────────────────────────────────────────────────────
+
 class IssueService:
 
     @staticmethod
     @transaction.atomic
     def create_issue(data, user=None):
         """
-        Validate stock, create IssueItem, post negative entry to StockLedger.
-        data keys: item_id, location_id, quantity, issue_type, truck_id, trip_id (optional), issue_date, remark
-        """
-        qty = Decimal(str(data['quantity']))
-        # Get last known unit price from ledger
-        last_entry = (
-            StockLedger.objects.filter(item_id=data['item_id'], quantity__gt=0)
-            .order_by('-created_at').first()
-        )
-        unit_price = last_entry.unit_price if last_entry else Decimal('0')
-        final_amt  = qty * unit_price
+        Validate stock, compute FIFO weighted-average unit price, create
+        IssueItem and post a negative entry to StockLedger.
 
-        # Validate stock availability
-        StockService.validate_stock(data['item_id'], qty, data['location_id'])
+        FIFO rule
+        ---------
+        Oldest inward batches (OPENING first, then PURCHASE by created_at)
+        are consumed before newer ones.  The unit_price on the issue record
+        is the weighted-average across the batches consumed, so old stock is
+        always costed at its original purchase price.  Only after old stock
+        is exhausted does the current-month purchase price apply.
+
+        data keys:
+            item_id, location_id, quantity, issue_type,
+            truck_id, trip_id (optional), issue_date, remark
+        """
+        qty         = Decimal(str(data['quantity']))
+        item_id     = data['item_id']
+        location_id = data.get('location_id')
+
+        # FIFO weighted-average price (also validates sufficient stock)
+        unit_price = _fifo_weighted_price(item_id, qty, location_id)
+        final_amt  = (qty * unit_price).quantize(Decimal('0.01'))
 
         issue = IssueItem.objects.create(
-            item_id      = data['item_id'],
-            location_id  = data['location_id'],
+            item_id      = item_id,
+            location_id  = location_id,
             truck_id     = data.get('truck_id'),
-            trip_id      = data.get('trip_id'),   # NEW: optional trip link
+            trip_id      = data.get('trip_id'),
             issue_type   = data['issue_type'],
             quantity     = qty,
             unit_price   = unit_price,
@@ -155,8 +278,8 @@ class IssueService:
 
         # Post to ledger (negative quantity = outward)
         ledger = StockLedger.objects.create(
-            item_id          = data['item_id'],
-            location_id      = data['location_id'],
+            item_id          = item_id,
+            location_id      = location_id,
             transaction_type = StockLedger.ISSUE,
             quantity         = -qty,
             unit_price       = unit_price,
