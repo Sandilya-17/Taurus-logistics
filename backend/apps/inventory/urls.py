@@ -12,6 +12,7 @@ urlpatterns = [
     path('ledger/<int:pk>/',        StockLedgerDetail.as_view(),    name='ledger-detail'),
     path('closing-stock/',          ClosingStockView.as_view(),     name='closing-stock'),
     path('available-stock/',        available_stock,                name='available-stock'),
+    path('fifo-breakdown/',         fifo_stock_breakdown,           name='fifo-breakdown'),
     path('purchases/',              PurchaseListCreate.as_view(),   name='purchase-list'),
     path('purchases/<int:pk>/',     PurchaseDetail.as_view(),       name='purchase-detail'),
     path('purchases/preview/',      PurchasePreviewView.as_view(),  name='purchase-preview'),
