@@ -1,4 +1,4 @@
-// src/pages/Issue.jsx – Multi-item issue with truck/trip linkage
+// src/pages/Issue.jsx – Multi-item issue with FIFO costing & truck/trip linkage
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import api, { fmtGHS } from '../utils/api';
@@ -11,11 +11,25 @@ const newLine = () => ({
   location_id: '',
   quantity:    '',
   avail:       null,
-  unitPrice:   0,
+  fifoBatches: [],   // FIFO batch breakdown
+  unitPrice:   0,    // weighted-average FIFO price
   lineTotal:   0,
   stockErr:    false,
   checking:    false,
 });
+
+/** Compute FIFO weighted-average price for qty from batch list */
+function fifoPrice(batches, qty) {
+  let need = qty;
+  let wsum = 0;
+  for (const b of batches) {
+    if (need <= 0) break;
+    const take = Math.min(b.remaining, need);
+    wsum += take * b.unit_price;
+    need -= take;
+  }
+  return qty > 0 ? wsum / qty : 0;
+}
 
 export default function IssuePage() {
   const { user } = useAuth();
@@ -51,30 +65,34 @@ export default function IssuePage() {
     ? trips.filter(t => String(t.truck) === String(watchTruck))
     : trips;
 
-  const checkStock = async (idx, itemId, locationId) => {
+  /** Fetch FIFO batch breakdown for a line; recompute price from qty */
+  const checkStock = async (idx, itemId, locationId, qty) => {
     if (!itemId || !locationId) {
       setLines(prev => prev.map((l, i) => i !== idx ? l
-        : { ...l, avail: null, unitPrice: 0, lineTotal: 0, stockErr: false, checking: false }));
+        : { ...l, avail: null, fifoBatches: [], unitPrice: 0, lineTotal: 0, stockErr: false, checking: false }));
       return;
     }
     setLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, checking: true }));
     try {
-      const [sRes, lRes] = await Promise.all([
-        api.get('/inventory/available-stock/', { params: { item: itemId, location: locationId } }),
-        api.get('/inventory/ledger/', { params: { item: itemId, location: locationId, page_size: 50 } }),
-      ]);
-      const avail = parseFloat(sRes.data.available_qty || 0);
-      const rows  = lRes.data.results || lRes.data;
-      // Find the most recent PURCHASE or OPENING entry with a valid unit price
-      const priceRow  = rows.find(r =>
-        (r.transaction_type === 'PURCHASE' || r.transaction_type === 'OPENING') &&
-        parseFloat(r.unit_price) > 0
-      );
-      const unitPrice = priceRow ? parseFloat(priceRow.unit_price) || 0 : 0;
+      const res = await api.get('/inventory/fifo-breakdown/', {
+        params: { item: itemId, location: locationId }
+      });
+      const { total_available, batches } = res.data;
+      const avail = parseFloat(total_available || 0);
+
       setLines(prev => prev.map((l, i) => {
         if (i !== idx) return l;
-        const qty      = parseFloat(l.quantity) || 0;
-        return { ...l, avail, unitPrice, lineTotal: qty * unitPrice, stockErr: qty > avail, checking: false };
+        const lineQty  = parseFloat(qty !== undefined ? qty : l.quantity) || 0;
+        const up       = fifoPrice(batches, Math.min(lineQty, avail));
+        return {
+          ...l,
+          avail,
+          fifoBatches: batches,
+          unitPrice:   up,
+          lineTotal:   lineQty * up,
+          stockErr:    lineQty > avail,
+          checking:    false,
+        };
       }));
     } catch {
       setLines(prev => prev.map((l, i) => i !== idx ? l : { ...l, avail: null, checking: false }));
@@ -85,9 +103,16 @@ export default function IssuePage() {
     setLines(prev => {
       const next = prev.map((l, i) => i !== idx ? l : { ...l, [field]: value });
       const line = next[idx];
+
       if (field === 'quantity') {
         const qty = parseFloat(value) || 0;
-        next[idx] = { ...line, lineTotal: qty * line.unitPrice, stockErr: line.avail !== null && qty > line.avail };
+        const up  = fifoPrice(line.fifoBatches, Math.min(qty, line.avail || 0));
+        next[idx] = {
+          ...line,
+          unitPrice: up,
+          lineTotal: qty * up,
+          stockErr:  line.avail !== null && qty > line.avail,
+        };
         return next;
       }
       if (field === 'item_id' || field === 'location_id') {
@@ -127,7 +152,7 @@ export default function IssuePage() {
         issue_date:  data.issue_date,
         remark:      data.remark,
       })));
-      toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued successfully.${data.trip_id ? ' Trip cost updated.' : ''}`);
+      toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued (FIFO costing applied).${data.trip_id ? ' Trip cost updated.' : ''}`);
       reset({ issue_date: '', issue_type: 'TRUCK', truck_id: '', trip_id: '', remark: '' });
       setLines([newLine()]);
       loadData();
@@ -158,6 +183,52 @@ export default function IssuePage() {
   const anyStockErr = lines.some(l => l.stockErr);
   const readyLines  = lines.filter(l => l.item_id && l.location_id && parseFloat(l.quantity) > 0);
 
+  /** Small FIFO badge showing batch breakdown for a line */
+  const FifoBadge = ({ line }) => {
+    if (!line.fifoBatches?.length || !parseFloat(line.quantity)) return null;
+    const qty = parseFloat(line.quantity) || 0;
+    let need = qty;
+    const consumed = [];
+    for (const b of line.fifoBatches) {
+      if (need <= 0) break;
+      const take = Math.min(b.remaining, need);
+      consumed.push({ take, unit_price: b.unit_price });
+      need -= take;
+    }
+    if (consumed.length === 0) return null;
+    return (
+      <div style={{
+        fontSize: 10, color: 'var(--muted)', marginTop: 4, padding: '4px 8px',
+        background: 'rgba(100,180,100,0.07)', borderRadius: 6,
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+      }}>
+        <span style={{ fontWeight: 700, color: 'var(--green)', marginRight: 2 }}>FIFO:</span>
+        {consumed.map((c, i) => (
+          <span key={i} style={{
+            background: i === 0 ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+            color: i === 0 ? 'var(--green)' : 'var(--amber)',
+            borderRadius: 4, padding: '1px 6px', fontWeight: 600,
+          }}>
+            {c.take.toFixed(3)} × {fmtGHS(c.unit_price)}
+            {i === 0 && consumed.length > 1 ? ' (old stock)' : i === 0 ? ' (old stock)' : ' (new stock)'}
+          </span>
+        ))}
+        {need > 0 && (
+          <span style={{ color: 'var(--red)', fontWeight: 700 }}>
+            ⛔ {need.toFixed(3)} units short
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const issueBadgeClass = (type) => {
+    if (type === 'TRUCK')     return 'b-blue';
+    if (type === 'WORKSHOP')  return 'b-amber';
+    if (type === 'BREAKDOWN') return 'b-red';
+    return 'b-gray';
+  };
+
   return (
     <div>
       <div className="g2" style={{ alignItems: 'start' }}>
@@ -168,6 +239,22 @@ export default function IssuePage() {
             <span className="card-title-ic">{editRec ? '✏️' : '📤'}</span>
             {editRec ? 'Edit Issue Record' : 'Issue Items from Stock'}
           </div>
+
+          {/* FIFO info banner */}
+          {!editRec && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
+              borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: 'var(--muted)',
+            }}>
+              <span style={{ fontSize: 15 }}>📦</span>
+              <span>
+                <strong style={{ color: 'var(--green)' }}>FIFO costing active</strong>
+                {' '}— oldest stock (opening/earliest purchase) is consumed first at its original price.
+                Once exhausted, current purchase price applies.
+              </span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)}>
 
@@ -187,6 +274,7 @@ export default function IssuePage() {
                       <option value="TRUCK">TRUCK</option>
                       <option value="WORKSHOP">WORKSHOP</option>
                       <option value="BREAKDOWN">BREAKDOWN</option>
+                      <option value="OTHER">OTHER</option>
                     </select>
                   </div>
                   {watchType === 'TRUCK' && (
@@ -198,13 +286,25 @@ export default function IssuePage() {
                       </select>
                     </div>
                   )}
-                  <div className="fg">
-                    <label>Link to Trip <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>(auto-updates trip cost)</span></label>
-                    <select {...register('trip_id')}>
-                      <option value="">— None / Not Trip-Specific —</option>
-                      {truckTrips.map(t => <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin} → {t.destination}</option>)}
-                    </select>
-                  </div>
+                  {(watchType === 'TRUCK' || watchType === 'BREAKDOWN') && (
+                    <div className="fg">
+                      <label>Link to Trip <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>(auto-updates trip cost)</span></label>
+                      <select {...register('trip_id')}>
+                        <option value="">— None / Not Trip-Specific —</option>
+                        {truckTrips.map(t => <option key={t.id} value={t.id}>{t.waybill_no} – {t.origin} → {t.destination}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {watchType === 'OTHER' && (
+                    <div className="fg" style={{ gridColumn: 'span 2' }}>
+                      <div style={{
+                        background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)',
+                        borderRadius: 8, padding: '8px 12px', fontSize: 11, color: 'var(--muted)',
+                      }}>
+                        ℹ️ <strong style={{ color: 'var(--amber)' }}>Other</strong> — use the Remark field below to describe the purpose of this issue (e.g. "Office use", "Site maintenance", "Donation").
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -221,8 +321,14 @@ export default function IssuePage() {
               )}
 
               <div className="fg" style={{ gridColumn: 'span 2' }}>
-                <label>Remark / Purpose</label>
-                <input type="text" placeholder="e.g. Routine maintenance, breakdown repair…" {...register('remark')} />
+                <label>Remark / Purpose{watchType === 'OTHER' ? ' *' : ''}</label>
+                <input
+                  type="text"
+                  placeholder={watchType === 'OTHER'
+                    ? 'Required: describe the purpose of this issue…'
+                    : 'e.g. Routine maintenance, breakdown repair…'}
+                  {...register('remark', { required: watchType === 'OTHER' })}
+                />
               </div>
             </div>
 
@@ -239,7 +345,7 @@ export default function IssuePage() {
 
                 {/* Column Headers */}
                 <div style={{
-                  display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 90px 28px',
+                  display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
                   gap: 6, padding: '0 4px 6px',
                   fontSize: 10, fontWeight: 700, color: 'var(--muted)',
                   textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -255,9 +361,9 @@ export default function IssuePage() {
 
                 {/* Item Rows */}
                 {lines.map((line, idx) => (
-                  <div key={line._key} style={{ marginBottom: 8 }}>
+                  <div key={line._key} style={{ marginBottom: 10 }}>
                     <div style={{
-                      display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 90px 28px',
+                      display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 76px 84px 100px 28px',
                       gap: 6, alignItems: 'center',
                       padding: '8px 10px',
                       background: line.stockErr ? 'rgba(220,38,38,0.04)' : 'var(--surface)',
@@ -306,9 +412,14 @@ export default function IssuePage() {
                         }}
                       />
 
-                      {/* Line total */}
+                      {/* Line total (FIFO weighted price) */}
                       <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, color: line.lineTotal > 0 ? 'var(--text)' : 'var(--muted)' }}>
                         {line.lineTotal > 0 ? fmtGHS(line.lineTotal) : '—'}
+                        {line.unitPrice > 0 && (
+                          <div style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
+                            @{fmtGHS(line.unitPrice)}/u
+                          </div>
+                        )}
                       </div>
 
                       {/* Remove */}
@@ -324,11 +435,12 @@ export default function IssuePage() {
                         }}>✕</button>
                     </div>
 
+                    {/* FIFO batch breakdown */}
+                    <FifoBadge line={line} />
+
                     {/* Per-line stock error */}
                     {line.stockErr && (
-                      <div style={{
-                        fontSize: 11, color: 'var(--red)', padding: '4px 10px 0',
-                      }}>
+                      <div style={{ fontSize: 11, color: 'var(--red)', padding: '4px 10px 0' }}>
                         ⛔ Only {parseFloat(line.avail || 0).toFixed(2)} units available — reduce quantity.
                       </div>
                     )}
@@ -396,7 +508,11 @@ export default function IssuePage() {
                   <tr key={rec.id} style={{ background: editRec?.id === rec.id ? 'rgba(245,158,11,0.06)' : undefined }}>
                     <td>{new Date(rec.issue_date).toLocaleDateString('en-GB')}</td>
                     <td style={{ fontWeight: 600 }}>{rec.item_name}</td>
-                    <td><span className={`badge ${rec.issue_type === 'TRUCK' ? 'b-blue' : 'b-amber'}`}>{rec.issue_type}</span></td>
+                    <td>
+                      <span className={`badge ${issueBadgeClass(rec.issue_type)}`}>
+                        {rec.issue_type}
+                      </span>
+                    </td>
                     <td className="mono">{rec.truck_number || '—'}</td>
                     <td className="mono">{rec.trip_waybill || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{rec.quantity}</td>
