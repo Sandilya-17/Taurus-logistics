@@ -254,24 +254,46 @@ class IssueService:
             item_id, location_id, quantity, issue_type,
             truck_id, trip_id (optional), issue_date, remark
         """
-        qty         = Decimal(str(data['quantity']))
-        item_id     = data['item_id']
+        # ── Validate required fields ──────────────────────────────────────────
+        item_id     = data.get('item_id')
         location_id = data.get('location_id')
+        issue_type  = data.get('issue_type')
+        issue_date  = data.get('issue_date')
+        quantity_raw = data.get('quantity')
 
-        # FIFO weighted-average price (also validates sufficient stock)
+        if not item_id:
+            raise ValueError("item_id is required.")
+        if not location_id:
+            raise ValueError("location_id is required.")
+        if not issue_type:
+            raise ValueError("issue_type is required.")
+        if not issue_date:
+            raise ValueError("issue_date is required.")
+        if quantity_raw is None or quantity_raw == '':
+            raise ValueError("quantity is required.")
+
+        try:
+            qty = Decimal(str(quantity_raw))
+        except Exception:
+            raise ValueError(f"Invalid quantity: {quantity_raw!r}")
+
+        if qty <= 0:
+            raise ValueError("Quantity must be greater than 0.")
+
+        # ── FIFO weighted-average price (also validates sufficient stock) ─────
         unit_price = _fifo_weighted_price(item_id, qty, location_id)
         final_amt  = (qty * unit_price).quantize(Decimal('0.01'))
 
         issue = IssueItem.objects.create(
             item_id      = item_id,
             location_id  = location_id,
-            truck_id     = data.get('truck_id'),
-            trip_id      = data.get('trip_id'),
-            issue_type   = data['issue_type'],
+            truck_id     = data.get('truck_id') or None,
+            trip_id      = data.get('trip_id')  or None,
+            issue_type   = issue_type,
             quantity     = qty,
             unit_price   = unit_price,
             final_amount = final_amt,
-            issue_date   = data['issue_date'],
+            issue_date   = issue_date,
             remark       = data.get('remark', ''),
             created_by   = user,
         )
