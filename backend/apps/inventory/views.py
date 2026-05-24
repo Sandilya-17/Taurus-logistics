@@ -247,10 +247,17 @@ class IssueListCreate(generics.ListCreateAPIView):
     filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
 
     def create(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             issue = IssueService.create_issue(request.data, user=request.user)
             return Response(IssueItemSerializer(issue).data, status=status.HTTP_201_CREATED)
         except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except KeyError as e:
+            return Response({'error': f'Missing required field: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Failed to record issue: %s", e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
