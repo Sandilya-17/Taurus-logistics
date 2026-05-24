@@ -149,33 +149,47 @@ export default function IssuePage() {
 
     setSaving(true);
     try {
-      await Promise.all(valid.map(line => {
+      // Split lines: regular items go to API; OTHER items have no stock record and cannot be issued
+      const regularLines = valid.filter(l => l.item_id !== OTHER_ITEM);
+      const otherLines   = valid.filter(l => l.item_id === OTHER_ITEM);
+
+      if (regularLines.length === 0 && otherLines.length > 0) {
+        toast.error('OTHER items have no inventory record and cannot be issued from stock. Please select a specific item.');
+        setSaving(false);
+        return;
+      }
+
+      const results = await Promise.allSettled(regularLines.map(line => {
         const payload = {
+          item_id:     line.item_id,
           location_id: line.location_id,
           quantity:    parseFloat(line.quantity),
           issue_type:  data.issue_type,
           truck_id:    data.truck_id || null,
           trip_id:     data.trip_id  || null,
           issue_date:  data.issue_date,
-          remark:      line.item_id === OTHER_ITEM
-                         ? (line.other_item_name?.trim() + (data.remark ? ' – ' + data.remark : ''))
-                         : data.remark,
+          remark:      data.remark || '',
         };
-        if (line.item_id === OTHER_ITEM) {
-          // For OTHER items, find or use the first item as placeholder — or skip ledger
-          // Best practice: post with remark only, no item_id (backend must allow null or use a generic item)
-          payload.item_id = null;
-          payload.other_item_name = line.other_item_name?.trim();
-        } else {
-          payload.item_id = line.item_id;
-        }
         return api.post('/inventory/issues/', payload);
       }));
-      toast.success(`✅ ${valid.length} item${valid.length > 1 ? 's' : ''} issued successfully.${data.trip_id ? ' Trip cost updated.' : ''}`);
-      reset({ issue_date: '', issue_type: 'TRUCK', truck_id: '', trip_id: '', remark: '' });
-      setLines([newLine()]);
-      loadData();
-    } catch (e) { toast.error(e.response?.data?.error || 'Failed to record issue.'); }
+
+      const failures  = results.filter(r => r.status === 'rejected');
+      const successes = results.filter(r => r.status === 'fulfilled');
+
+      if (successes.length > 0) {
+        const otherMsg = otherLines.length > 0 ? ` (${otherLines.length} OTHER item(s) skipped – no stock record)` : '';
+        toast.success(`✅ ${successes.length} item${successes.length !== 1 ? 's' : ''} issued successfully.${data.trip_id ? ' Trip cost updated.' : ''}${otherMsg}`);
+        reset({ issue_date: '', issue_type: 'TRUCK', truck_id: '', trip_id: '', remark: '' });
+        setLines([newLine()]);
+        loadData();
+      }
+      if (failures.length > 0) {
+        const errMsg = failures[0].reason?.response?.data?.error || failures[0].reason?.message || 'Failed to record issue.';
+        toast.error(`❌ ${failures.length} item(s) failed: ${errMsg}`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.error || e.message || 'Failed to record issue.');
+    }
     finally { setSaving(false); }
   };
 
