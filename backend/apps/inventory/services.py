@@ -8,9 +8,25 @@ the IssueItem and its ledger entry is a **weighted-average** of the batches
 consumed, so final_amount = sum(batch_qty_consumed × batch_price).
 """
 from decimal import Decimal
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import Sum
 from .models import Item, Location, StockLedger, Purchase, IssueItem
+
+
+def _column_exists(table, column):
+    """Return True if `column` exists in `table` in the current DB."""
+    db_name = connection.settings_dict['NAME']
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s
+              AND TABLE_NAME   = %s
+              AND COLUMN_NAME  = %s
+            """,
+            [db_name, table, column],
+        )
+        return cursor.fetchone()[0] > 0
 
 
 # ── FIFO helpers ─────────────────────────────────────────────────────────────
@@ -284,11 +300,12 @@ class IssueService:
         unit_price = _fifo_weighted_price(item_id, qty, location_id)
         final_amt  = (qty * unit_price).quantize(Decimal('0.01'))
 
-        issue = IssueItem.objects.create(
+        # Build create kwargs — skip trip_id if the column doesn't exist yet
+        # (guards against production DBs where migration 0005 hasn't run)
+        create_kwargs = dict(
             item_id      = item_id,
             location_id  = location_id,
             truck_id     = data.get('truck_id') or None,
-            trip_id      = data.get('trip_id')  or None,
             issue_type   = issue_type,
             quantity     = qty,
             unit_price   = unit_price,
@@ -297,6 +314,11 @@ class IssueService:
             remark       = data.get('remark', ''),
             created_by   = user,
         )
+        trip_id = data.get('trip_id') or None
+        if trip_id and _column_exists('issue_items', 'trip_id'):
+            create_kwargs['trip_id'] = trip_id
+
+        issue = IssueItem.objects.create(**create_kwargs)
 
         # Post to ledger (negative quantity = outward)
         ledger = StockLedger.objects.create(
