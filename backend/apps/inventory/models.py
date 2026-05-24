@@ -199,5 +199,9 @@ class IssueItem(TimeStampedModel):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Auto-update trip's spare_parts_cost when linked to a trip
-        if self.trip_id:
-            self.trip.recalculate_costs()
+        # Guard against trip_id column not yet existing in DB (pending migration)
+        try:
+            if self.trip_id:
+                self.trip.recalculate_costs()
+        except Exception:
+            pass
