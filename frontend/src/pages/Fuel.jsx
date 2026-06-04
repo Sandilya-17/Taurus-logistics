@@ -105,13 +105,14 @@ export default function FuelPage() {
     setSaving(true);
     try {
       const payload = {
-        ...data,
-        truck_id:        parseInt(data.truck_id),
-        trip_id:         data.trip_id ? parseInt(data.trip_id) : null,
+        date:            data.date,
+        truck:           parseInt(data.truck_id),
+        trip:            data.trip_id ? parseInt(data.trip_id) : null,
         litres:          parseFloat(data.litres),
         fuel_limit:      parseFloat(data.fuel_limit),
         price_per_litre: parseFloat(data.price_per_litre),
         odometer:        data.odometer ? parseFloat(data.odometer) : null,
+        remark:          data.remark || '',
       };
       if (editing) {
         await api.patch(`/fuel/logs/${editing}/`, payload);
