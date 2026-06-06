@@ -219,7 +219,7 @@ button { font-family: inherit; }
 .page-content {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding: 24px;
 }
 .page-enter { animation: pgEnter .2s ease; }
@@ -770,8 +770,11 @@ select option { color: var(--text); background: var(--bg-card); }
 .stat-strip-val   { font-size: 17px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* ── Layout Grids ─────────────────────────────────────────── */
-.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+.g2 > * { min-width: 0; }
+.g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; min-width: 0; }
+.g3 > * { min-width: 0; }
+
 
 /* ── Utility ──────────────────────────────────────────────── */
 .mono   { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace; font-variant-numeric: tabular-nums; }
