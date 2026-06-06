@@ -1,5 +1,5 @@
 """
-Taurus Trade & Logistics ERP – Django Settings
+Taurus Trade & Logistics ERP – Django Settings (Enterprise Edition)
 """
 import os
 import pymysql
@@ -11,8 +11,8 @@ from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='taurus-change-this-in-production-secret-key-2026')
-DEBUG = False
+SECRET_KEY = config('SECRET_KEY')  # No default – MUST be set in environment
+DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
 INSTALLED_APPS = [
@@ -83,6 +83,7 @@ DATABASES = {
             'charset':  'utf8mb4',
             'sql_mode': 'STRICT_TRANS_TABLES',
         },
+        'CONN_MAX_AGE': 60,  # Persistent connections (enterprise)
     }
 }
 
@@ -130,6 +131,18 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
+    # ── Enterprise: API-level throttling ─────────────────────────────────────
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/min',       # Unauthenticated (login page etc.)
+        'user': '300/min',      # Authenticated users
+        'auth': '10/min',       # Login endpoint specifically
+    },
+    # ── Enterprise: consistent error responses ────────────────────────────────
+    'EXCEPTION_HANDLER': 'apps.core.exceptions.custom_exception_handler',
 }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
@@ -139,10 +152,12 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS':  True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'UPDATE_LAST_LOGIN': True,  # Enterprise: track last login time
 }
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL', default=True, cast=bool)
+CORS_ALLOWED_ORIGINS   = config('CORS_ALLOWED_ORIGINS', default='').split(',') if not CORS_ALLOW_ALL_ORIGINS else []
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'Content-Disposition',
@@ -151,11 +166,55 @@ CORS_EXPOSE_HEADERS = [
 ]
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.up.railway.app',
-    'https://taurus-logistics-production.up.railway.app',
-    'https://taurus-logistics-production-0a15.up.railway.app',
-]
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://*.up.railway.app,https://taurus-logistics-production.up.railway.app,https://taurus-logistics-production-0a15.up.railway.app'
+).split(',')
+
+# ── SECURITY HEADERS (enterprise hardening) ───────────────────────────────────
+if not DEBUG:
+    SECURE_HSTS_SECONDS            = 31536000   # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD            = True
+    SECURE_SSL_REDIRECT            = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+    SESSION_COOKIE_SECURE          = True
+    CSRF_COOKIE_SECURE             = True
+    SECURE_BROWSER_XSS_FILTER     = True
+    SECURE_CONTENT_TYPE_NOSNIFF   = True
+    X_FRAME_OPTIONS                = 'DENY'
+
+# ── CACHING (enterprise: Redis if available, else local memory) ───────────────
+REDIS_URL = config('REDIS_URL', default='')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'TIMEOUT': 300,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'taurus-erp-cache',
+        }
+    }
+
+# ── SESSION ───────────────────────────────────────────────────────────────────
+SESSION_ENGINE         = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_AGE     = 86400 * 7  # 7 days
+SESSION_COOKIE_HTTPONLY = True
+
+# ── EMAIL (enterprise: SMTP config for password reset / alerts) ───────────────
+EMAIL_BACKEND      = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST         = config('EMAIL_HOST',    default='')
+EMAIL_PORT         = config('EMAIL_PORT',    default=587, cast=int)
+EMAIL_HOST_USER    = config('EMAIL_HOST_USER',    default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS      = config('EMAIL_USE_TLS', default=True, cast=bool)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@tauruslogistics.com')
+SERVER_EMAIL        = DEFAULT_FROM_EMAIL
 
 # ── BUSINESS CONSTANTS ────────────────────────────────────────────────────────
 CURRENCY_SYMBOL   = 'GH₵'
@@ -174,7 +233,18 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'verbose': {'format': '[{asctime}] {levelname} {name}: {message}', 'style': '{', 'datefmt': '%d/%m/%Y %H:%M:%S'},
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} [{process:d}/{thread:d}]: {message}',
+            'style': '{',
+            'datefmt': '%d/%m/%Y %H:%M:%S'
+        },
+        'simple': {
+            'format': '[{asctime}] {levelname}: {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {'()': 'django.utils.log.RequireDebugFalse'},
     },
     'handlers': {
         'file': {
@@ -182,10 +252,44 @@ LOGGING = {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'taurus_erp.log',
             'maxBytes': 10 * 1024 * 1024,
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'taurus_errors.log',
+            'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'formatter': 'verbose',
         },
-        'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'taurus_security.log',
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
     },
-    'root': {'handlers': ['console', 'file'], 'level': 'INFO'},
+    'loggers': {
+        'django.security': {
+            'handlers': ['security_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['file', 'error_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file', 'error_file'],
+        'level': 'INFO',
+    },
 }
