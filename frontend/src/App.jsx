@@ -140,9 +140,18 @@ function Sidebar() {
           </div>
         ))}
       </div>
-      <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <button onClick={logout} className="btn btn-outline" style={{ width: '100%', color: '#fff', borderColor: 'rgba(255,255,255,0.2)', fontSize: '13px' }}>
-          <span style={{ width: 16, height: 16 }}>{Icons.Logout}</span> Sign Out
+      <div style={{ padding: '16px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <button onClick={logout} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '9px 12px', borderRadius: '7px', border: 'none',
+          background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)',
+          fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+          transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.15)'; e.currentTarget.style.color = '#f87171'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+        >
+          <span style={{ width: 15, height: 15, flexShrink: 0 }}>{Icons.Logout}</span> Sign Out
         </button>
       </div>
     </aside>
@@ -156,17 +165,21 @@ function Topbar() {
   const titles = { '/': 'Dashboard', '/trucks': 'Trucks', '/drivers': 'Drivers', '/trips': 'Trips', '/fuel': 'Fuel', '/purchase': 'Purchase', '/issue': 'Issue', '/stock': 'Stock', '/invoicing': 'Invoicing', '/expenditure': 'Expenditure', '/revenue': 'Revenue', '/maintenance': 'Maintenance', '/reports': 'Reports', '/users': 'Users', '/audit-log': 'Audit Log', '/profile': 'Profile' };
   return (
     <header className="topbar">
-      <h1 style={{ fontSize: '20px', fontWeight: 800, flex: 1, color: 'var(--text-main)' }}>{titles[location.pathname] || 'Taurus ERP'}</h1>
-      <div className="flex items-center gap-6">
-        <button onClick={toggle} className="btn btn-outline" style={{ padding: '10px', borderRadius: '10px' }}>
-          <span style={{ width: 18, height: 18, display: 'block' }}>{Icons.Theme}</span>
+      <h1 style={{ flex: 1 }}>{titles[location.pathname] || 'Taurus ERP'}</h1>
+      <div className="flex items-center gap-4">
+        <button onClick={toggle} style={{ width: 36, height: 36, borderRadius: '8px', border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--text)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)'; }}
+        >
+          <span style={{ width: 16, height: 16, display: 'block' }}>{Icons.Theme}</span>
         </button>
+        <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
         <div className="flex items-center gap-3">
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>{user?.first_name} {user?.last_name}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>{user?.role}</div>
+            <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text)' }}>{user?.first_name} {user?.last_name}</div>
+            <div style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>{user?.role}</div>
           </div>
-          <div style={{ width: 40, height: 40, borderRadius: '12px', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '16px', boxShadow: '0 4px 12px rgba(15, 98, 254, 0.2)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '10px', background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px', flexShrink: 0 }}>
             {user?.first_name?.[0]}
           </div>
         </div>
