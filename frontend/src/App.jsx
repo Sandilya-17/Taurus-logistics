@@ -650,13 +650,13 @@ export default function App() {
               toastOptions={{
                 duration: 3500,
                 style: {
-                  fontFamily: "'Outfit', sans-serif",
+                  fontFamily: "'IBM Plex Sans', sans-serif",
                   fontSize: 13,
                   borderRadius: 12,
                   boxShadow: '0 8px 32px rgba(0,0,0,.45)',
                   border: '1px solid rgba(255,255,255,.1)',
-                  background: '#1a2235',
-                  color: '#e2e8f0',
+                  background: '#0c1220',
+                  color: '#f2f4f8',
                 },
                 success: { iconTheme: { primary: '#10b981', secondary: '#1a2235' } },
                 error:   { iconTheme: { primary: '#ef4444', secondary: '#1a2235' } },
