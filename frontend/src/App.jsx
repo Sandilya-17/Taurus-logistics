@@ -1,5 +1,5 @@
-// src/App.jsx – Taurus Trade & Logistics ERP v7 — Premium Dark Edition
-import { useState, createContext, useContext, useEffect, Component } from 'react';
+// src/App.jsx – Taurus Trade & Logistics ERP — Enterprise Edition
+import { useState, createContext, useContext, useEffect, useCallback, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/main.css';
@@ -20,6 +20,8 @@ import Expenditure from './pages/Expenditure';
 import Revenue     from './pages/Revenue';
 import Maintenance from './pages/Maintenance';
 import Users       from './pages/Users';
+import Profile     from './pages/Profile';
+import AuditLog    from './pages/AuditLog';
 
 // ── Auth context ────────────────────────────────────────────
 const AuthCtx = createContext(null);
@@ -29,10 +31,13 @@ export const useAuth = () => useContext(AuthCtx);
 const ThemeCtx = createContext(null);
 export const useTheme = () => useContext(ThemeCtx);
 
+// ── Alerts context ────────────────────────────────────────────
+const AlertsCtx = createContext(null);
+export const useAlerts = () => useContext(AlertsCtx);
+
 function ThemeProvider({ children }) {
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('erp-theme');
-    // Apply immediately before first render to avoid flash
     const isDark = saved ? saved === 'dark' : true;
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     return isDark;
@@ -65,7 +70,57 @@ function AuthProvider({ children }) {
     setUser(null);
   };
 
-  return <AuthCtx.Provider value={{ user, login, logout }}>{children}</AuthCtx.Provider>;
+  // Refresh user data from server (e.g. after profile update)
+  const refreshUser = useCallback(async () => {
+    try {
+      const { data } = await api.get('/users/me/');
+      localStorage.setItem('user', JSON.stringify(data));
+      setUser(data);
+    } catch {}
+  }, []);
+
+  return (
+    <AuthCtx.Provider value={{ user, login, logout, refreshUser }}>
+      {children}
+    </AuthCtx.Provider>
+  );
+}
+
+function AlertsProvider({ children }) {
+  const { user } = useAuth();
+  const [unreadCount, setUnreadCount]  = useState(0);
+  const [alerts, setAlerts]            = useState([]);
+  const [showPanel, setShowPanel]      = useState(false);
+
+  const fetchAlerts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data } = await api.get('/core/alerts/?unread=true&ordering=-created_at');
+      const items = data.results ?? data;
+      setAlerts(items.slice(0, 20));
+      setUnreadCount(items.length);
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    fetchAlerts();
+    const t = setInterval(fetchAlerts, 60000); // Poll every minute
+    return () => clearInterval(t);
+  }, [fetchAlerts]);
+
+  const markAllRead = async () => {
+    try {
+      await api.post('/core/alerts/mark-read/', { all: true });
+      setUnreadCount(0);
+      setAlerts([]);
+    } catch {}
+  };
+
+  return (
+    <AlertsCtx.Provider value={{ unreadCount, alerts, showPanel, setShowPanel, markAllRead, fetchAlerts }}>
+      {children}
+    </AlertsCtx.Provider>
+  );
 }
 
 // ── SVG Icons ───────────────────────────────────────────────
@@ -84,18 +139,21 @@ const Icons = {
   Maintenance:  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
   Reports:      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
   Users:        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  AuditLog:     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+  Profile:      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>,
+  Bell:         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   Logout:       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
-  ChevronRight: <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>,
+  Shield:       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
 };
 
 // ── Login Page ──────────────────────────────────────────────
 function LoginPage() {
   const { login, user } = useAuth();
   const nav = useNavigate();
-  const [email,   setEmail]   = useState('');
-  const [pass,    setPass]    = useState('');
-  const [err,     setErr]     = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email,    setEmail]    = useState('');
+  const [pass,     setPass]     = useState('');
+  const [err,      setErr]      = useState('');
+  const [loading,  setLoading]  = useState(false);
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
@@ -111,7 +169,9 @@ function LoginPage() {
       login(data.user, data.access, data.refresh);
       nav('/');
     } catch (err) {
-      const detail = err.response?.data?.detail || err.response?.data?.non_field_errors?.[0];
+      const detail = err.response?.data?.message
+        || err.response?.data?.detail
+        || err.response?.data?.non_field_errors?.[0];
       setErr(detail || 'Invalid email or password. Please try again.');
     } finally { setLoading(false); }
   };
@@ -126,14 +186,12 @@ function LoginPage() {
 
   return (
     <div className="login-root">
-      {/* ── Left brand panel ── */}
       <div className="login-left">
         <div className="login-left-bg">
           <div className="login-grid-lines" />
           <div className="login-glow" />
           <div className="login-glow2" />
         </div>
-
         <div className="login-brand">
           <div className="login-logo-wrap">
             <div className="login-logo-badge">T</div>
@@ -142,14 +200,10 @@ function LoginPage() {
               <div className="login-logo-sub">&amp; Logistics ERP</div>
             </div>
           </div>
-
-          <div className="login-headline">
-            Enterprise<br/>operations,<br/><em>unified.</em>
-          </div>
+          <div className="login-headline">Enterprise<br/>operations,<br/><em>unified.</em></div>
           <div className="login-sub">
             A complete logistics management platform — from trucks on the road to invoices in the office, everything connected in one place.
           </div>
-
           <div className="login-features">
             {FEATURES.map((f, i) => (
               <div className="login-feature" key={i}>
@@ -159,13 +213,11 @@ function LoginPage() {
             ))}
           </div>
         </div>
-
         <div className="login-footer">
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · Enterprise Resource Planning System
         </div>
       </div>
 
-      {/* ── Right login panel ── */}
       <div className="login-right">
         <div className="login-card">
           <div className="login-card-header">
@@ -227,16 +279,12 @@ function LoginPage() {
             </button>
           </form>
 
-          <div className="login-hint">
-            🔑 Default: <strong>admin@taurus.com</strong> / <strong>admin1234</strong>
-          </div>
-
           <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border-lg)', display: 'flex', justifyContent: 'center', gap: 24 }}>
             {[
-              { icon: Icons.Trucks,     label: 'Fleet' },
-              { icon: Icons.Stock,      label: 'Inventory' },
-              { icon: Icons.Revenue,    label: 'Finance' },
-              { icon: Icons.Reports,    label: 'Reports' },
+              { icon: Icons.Trucks,   label: 'Fleet'     },
+              { icon: Icons.Stock,    label: 'Inventory' },
+              { icon: Icons.Revenue,  label: 'Finance'   },
+              { icon: Icons.Reports,  label: 'Reports'   },
             ].map((m, i) => (
               <div key={i} style={{ textAlign: 'center', color: 'var(--muted)' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4, opacity: .6 }}>{m.icon}</div>
@@ -250,33 +298,60 @@ function LoginPage() {
   );
 }
 
-// ── Navigation config ───────────────────────────────────────
+// ── 403 Access Denied Page ───────────────────────────────────
+function AccessDeniedPage({ module }) {
+  return (
+    <div style={{ padding: '60px 32px', textAlign: 'center' }}>
+      <div style={{ fontSize: 56, marginBottom: 16 }}>🔒</div>
+      <h2 style={{ color: 'var(--text)', marginBottom: 8 }}>Access Restricted</h2>
+      <p style={{ color: 'var(--muted)', maxWidth: 420, margin: '0 auto 24px' }}>
+        You don't have permission to access{module ? ` the <strong>${module}</strong> module` : ' this page'}.
+        Please contact your administrator to request access.
+      </p>
+      <Link to="/" className="btn btn-primary">← Back to Dashboard</Link>
+    </div>
+  );
+}
+
+// ── Module-permission guard ──────────────────────────────────
+function ModuleGuard({ module, children }) {
+  const { user } = useAuth();
+  // Admins always have full access
+  if (user?.role === 'ADMIN') return children;
+  // Managers and employees check module_permissions array
+  const perms = user?.module_permissions || [];
+  if (!module || perms.includes(module)) return children;
+  return <AccessDeniedPage module={module} />;
+}
+
+// ── Navigation config ────────────────────────────────────────
 const NAV = [
   { section: 'Overview', items: [
-    { to: '/',            icon: Icons.Dashboard,   label: 'Dashboard'   },
+    { to: '/',            icon: Icons.Dashboard,   label: 'Dashboard',    module: null },
   ]},
   { section: 'Fleet', items: [
-    { to: '/trucks',      icon: Icons.Trucks,      label: 'Trucks'      },
-    { to: '/drivers',     icon: Icons.Drivers,     label: 'Drivers'     },
-    { to: '/trips',       icon: Icons.Trips,       label: 'Trips'       },
-    { to: '/fuel',        icon: Icons.Fuel,        label: 'Fuel Control'},
+    { to: '/trucks',      icon: Icons.Trucks,      label: 'Trucks',       module: 'trucks'  },
+    { to: '/drivers',     icon: Icons.Drivers,     label: 'Drivers',      module: 'drivers' },
+    { to: '/trips',       icon: Icons.Trips,       label: 'Trips',        module: 'trips'   },
+    { to: '/fuel',        icon: Icons.Fuel,        label: 'Fuel Control', module: 'fuel'    },
   ]},
   { section: 'Inventory', items: [
-    { to: '/purchase',    icon: Icons.Purchase,    label: 'Purchase'    },
-    { to: '/issue',       icon: Icons.Issue,       label: 'Issue Items' },
-    { to: '/stock',       icon: Icons.Stock,       label: 'Stock Ledger'},
+    { to: '/purchase',    icon: Icons.Purchase,    label: 'Purchase',     module: 'purchase' },
+    { to: '/issue',       icon: Icons.Issue,       label: 'Issue Items',  module: 'issue'    },
+    { to: '/stock',       icon: Icons.Stock,       label: 'Stock Ledger', module: 'stock'    },
   ]},
   { section: 'Finance', items: [
-    { to: '/invoicing',   icon: Icons.Invoicing,   label: 'Invoicing'   },
-    { to: '/expenditure', icon: Icons.Expenditure, label: 'Expenditure' },
-    { to: '/revenue',     icon: Icons.Revenue,     label: 'Revenue'     },
+    { to: '/invoicing',   icon: Icons.Invoicing,   label: 'Invoicing',    module: 'invoicing'   },
+    { to: '/expenditure', icon: Icons.Expenditure, label: 'Expenditure',  module: 'expenditure' },
+    { to: '/revenue',     icon: Icons.Revenue,     label: 'Revenue',      module: 'revenue'     },
   ]},
   { section: 'Operations', items: [
-    { to: '/maintenance', icon: Icons.Maintenance, label: 'Maintenance' },
-    { to: '/reports',     icon: Icons.Reports,     label: 'Reports'     },
+    { to: '/maintenance', icon: Icons.Maintenance, label: 'Maintenance',  module: 'maintenance' },
+    { to: '/reports',     icon: Icons.Reports,     label: 'Reports',      module: 'reports'     },
   ]},
   { section: 'Admin', items: [
-    { to: '/users',       icon: Icons.Users,       label: 'User Mgmt'   },
+    { to: '/users',       icon: Icons.Users,       label: 'User Mgmt',    module: 'users', adminOnly: true },
+    { to: '/audit-log',   icon: Icons.AuditLog,    label: 'Audit Log',    module: null,    adminOnly: true },
   ]},
 ];
 
@@ -295,23 +370,101 @@ const PAGE_TITLES = {
   '/maintenance': 'Maintenance',
   '/reports':     'Reports',
   '/users':       'User Management',
+  '/audit-log':   'Audit Log',
+  '/profile':     'My Profile',
 };
+
+// ── Notification Bell ────────────────────────────────────────
+function NotificationBell() {
+  const { unreadCount, alerts, showPanel, setShowPanel, markAllRead } = useAlerts();
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setShowPanel(p => !p)}
+        className="tb-pill"
+        style={{ position: 'relative', cursor: 'pointer', background: showPanel ? 'var(--primary-bg)' : undefined }}
+        title="Notifications"
+      >
+        {Icons.Bell}
+        {unreadCount > 0 && (
+          <span style={{
+            position: 'absolute', top: -4, right: -4,
+            background: 'var(--red)', color: '#fff',
+            borderRadius: '50%', width: 16, height: 16,
+            fontSize: 9, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1,
+          }}>
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {showPanel && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, marginTop: 8,
+          width: 340, background: 'var(--card)', border: '1px solid var(--border)',
+          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.3)',
+          zIndex: 9999, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>Notifications</span>
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                style={{ fontSize: 11, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {alerts.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                ✓ No unread notifications
+              </div>
+            ) : (
+              alerts.map((a, i) => (
+                <div key={i} style={{
+                  padding: '10px 16px',
+                  borderBottom: '1px solid var(--border-light, var(--border))',
+                  borderLeft: `3px solid ${a.level === 'DANGER' ? 'var(--red)' : a.level === 'WARNING' ? 'var(--amber)' : 'var(--blue)'}`,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>{a.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.message}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Sidebar ─────────────────────────────────────────────────
 function Sidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
 
-  const visibleNav = NAV.filter(group => {
-    if (group.section === 'Admin') return user?.role === 'ADMIN';
-    return true;
-  });
+  const visibleNav = NAV.map(group => ({
+    ...group,
+    items: group.items.filter(item => {
+      // Admin-only items
+      if (item.adminOnly && user?.role !== 'ADMIN') return false;
+      // Module permissions for non-admin users
+      if (user?.role !== 'ADMIN' && item.module) {
+        return (user?.module_permissions || []).includes(item.module);
+      }
+      return true;
+    }),
+  })).filter(group => group.items.length > 0);
 
   const initials = user ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() : 'U';
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
       <div className="sidebar-logo">
         <div className="logo-mark">
           <div className="logo-badge">T</div>
@@ -322,7 +475,6 @@ function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
         {visibleNav.map(group => (
           <div className="nav-group" key={group.section}>
@@ -345,15 +497,16 @@ function Sidebar() {
         ))}
       </div>
 
-      {/* Footer */}
       <div className="sidebar-footer">
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">{initials}</div>
-          <div className="sidebar-user-info">
-            <div className="sidebar-user-name">{user?.first_name} {user?.last_name}</div>
-            <div className="sidebar-user-role">{user?.role}</div>
+        <Link to="/profile" style={{ textDecoration: 'none' }}>
+          <div className="sidebar-user" style={{ cursor: 'pointer' }}>
+            <div className="sidebar-avatar">{initials}</div>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">{user?.first_name} {user?.last_name}</div>
+              <div className="sidebar-user-role">{user?.role}</div>
+            </div>
           </div>
-        </div>
+        </Link>
         <button className="btn-signout" onClick={logout}>
           {Icons.Logout}
           Sign Out
@@ -395,7 +548,10 @@ function Topbar() {
         Ghana Cedi
       </div>
 
-      {/* ── Dark / Light toggle ── */}
+      {/* Notification Bell */}
+      <NotificationBell />
+
+      {/* Dark / Light toggle */}
       <button
         className="theme-toggle"
         onClick={toggle}
@@ -413,12 +569,11 @@ function Topbar() {
         </div>
       </button>
 
-      <div
-        className="topbar-avatar"
-        title={`${user?.first_name} ${user?.last_name} (${user?.role})`}
-      >
-        {initials}
-      </div>
+      <Link to="/profile" style={{ textDecoration: 'none' }}>
+        <div className="topbar-avatar" title={`${user?.first_name} ${user?.last_name} (${user?.role})`}>
+          {initials}
+        </div>
+      </Link>
     </div>
   );
 }
@@ -439,9 +594,39 @@ class ErrorBoundary extends Component {
 }
 
 // ── Protected layout ────────────────────────────────────────
-function ProtectedLayout({ children }) {
+function ProtectedLayout({ children, module }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
+  return (
+    <div className="layout">
+      <Sidebar />
+      <div className="main-wrap">
+        <Topbar />
+        <div className="page-body">
+          <ErrorBoundary>
+            <ModuleGuard module={module}>
+              {children}
+            </ModuleGuard>
+          </ErrorBoundary>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin-only layout ────────────────────────────────────────
+function AdminLayout({ children }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'ADMIN') return (
+    <div className="layout">
+      <Sidebar />
+      <div className="main-wrap">
+        <Topbar />
+        <div className="page-body"><AccessDeniedPage /></div>
+      </div>
+    </div>
+  );
   return (
     <div className="layout">
       <Sidebar />
@@ -459,43 +644,47 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
-          <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 3500,
-            style: {
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: 13,
-              borderRadius: 12,
-              boxShadow: '0 8px 32px rgba(0,0,0,.45)',
-              border: '1px solid rgba(255,255,255,.1)',
-              background: '#1a2235',
-              color: '#e2e8f0',
-            },
-            success: { iconTheme: { primary: '#10b981', secondary: '#1a2235' } },
-            error:   { iconTheme: { primary: '#ef4444', secondary: '#1a2235' } },
-          }}
-        />
-        <Routes>
-          <Route path="/login"       element={<LoginPage />} />
-          <Route path="/"            element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
-          <Route path="/purchase"    element={<ProtectedLayout><Purchase /></ProtectedLayout>} />
-          <Route path="/issue"       element={<ProtectedLayout><Issue /></ProtectedLayout>} />
-          <Route path="/fuel"        element={<ProtectedLayout><Fuel /></ProtectedLayout>} />
-          <Route path="/trips"       element={<ProtectedLayout><Trips /></ProtectedLayout>} />
-          <Route path="/invoicing"   element={<ProtectedLayout><Invoicing /></ProtectedLayout>} />
-          <Route path="/reports"     element={<ProtectedLayout><Reports /></ProtectedLayout>} />
-          <Route path="/trucks"      element={<ProtectedLayout><Trucks /></ProtectedLayout>} />
-          <Route path="/drivers"     element={<ProtectedLayout><Drivers /></ProtectedLayout>} />
-          <Route path="/stock"       element={<ProtectedLayout><Stock /></ProtectedLayout>} />
-          <Route path="/expenditure" element={<ProtectedLayout><Expenditure /></ProtectedLayout>} />
-          <Route path="/revenue"     element={<ProtectedLayout><Revenue /></ProtectedLayout>} />
-          <Route path="/maintenance" element={<ProtectedLayout><Maintenance /></ProtectedLayout>} />
-          <Route path="/users"       element={<ProtectedLayout><Users /></ProtectedLayout>} />
-          <Route path="*"            element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+          <AlertsProvider>
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 3500,
+                style: {
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: 13,
+                  borderRadius: 12,
+                  boxShadow: '0 8px 32px rgba(0,0,0,.45)',
+                  border: '1px solid rgba(255,255,255,.1)',
+                  background: '#1a2235',
+                  color: '#e2e8f0',
+                },
+                success: { iconTheme: { primary: '#10b981', secondary: '#1a2235' } },
+                error:   { iconTheme: { primary: '#ef4444', secondary: '#1a2235' } },
+              }}
+            />
+            <Routes>
+              <Route path="/login"       element={<LoginPage />} />
+              <Route path="/"            element={<ProtectedLayout module={null}><Dashboard /></ProtectedLayout>} />
+              <Route path="/trucks"      element={<ProtectedLayout module="trucks"><Trucks /></ProtectedLayout>} />
+              <Route path="/drivers"     element={<ProtectedLayout module="drivers"><Drivers /></ProtectedLayout>} />
+              <Route path="/trips"       element={<ProtectedLayout module="trips"><Trips /></ProtectedLayout>} />
+              <Route path="/fuel"        element={<ProtectedLayout module="fuel"><Fuel /></ProtectedLayout>} />
+              <Route path="/purchase"    element={<ProtectedLayout module="purchase"><Purchase /></ProtectedLayout>} />
+              <Route path="/issue"       element={<ProtectedLayout module="issue"><Issue /></ProtectedLayout>} />
+              <Route path="/stock"       element={<ProtectedLayout module="stock"><Stock /></ProtectedLayout>} />
+              <Route path="/invoicing"   element={<ProtectedLayout module="invoicing"><Invoicing /></ProtectedLayout>} />
+              <Route path="/expenditure" element={<ProtectedLayout module="expenditure"><Expenditure /></ProtectedLayout>} />
+              <Route path="/revenue"     element={<ProtectedLayout module="revenue"><Revenue /></ProtectedLayout>} />
+              <Route path="/maintenance" element={<ProtectedLayout module="maintenance"><Maintenance /></ProtectedLayout>} />
+              <Route path="/reports"     element={<ProtectedLayout module="reports"><Reports /></ProtectedLayout>} />
+              <Route path="/users"       element={<AdminLayout><Users /></AdminLayout>} />
+              <Route path="/audit-log"   element={<AdminLayout><AuditLog /></AdminLayout>} />
+              <Route path="/profile"     element={<ProtectedLayout module={null}><Profile /></ProtectedLayout>} />
+              <Route path="*"            element={<Navigate to="/" replace />} />
+            </Routes>
+          </AlertsProvider>
+        </BrowserRouter>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
