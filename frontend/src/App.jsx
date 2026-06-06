@@ -295,6 +295,40 @@ function AppLayout({ children }) {
   );
 }
 
+/* ── Taurus SVG Logo ─────────────────────────────────────────── */
+function TaurusLogo({ width = 320 }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width={width} height="auto">
+      <defs>
+        <linearGradient id="tlPrimary" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#0F172A" />
+          <stop offset="100%" stopColor="#1E3A8A" />
+        </linearGradient>
+        <linearGradient id="tlAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F97316" />
+          <stop offset="100%" stopColor="#EA580C" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(15, 12)">
+        <path d="M15 20 L50 45 L15 70 L30 45 Z" fill="url(#tlPrimary)" opacity="0.4" />
+        <path d="M35 20 L80 45 L35 70 L50 45 Z" fill="url(#tlPrimary)" />
+        <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccent)" />
+        <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccent)" />
+      </g>
+      <text x="125" y="68"
+        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        fontSize="52" fontWeight="900" fill="#0F172A" letterSpacing="1">
+        TAURUS
+      </text>
+      <text x="127" y="94"
+        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        fontSize="14" fontWeight="700" fill="#EA580C" letterSpacing="5">
+        TRADING &amp; LOGISTICS
+      </text>
+    </svg>
+  );
+}
+
 /* ── Login ───────────────────────────────────────────────────── */
 function LoginPage() {
   const { login } = useAuth();
@@ -318,47 +352,181 @@ function LoginPage() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-logo">T</div>
-        <div className="auth-heading">Welcome back</div>
-        <div className="auth-sub">Sign in to Taurus Logistics ERP</div>
+    <div style={{
+      minHeight: '100vh', display: 'flex',
+      background: '#F1F5F9',
+    }}>
+      {/* ── Left Panel ── */}
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+        padding: '48px 40px',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        {/* decorative circles */}
+        <div style={{ position:'absolute', width:400, height:400, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.06)', top:-100, left:-100 }} />
+        <div style={{ position:'absolute', width:600, height:600, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.04)', bottom:-200, right:-200 }} />
+        <div style={{ position:'absolute', width:200, height:200, borderRadius:'50%', background:'rgba(249,115,22,0.08)', top:'30%', right:-60 }} />
 
-        {error && <div className="alert alert-danger mb-6">{error}</div>}
+        <div style={{ position:'relative', zIndex:1, textAlign:'center', maxWidth:480 }}>
+          {/* Logo on dark bg — use white text variant */}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="360" height="auto" style={{ marginBottom: 40 }}>
+            <defs>
+              <linearGradient id="tlPrimaryW" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#93C5FD" />
+                <stop offset="100%" stopColor="#BFDBFE" />
+              </linearGradient>
+              <linearGradient id="tlAccentW" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#F97316" />
+                <stop offset="100%" stopColor="#EA580C" />
+              </linearGradient>
+            </defs>
+            <g transform="translate(15, 12)">
+              <path d="M15 20 L50 45 L15 70 L30 45 Z" fill="url(#tlPrimaryW)" opacity="0.4" />
+              <path d="M35 20 L80 45 L35 70 L50 45 Z" fill="url(#tlPrimaryW)" />
+              <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccentW)" />
+              <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccentW)" />
+            </g>
+            <text x="125" y="68"
+              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+              fontSize="52" fontWeight="900" fill="#FFFFFF" letterSpacing="1">
+              TAURUS
+            </text>
+            <text x="127" y="94"
+              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+              fontSize="14" fontWeight="700" fill="#F97316" letterSpacing="5">
+              TRADING &amp; LOGISTICS
+            </text>
+          </svg>
 
-        <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="form-group">
-            <label className="form-label">Email address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required autoFocus autoComplete="email"
-              placeholder="you@company.com"
-            />
+          <div style={{ color:'rgba(255,255,255,0.9)', fontSize:18, fontWeight:700, marginBottom:12, letterSpacing:'-0.02em' }}>
+            Enterprise Resource Planning
           </div>
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <div className="pw-toggle-wrap">
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required autoComplete="current-password"
-                placeholder="••••••••"
-              />
-              <button type="button" className="pw-toggle" onClick={() => setShowPw(s => !s)}>
-                {showPw ? 'Hide' : 'Show'}
-              </button>
-            </div>
+          <div style={{ color:'rgba(255,255,255,0.5)', fontSize:13.5, lineHeight:1.7, maxWidth:340, margin:'0 auto' }}>
+            Manage your fleet, trips, fuel, inventory and financials — all in one place.
           </div>
-          <button type="submit" className="btn btn-primary" style={{ height: 42 }} disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
 
-        <div className="auth-footer">
+          {/* Feature pills */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:36 }}>
+            {['🚛 Fleet Management','⛽ Fuel Control','📦 Inventory','💰 Financials','📊 Reports'].map(f => (
+              <div key={f} style={{
+                background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.12)',
+                borderRadius:20, padding:'6px 14px', fontSize:12, color:'rgba(255,255,255,0.7)',
+                fontWeight:500,
+              }}>{f}</div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ position:'absolute', bottom:24, color:'rgba(255,255,255,0.25)', fontSize:12 }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics
+        </div>
+      </div>
+
+      {/* ── Right Panel (Form) ── */}
+      <div style={{
+        width: '100%', maxWidth: 480,
+        display:'flex', flexDirection:'column',
+        alignItems:'center', justifyContent:'center',
+        padding:'48px 40px',
+        background:'#FFFFFF',
+        boxShadow: '-4px 0 40px rgba(0,0,0,0.08)',
+      }}>
+        <div style={{ width:'100%', maxWidth:360 }}>
+          {/* Logo for right panel */}
+          <div style={{ marginBottom:36 }}>
+            <TaurusLogo width={260} />
+          </div>
+
+          <div style={{ fontSize:24, fontWeight:800, color:'#0F172A', letterSpacing:'-0.02em', marginBottom:6 }}>
+            Welcome back
+          </div>
+          <div style={{ fontSize:13.5, color:'#64748B', marginBottom:32 }}>
+            Sign in to your ERP account to continue
+          </div>
+
+          {error && (
+            <div style={{
+              background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8,
+              padding:'10px 14px', marginBottom:20, fontSize:13,
+              color:'#DC2626', fontWeight:500,
+            }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={onSubmit} autoComplete="on" style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div>
+              <label style={{ display:'block', fontSize:13, fontWeight:600, color:'#374151', marginBottom:6 }}>
+                Email address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required autoFocus autoComplete="email"
+                placeholder="you@company.com"
+                style={{
+                  width:'100%', height:44, padding:'0 14px',
+                  border:'1.5px solid #E2E8F0', borderRadius:8,
+                  fontSize:14, color:'#0F172A', background:'#F8FAFC',
+                  outline:'none', boxSizing:'border-box',
+                  transition:'border-color 0.2s',
+                }}
+                onFocus={e => e.target.style.borderColor='#1E3A8A'}
+                onBlur={e => e.target.style.borderColor='#E2E8F0'}
+              />
+            </div>
+            <div>
+              <label style={{ display:'block', fontSize:13, fontWeight:600, color:'#374151', marginBottom:6 }}>
+                Password
+              </label>
+              <div style={{ position:'relative' }}>
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required autoComplete="current-password"
+                  placeholder="••••••••"
+                  style={{
+                    width:'100%', height:44, padding:'0 50px 0 14px',
+                    border:'1.5px solid #E2E8F0', borderRadius:8,
+                    fontSize:14, color:'#0F172A', background:'#F8FAFC',
+                    outline:'none', boxSizing:'border-box',
+                    transition:'border-color 0.2s',
+                  }}
+                  onFocus={e => e.target.style.borderColor='#1E3A8A'}
+                  onBlur={e => e.target.style.borderColor='#E2E8F0'}
+                />
+                <button type="button" onClick={() => setShowPw(s => !s)} style={{
+                  position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+                  background:'none', border:'none', cursor:'pointer',
+                  fontSize:12, fontWeight:700, color:'#1E3A8A', padding:'2px 4px',
+                }}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                height:46, borderRadius:8, border:'none', cursor:'pointer',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                color:'#fff', fontSize:15, fontWeight:700, letterSpacing:'0.01em',
+                marginTop:4, transition:'opacity 0.2s',
+                boxShadow: loading ? 'none' : '0 4px 14px rgba(30,58,138,0.35)',
+              }}
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+
+          <div style={{ textAlign:'center', marginTop:28, fontSize:12, color:'#94A3B8' }}>
+            © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
+          </div>
         </div>
       </div>
     </div>
