@@ -1,11 +1,13 @@
-// src/utils/api.js – Axios instance with JWT auth + auto-refresh
+// src/utils/api.js – Axios instance with JWT auth + auto-refresh + global error handling
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const BASE = process.env.REACT_APP_API_URL || '/api';
 
 const api = axios.create({
   baseURL: BASE,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 30000, // 30-second timeout (enterprise: avoids hanging requests)
 });
 
 // ── Request: attach access token ────────────────────────────
@@ -15,13 +17,15 @@ api.interceptors.request.use(cfg => {
   return cfg;
 });
 
-// ── Response: auto-refresh on 401 ───────────────────────────
+// ── Response: auto-refresh on 401 + global error toasts ─────
 let refreshing = null;
 
 api.interceptors.response.use(
   res => res,
   async err => {
     const original = err.config;
+
+    // ── 401: Try refresh token ──────────────────────────────
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
       if (!refreshing) {
@@ -29,6 +33,7 @@ api.interceptors.response.use(
           .post(`${BASE}/auth/refresh/`, { refresh: localStorage.getItem('refresh') })
           .then(r => {
             localStorage.setItem('access', r.data.access);
+            if (r.data.refresh) localStorage.setItem('refresh', r.data.refresh);
             return r.data.access;
           })
           .catch(() => {
@@ -46,6 +51,24 @@ api.interceptors.response.use(
         return Promise.reject(err);
       }
     }
+
+    // ── 429: Rate limited ────────────────────────────────────
+    if (err.response?.status === 429) {
+      toast.error('⏱ Too many requests. Please slow down.');
+      return Promise.reject(err);
+    }
+
+    // ── 500+: Server errors ──────────────────────────────────
+    if (err.response?.status >= 500) {
+      toast.error('🔴 Server error. Please try again or contact support.');
+      return Promise.reject(err);
+    }
+
+    // ── Network / timeout errors ─────────────────────────────
+    if (!err.response) {
+      toast.error('🌐 Network error. Check your connection.');
+    }
+
     return Promise.reject(err);
   }
 );
@@ -65,8 +88,21 @@ export const fmtDate = (val) => {
   } catch { return val; }
 };
 
+// ── DateTime formatter ───────────────────────────────────────
+export const fmtDateTime = (val) => {
+  if (!val) return '—';
+  try {
+    return new Date(val).toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: 'Africa/Accra',
+    });
+  } catch { return val; }
+};
+
 // ── Today's date string (YYYY-MM-DD) ────────────────────────
-export const todayGH = () => new Date().toISOString().split('T')[0];
+export const todayGH = () =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
 
 // ── Purchase calculation helper ──────────────────────────────
 export const calcPurchase = (qty, price, vatOn, vatPct) => {
@@ -78,12 +114,11 @@ export const calcPurchase = (qty, price, vatOn, vatPct) => {
   return { base_amount, vat_amount, final_amount };
 };
 
-
 // ── Fuel calculation helper ──────────────────────────────────
 export const calcFuel = (litres, limit, price) => {
-  const l = parseFloat(litres) || 0;
+  const l   = parseFloat(litres) || 0;
   const lim = parseFloat(limit)  || 0;
-  const p = parseFloat(price)  || 0;
+  const p   = parseFloat(price)  || 0;
   const total_cost  = l * p;
   const excess_fuel = lim > 0 ? Math.max(0, l - lim) : 0;
   const excess_cost = excess_fuel * p;
@@ -100,16 +135,24 @@ export const calcTrip = (loaded, delivered, rate) => {
   return { qty_difference, trip_revenue };
 };
 
-// ── Duration helper (HH:MM strings → "X hrs Y mins") ────────
+// ── Duration helper (datetime strings) ──────────────────────
 export const calcDuration = (start, end) => {
   if (!start || !end) return '';
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  let mins = (eh * 60 + em) - (sh * 60 + sm);
-  if (mins < 0) mins += 24 * 60;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
+  const diff = new Date(end) - new Date(start);
+  if (isNaN(diff) || diff < 0) return '';
+  const totalMins = Math.floor(diff / 60000);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
+
+// ── Error message extractor ──────────────────────────────────
+export const getErrorMessage = (err, fallback = 'An error occurred.') => {
+  return err?.response?.data?.message
+    || err?.response?.data?.detail
+    || err?.response?.data?.non_field_errors?.[0]
+    || err?.message
+    || fallback;
 };
 
 export default api;
