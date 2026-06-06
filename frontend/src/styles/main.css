@@ -1024,3 +1024,307 @@ select option { color: var(--text); background: var(--bg-card); }
   padding-top: 8px; margin-top: 2px;
   border-top: 1px solid var(--border-2);
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   KL-ERP STYLE LOGIN PAGE
+   ═══════════════════════════════════════════════════════════ */
+
+.kl-login-root {
+  display: flex;
+  min-height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ── Left brand panel ── */
+.kl-login-brand {
+  flex: 1;
+  background: linear-gradient(160deg, #1565c0 0%, #0d47a1 60%, #0a3880 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.kl-login-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 25% 75%, rgba(255,255,255,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 20%, rgba(255,255,255,0.04) 0%, transparent 45%);
+}
+.kl-login-brand::after {
+  content: '';
+  position: absolute;
+  bottom: -80px; right: -80px;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.kl-login-logo-wrap {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 28px;
+  filter: drop-shadow(0 8px 32px rgba(0,0,0,0.3));
+  animation: logoFloat 4s ease-in-out infinite;
+}
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.kl-login-brand-name {
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  margin: 0 0 10px;
+  position: relative;
+  z-index: 1;
+  letter-spacing: 0.3px;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.kl-login-brand-tagline {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+}
+.kl-login-brand-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 32px;
+  position: relative;
+  z-index: 1;
+}
+.kl-login-brand-dots span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+}
+.kl-login-brand-dots span:first-child { background: rgba(255,255,255,0.9); }
+.kl-login-brand-dots span:nth-child(2) { background: rgba(255,255,255,0.6); }
+
+/* ── Right form panel ── */
+.kl-login-panel {
+  width: 440px;
+  min-width: 360px;
+  background: #f4f5f7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  position: relative;
+}
+
+.kl-login-card {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  padding: 36px 32px 28px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.kl-login-card-header h2 {
+  text-align: center;
+  color: #1565c0;
+  font-size: 1.7rem;
+  font-weight: 700;
+  margin: 0 0 24px;
+  letter-spacing: -0.3px;
+}
+
+.kl-login-field {
+  margin-bottom: 14px;
+}
+.kl-login-field input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #dde0e8;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #333;
+  background: #fafbfc;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.kl-login-field input:focus {
+  outline: none;
+  border-color: #1565c0;
+  box-shadow: 0 0 0 3px rgba(21,101,192,0.12);
+  background: white;
+}
+.kl-login-field input::placeholder { color: #aab0bc; }
+
+/* Password with show/hide */
+.kl-pw-wrap {
+  position: relative;
+  display: flex;
+}
+.kl-pw-wrap input { flex: 1; padding-right: 54px; }
+.kl-pw-toggle {
+  position: absolute;
+  right: 10px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none;
+  color: #1565c0; font-size: 0.78rem;
+  font-weight: 600; cursor: pointer;
+  font-family: inherit;
+  padding: 4px;
+}
+.kl-pw-toggle:hover { text-decoration: underline; }
+
+/* Captcha */
+.kl-captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.kl-captcha-img {
+  flex: 1;
+  background: #f0f2f5;
+  border: 1px solid #d0d5de;
+  border-radius: 5px;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+}
+.kl-captcha-text {
+  font-family: 'Courier New', monospace;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 6px;
+  color: #c0392b;
+  text-decoration: line-through;
+  user-select: none;
+  transform: skewX(-5deg);
+  display: inline-block;
+  filter: blur(0.3px);
+}
+.kl-captcha-refresh {
+  width: 34px; height: 34px;
+  border: 1px solid #d0d5de;
+  border-radius: 5px;
+  background: white;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #666;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.kl-captcha-refresh:hover { background: #f0f2f5; }
+
+/* Links row */
+.kl-login-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+.kl-login-links a {
+  color: #c0392b;
+  text-decoration: none;
+}
+.kl-login-links a:hover { text-decoration: underline; }
+.kl-divider { color: #ccc; }
+
+/* Submit button */
+.kl-login-btn {
+  width: 100%;
+  background: #1565c0;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 13px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+  letter-spacing: 0.3px;
+  font-family: inherit;
+  box-shadow: 0 2px 8px rgba(21,101,192,0.3);
+}
+.kl-login-btn:hover:not(:disabled) {
+  background: #0d47a1;
+  box-shadow: 0 4px 16px rgba(21,101,192,0.4);
+}
+.kl-login-btn:active:not(:disabled) { transform: scale(0.985); }
+.kl-login-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+/* Error alert */
+.kl-login-error {
+  background: #fdecea;
+  border: 1px solid #f5c6cb;
+  color: #c62828;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  margin-bottom: 14px;
+}
+
+/* Footer */
+.kl-login-footer {
+  position: absolute;
+  bottom: 16px;
+  font-size: 0.75rem;
+  color: #aaa;
+  text-align: center;
+  left: 0; right: 0;
+}
+
+@media (max-width: 720px) {
+  .kl-login-brand { display: none; }
+  .kl-login-panel { width: 100%; min-width: unset; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS GEAR BUTTON
+   ═══════════════════════════════════════════════════════════ */
+.settings-btn {
+  /* Inherits icon-btn styles; spin animation on hover */
+  transition: background var(--t), color var(--t), border-color var(--t), transform 0.4s ease;
+}
+.settings-btn:hover {
+  transform: rotate(60deg);
+  color: var(--c-brand);
+  border-color: var(--c-brand-s);
+  background: var(--c-brand-xs);
+}
+
+/* ── Dropdown Settings item ── */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t), color var(--t);
+  font-family: inherit;
+  text-decoration: none;
+}
+.dropdown-item:hover { background: var(--bg-hover); color: var(--text); text-decoration: none; }
+.dropdown-item.danger:hover { background: var(--c-red-bg); color: var(--c-red); }
