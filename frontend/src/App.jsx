@@ -22,7 +22,6 @@ import Users       from './pages/Users';
 import Profile     from './pages/Profile';
 import AuditLog    from './pages/AuditLog';
 
-// Contexts
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
@@ -32,13 +31,10 @@ export const useTheme = () => useContext(ThemeCtx);
 const AlertsCtx = createContext(null);
 export const useAlerts = () => useContext(AlertsCtx);
 
-// Providers
 function ThemeProvider({ children }) {
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('erp-theme');
-    const isDark = saved ? saved === 'dark' : false;
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    return isDark;
+    return saved === 'dark';
   });
 
   useEffect(() => {
@@ -46,8 +42,7 @@ function ThemeProvider({ children }) {
     localStorage.setItem('erp-theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const toggle = () => setDark(d => !d);
-  return <ThemeCtx.Provider value={{ dark, toggle }}>{children}</ThemeCtx.Provider>;
+  return <ThemeCtx.Provider value={{ dark, toggle: () => setDark(!dark) }}>{children}</ThemeCtx.Provider>;
 }
 
 function AuthProvider({ children }) {
@@ -56,9 +51,9 @@ function AuthProvider({ children }) {
   });
 
   const login = (userData, access, refresh) => {
-    localStorage.setItem('access',  access);
+    localStorage.setItem('access', access);
     localStorage.setItem('refresh', refresh);
-    localStorage.setItem('user',    JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
   };
 
@@ -68,30 +63,18 @@ function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const refreshUser = useCallback(async () => {
-    try {
-      const { data } = await api.get('/users/me/');
-      localStorage.setItem('user', JSON.stringify(data));
-      setUser(data);
-    } catch {}
-  }, []);
-
-  return <AuthCtx.Provider value={{ user, login, logout, refreshUser }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, login, logout }}>{children}</AuthCtx.Provider>;
 }
 
 function AlertsProvider({ children }) {
   const { user } = useAuth();
-  const [unreadCount, setUnreadCount]  = useState(0);
-  const [alerts, setAlerts]            = useState([]);
-  const [showPanel, setShowPanel]      = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchAlerts = useCallback(async () => {
     if (!user) return;
     try {
-      const { data } = await api.get('/core/alerts/?unread=true&ordering=-created_at');
-      const items = data.results ?? data;
-      setAlerts(items.slice(0, 20));
-      setUnreadCount(items.length);
+      const { data } = await api.get('/core/alerts/?unread=true');
+      setUnreadCount(data.results?.length || data.length || 0);
     } catch {}
   }, [user]);
 
@@ -101,106 +84,77 @@ function AlertsProvider({ children }) {
     return () => clearInterval(t);
   }, [fetchAlerts]);
 
-  const markAllRead = async () => {
-    try {
-      await api.post('/core/alerts/mark-read/', { all: true });
-      setUnreadCount(0);
-      setAlerts([]);
-    } catch {}
-  };
-
-  return (
-    <AlertsCtx.Provider value={{ unreadCount, alerts, showPanel, setShowPanel, markAllRead, fetchAlerts }}>
-      {children}
-    </AlertsCtx.Provider>
-  );
+  return <AlertsCtx.Provider value={{ unreadCount }}>{children}</AlertsCtx.Provider>;
 }
 
-// Icons (Lucide-like SVG)
 const Icons = {
-  Dashboard: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
-  Fleet: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 17h4V5H2v12h3m15 0h2v-3.34a2 2 0 0 0-.59-1.42L17.5 9H14"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
-  Inventory: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>,
-  Finance: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-  Operations: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
-  Admin: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  Logout: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
-  Bell: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
-  Sun: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
-  Moon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+  Dashboard: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+  Fleet: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 17h4V5H2v12h3m15 0h2v-3.34a2 2 0 0 0-.59-1.42L17.5 9H14"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
+  Inventory: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>,
+  Finance: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+  Ops: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  Admin: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  Logout: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  Theme: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
 };
 
-// Redesigned Components
 function Sidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
 
-  const NAV_CONFIG = [
-    { label: 'Overview', items: [{ to: '/', icon: Icons.Dashboard, label: 'Dashboard' }] },
-    { label: 'Fleet Management', items: [
+  const NAV = [
+    { label: 'General', items: [{ to: '/', icon: Icons.Dashboard, label: 'Dashboard' }] },
+    { label: 'Fleet', items: [
       { to: '/trucks', icon: Icons.Fleet, label: 'Trucks', module: 'trucks' },
       { to: '/drivers', icon: Icons.Fleet, label: 'Drivers', module: 'drivers' },
       { to: '/trips', icon: Icons.Fleet, label: 'Trips', module: 'trips' },
-      { to: '/fuel', icon: Icons.Fleet, label: 'Fuel Control', module: 'fuel' },
+      { to: '/fuel', icon: Icons.Fleet, label: 'Fuel', module: 'fuel' },
     ]},
-    { label: 'Inventory & Stock', items: [
+    { label: 'Inventory', items: [
       { to: '/purchase', icon: Icons.Inventory, label: 'Purchase', module: 'purchase' },
-      { to: '/issue', icon: Icons.Inventory, label: 'Issue Items', module: 'issue' },
-      { to: '/stock', icon: Icons.Inventory, label: 'Stock Ledger', module: 'stock' },
+      { to: '/issue', icon: Icons.Inventory, label: 'Issue', module: 'issue' },
+      { to: '/stock', icon: Icons.Inventory, label: 'Stock', module: 'stock' },
     ]},
-    { label: 'Financials', items: [
+    { label: 'Finance', items: [
       { to: '/invoicing', icon: Icons.Finance, label: 'Invoicing', module: 'invoicing' },
       { to: '/expenditure', icon: Icons.Finance, label: 'Expenditure', module: 'expenditure' },
       { to: '/revenue', icon: Icons.Finance, label: 'Revenue', module: 'revenue' },
     ]},
     { label: 'System', items: [
-      { to: '/maintenance', icon: Icons.Operations, label: 'Maintenance', module: 'maintenance' },
-      { to: '/reports', icon: Icons.Operations, label: 'Reports', module: 'reports' },
-      { to: '/users', icon: Icons.Admin, label: 'User Management', adminOnly: true },
+      { to: '/maintenance', icon: Icons.Ops, label: 'Maintenance', module: 'maintenance' },
+      { to: '/reports', icon: Icons.Ops, label: 'Reports', module: 'reports' },
+      { to: '/users', icon: Icons.Admin, label: 'Users', adminOnly: true },
       { to: '/audit-log', icon: Icons.Admin, label: 'Audit Log', adminOnly: true },
     ]},
   ];
 
-  const filterNav = (groups) => {
-    return groups.map(group => ({
-      ...group,
-      items: group.items.filter(item => {
-        if (item.adminOnly && user?.role !== 'ADMIN') return false;
-        if (user?.role !== 'ADMIN' && item.module) {
-          return (user?.module_permissions || []).includes(item.module);
-        }
-        return true;
-      })
-    })).filter(group => group.items.length > 0);
-  };
-
-  const visibleNav = filterNav(NAV_CONFIG);
+  const filteredNav = NAV.map(group => ({
+    ...group,
+    items: group.items.filter(item => {
+      if (item.adminOnly && user?.role !== 'ADMIN') return false;
+      if (user?.role !== 'ADMIN' && item.module) return (user?.module_permissions || []).includes(item.module);
+      return true;
+    })
+  })).filter(group => group.items.length > 0);
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
-        <div className="logo-name">TAURUS</div>
-      </div>
-      <nav className="nav-container">
-        {visibleNav.map(group => (
-          <div key={group.label} className="nav-group">
+      <div className="sidebar-logo"><div className="logo-name">TAURUS</div></div>
+      <div className="nav-container">
+        {filteredNav.map(group => (
+          <div key={group.label}>
             <div className="nav-group-label">{group.label}</div>
             {group.items.map(item => (
-              <Link 
-                key={item.to} 
-                to={item.to} 
-                className={`nav-item ${location.pathname === item.to ? 'active' : ''}`}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                {item.label}
+              <Link key={item.to} to={item.to} className={`nav-item ${location.pathname === item.to ? 'active' : ''}`}>
+                <span className="nav-icon">{item.icon}</span>{item.label}
               </Link>
             ))}
           </div>
         ))}
-      </nav>
-      <div style={{ padding: '16px', borderTop: '1px solid var(--border-light)' }}>
-        <button onClick={logout} className="btn btn-outline" style={{ width: '100%', gap: '8px' }}>
-          {Icons.Logout} Sign Out
+      </div>
+      <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <button onClick={logout} className="btn btn-outline" style={{ width: '100%', color: '#fff', borderColor: 'rgba(255,255,255,0.2)' }}>
+          <span style={{ width: 16 }}>{Icons.Logout}</span> Sign Out
         </button>
       </div>
     </aside>
@@ -209,25 +163,21 @@ function Sidebar() {
 
 function Topbar() {
   const { user } = useAuth();
-  const { dark, toggle } = useTheme();
+  const { toggle } = useTheme();
   const location = useLocation();
-  const title = PAGE_TITLES[location.pathname] || 'Taurus ERP';
+  const titles = { '/': 'Dashboard', '/trucks': 'Trucks', '/drivers': 'Drivers', '/trips': 'Trips', '/fuel': 'Fuel', '/purchase': 'Purchase', '/issue': 'Issue', '/stock': 'Stock', '/invoicing': 'Invoicing', '/expenditure': 'Expenditure', '/revenue': 'Revenue', '/maintenance': 'Maintenance', '/reports': 'Reports', '/users': 'Users', '/audit-log': 'Audit Log', '/profile': 'Profile' };
 
   return (
     <header className="topbar">
-      <h1 style={{ fontSize: '18px', fontWeight: 600, flex: 1 }}>{title}</h1>
+      <h1 style={{ fontSize: '18px', fontWeight: 700, flex: 1 }}>{titles[location.pathname] || 'Taurus ERP'}</h1>
       <div className="flex items-center gap-4">
-        <button onClick={toggle} className="btn btn-outline" style={{ padding: '8px' }}>
-          {dark ? Icons.Sun : Icons.Moon}
-        </button>
+        <button onClick={toggle} className="btn btn-outline" style={{ padding: '8px' }}>{Icons.Theme}</button>
         <div className="flex items-center gap-2">
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '14px', fontWeight: 600 }}>{user?.first_name} {user?.last_name}</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{user?.role}</div>
+            <div style={{ fontSize: '13px', fontWeight: 700 }}>{user?.first_name} {user?.last_name}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{user?.role}</div>
           </div>
-          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-            {user?.first_name?.[0]}{user?.last_name?.[0]}
-          </div>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{user?.first_name?.[0]}</div>
         </div>
       </div>
     </header>
@@ -252,58 +202,34 @@ function LoginPage() {
       const { data } = await api.post('/auth/login/', { email, password: pass });
       login(data.user, data.access, data.refresh);
       nav('/');
-    } catch (err) {
-      setErr('Invalid credentials. Please try again.');
-    } finally { setLoading(false); }
+    } catch (err) { setErr('Invalid email or password.'); } finally { setLoading(false); }
   };
 
   return (
     <div className="login-root">
       <div className="login-container">
         <div className="login-header">
-          <div className="logo-name" style={{ fontSize: '32px' }}>TAURUS</div>
-          <h2 className="login-title">Sign in to Enterprise</h2>
-          <p className="login-subtitle">Enter your credentials to access your account</p>
+          <div style={{ fontSize: 32, fontWeight: 900, color: '#0f62fe' }}>TAURUS</div>
+          <h2 className="login-title">Enterprise Sign In</h2>
+          <p className="login-subtitle">Access your logistics command center</p>
         </div>
-        {err && <div style={{ color: 'var(--error)', background: '#fef2f2', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px', border: '1px solid #fee2e2' }}>{err}</div>}
+        {err && <div style={{ color: '#da1e28', background: '#fff1f1', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', textAlign: 'center', border: '1px solid #ffd7d7' }}>{err}</div>}
         <form onSubmit={onSubmit}>
           <div className="form-group">
             <label className="form-label">Email Address</label>
-            <input type="email" className="form-input" value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@company.com" />
+            <input type="email" className="form-input" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@taurus.com" />
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
             <input type="password" className="form-input" value={pass} onChange={e => setPass(e.target.value)} required placeholder="••••••••" />
           </div>
-          <button type="submit" className="btn-login" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
+          <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Authenticating...' : 'Sign In'}</button>
         </form>
       </div>
     </div>
   );
 }
 
-const PAGE_TITLES = {
-  '/': 'Dashboard',
-  '/trucks': 'Truck Management',
-  '/drivers': 'Driver Management',
-  '/trips': 'Trip Management',
-  '/fuel': 'Fuel Control',
-  '/purchase': 'Purchase Entry',
-  '/issue': 'Issue Items',
-  '/stock': 'Stock Ledger',
-  '/invoicing': 'Invoicing',
-  '/expenditure': 'Expenditure',
-  '/revenue': 'Revenue',
-  '/maintenance': 'Maintenance',
-  '/reports': 'Reports',
-  '/users': 'User Management',
-  '/audit-log': 'Audit Log',
-  '/profile': 'My Profile',
-};
-
-// Layout Wrappers
 function ProtectedLayout({ children }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
