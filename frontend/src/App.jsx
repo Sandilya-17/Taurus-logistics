@@ -123,41 +123,6 @@ function AlertsProvider({ children }) {
   );
 }
 
-// ── Taurus SVG Logo ─────────────────────────────────────────
-function TaurusLogo({ width = 260, lightText = false }) {
-  const textColor = lightText ? '#ffffff' : '#0F172A';
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width={width} height="auto" style={{ display: 'block' }}>
-      <defs>
-        <linearGradient id="tlPrimary" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#0F172A" />
-          <stop offset="100%" stopColor="#1E3A8A" />
-        </linearGradient>
-        <linearGradient id="tlAccent" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#F97316" />
-          <stop offset="100%" stopColor="#EA580C" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(15, 12)">
-        <path d="M15 20 L50 45 L15 70 L30 45 Z" fill="url(#tlPrimary)" opacity="0.4" />
-        <path d="M35 20 L80 45 L35 70 L50 45 Z" fill="url(#tlPrimary)" />
-        <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccent)" />
-        <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccent)" />
-      </g>
-      <text x="125" y="68"
-        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-        fontSize="52" fontWeight="900" fill={textColor} letterSpacing="1">
-        TAURUS
-      </text>
-      <text x="127" y="94"
-        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-        fontSize="14" fontWeight="700" fill="#EA580C" letterSpacing="5">
-        TRADING &amp; LOGISTICS
-      </text>
-    </svg>
-  );
-}
-
 // ── SVG Icons ───────────────────────────────────────────────
 const Icons = {
   Dashboard:    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
@@ -180,6 +145,60 @@ const Icons = {
   Logout:       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
   Shield:       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
 };
+
+// ── Animated Taurus Logo ─────────────────────────────────────
+function TaurusLogo({ size = 56 }) {
+  return (
+    <div className="taurus-logo-anim" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
+        {/* Outer ring */}
+        <circle className="logo-ring-outer" cx="28" cy="28" r="26" stroke="url(#ringGrad)" strokeWidth="1.5" fill="none" />
+        {/* Inner ring */}
+        <circle className="logo-ring-inner" cx="28" cy="28" r="20" stroke="rgba(29,111,219,0.3)" strokeWidth="0.75" fill="none" strokeDasharray="4 3" />
+        {/* Bull horns - Taurus symbol */}
+        <path className="logo-horns"
+          d="M14 22 C14 14 20 10 28 10 C36 10 42 14 42 22"
+          stroke="url(#hornGrad)" strokeWidth="2.5" strokeLinecap="round" fill="none"
+        />
+        {/* Left horn tip curl */}
+        <path className="logo-horn-tip-l"
+          d="M14 22 C11 22 9 20 10 17"
+          stroke="#1d6fdb" strokeWidth="2" strokeLinecap="round" fill="none"
+        />
+        {/* Right horn tip curl */}
+        <path className="logo-horn-tip-r"
+          d="M42 22 C45 22 47 20 46 17"
+          stroke="#1d6fdb" strokeWidth="2" strokeLinecap="round" fill="none"
+        />
+        {/* Bull head circle */}
+        <circle className="logo-head" cx="28" cy="30" r="9" fill="url(#headGrad)" />
+        {/* T letter */}
+        <text className="logo-t" x="28" y="35" textAnchor="middle" fontFamily="IBM Plex Sans, sans-serif" fontSize="11" fontWeight="700" fill="white" letterSpacing="-0.5">T</text>
+        {/* Orbit dot */}
+        <circle className="logo-orbit-dot" cx="28" cy="2" r="2.5" fill="#1d6fdb" />
+        {/* Corner accent dots */}
+        <circle cx="6" cy="28" r="1.5" fill="rgba(29,111,219,0.4)" className="logo-accent-dot" />
+        <circle cx="50" cy="28" r="1.5" fill="rgba(29,111,219,0.4)" className="logo-accent-dot" style={{animationDelay:'.3s'}} />
+        <defs>
+          <linearGradient id="ringGrad" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#1d6fdb" stopOpacity="0.8"/>
+            <stop offset="50%" stopColor="#0f62fe" stopOpacity="0.4"/>
+            <stop offset="100%" stopColor="#1d6fdb" stopOpacity="0.8"/>
+          </linearGradient>
+          <linearGradient id="hornGrad" x1="14" y1="16" x2="42" y2="16" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#1d6fdb"/>
+            <stop offset="50%" stopColor="#74b0ff"/>
+            <stop offset="100%" stopColor="#1d6fdb"/>
+          </linearGradient>
+          <radialGradient id="headGrad" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stopColor="#1d6fdb"/>
+            <stop offset="100%" stopColor="#0a1228"/>
+          </radialGradient>
+        </defs>
+      </svg>
+    </div>
+  );
+}
 
 // ── Login Page ──────────────────────────────────────────────
 function LoginPage() {
@@ -211,52 +230,108 @@ function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  const FEATURES = [
-    'Real-time fleet tracking & trip management',
-    'Automated stock ledger with purchase & issue tracking',
-    'Fuel consumption monitoring with excess alerts',
-    'Integrated invoicing, revenue & expenditure',
-    'Comprehensive PDF & Excel reporting suite',
+  const STATS = [
+    { value: '19', label: 'Active Trucks', icon: Icons.Trucks, color: '#1d6fdb' },
+    { value: '99%', label: 'Uptime SLA', icon: Icons.Reports, color: '#24a148' },
+    { value: '∞', label: 'Real-time Data', icon: Icons.Dashboard, color: '#8a3ffc' },
+  ];
+
+  const MODULES = [
+    { icon: Icons.Trucks,       label: 'Fleet',     color: '#1d6fdb' },
+    { icon: Icons.Stock,        label: 'Inventory', color: '#24a148' },
+    { icon: Icons.Revenue,      label: 'Finance',   color: '#f1c21b' },
+    { icon: Icons.Maintenance,  label: 'Ops',       color: '#8a3ffc' },
   ];
 
   return (
     <div className="login-root">
+      {/* ── LEFT PANEL ── */}
       <div className="login-left">
         <div className="login-left-bg">
           <div className="login-grid-lines" />
           <div className="login-glow" />
           <div className="login-glow2" />
+          {/* Road/route lines decorative */}
+          <svg className="login-route-svg" viewBox="0 0 600 800" fill="none" preserveAspectRatio="xMidYMid slice">
+            <path className="route-line" d="M-20 700 Q150 500 300 400 Q450 300 580 100" stroke="rgba(29,111,219,0.06)" strokeWidth="1.5" fill="none"/>
+            <path className="route-line" style={{animationDelay:'1s'}} d="M-20 750 Q200 550 350 430 Q500 310 620 80" stroke="rgba(29,111,219,0.04)" strokeWidth="1" fill="none"/>
+            <circle className="route-truck" cx="0" cy="0" r="4" fill="rgba(29,111,219,0.5)">
+              <animateMotion dur="12s" repeatCount="indefinite" path="M-20 700 Q150 500 300 400 Q450 300 580 100"/>
+            </circle>
+            <circle className="route-truck" cx="0" cy="0" r="3" fill="rgba(0,157,154,0.4)">
+              <animateMotion dur="18s" repeatCount="indefinite" begin="4s" path="M-20 750 Q200 550 350 430 Q500 310 620 80"/>
+            </circle>
+          </svg>
         </div>
+
         <div className="login-brand">
-          <div className="login-logo-wrap">
-            <TaurusLogo width={320} lightText={true} />
+          {/* Animated Logo */}
+          <div className="login-logo-wrap-new">
+            <TaurusLogo size={52} />
+            <div>
+              <div className="login-logo-name-new">TAURUS</div>
+              <div className="login-logo-sub-new">Trade &amp; Logistics ERP</div>
+            </div>
           </div>
-          <div className="login-headline">Enterprise<br/>operations,<br/><em>unified.</em></div>
-          <div className="login-sub">
-            A complete logistics management platform — from trucks on the road to invoices in the office, everything connected in one place.
+
+          <div className="login-headline-new">
+            <span className="headline-line" style={{animationDelay:'.1s'}}>Move cargo.</span>
+            <span className="headline-line" style={{animationDelay:'.25s'}}>Track assets.</span>
+            <span className="headline-line accent-line" style={{animationDelay:'.4s'}}>Scale operations.</span>
           </div>
-          <div className="login-features">
-            {FEATURES.map((f, i) => (
-              <div className="login-feature" key={i}>
-                <div className="login-feature-dot" />
-                <span className="login-feature-text">{f}</span>
+
+          <div className="login-sub-new">
+            Enterprise logistics command center — built for fleets that never sleep.
+          </div>
+
+          {/* Live stat strip */}
+          <div className="login-stats-strip">
+            {STATS.map((s, i) => (
+              <div key={i} className="login-stat-item" style={{animationDelay: `${.5 + i*.12}s`}}>
+                <div className="login-stat-icon" style={{ color: s.color }}>{s.icon}</div>
+                <div className="login-stat-value" style={{ color: s.color }}>{s.value}</div>
+                <div className="login-stat-label">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Module grid */}
+          <div className="login-module-grid">
+            {[
+              { icon: Icons.Trucks,      label: 'Fleet Mgmt',   color: '#1d6fdb', desc: 'Trucks · Drivers · Trips' },
+              { icon: Icons.Stock,       label: 'Inventory',    color: '#24a148', desc: 'Purchase · Issue · Stock' },
+              { icon: Icons.Revenue,     label: 'Finance',      color: '#f1c21b', desc: 'Invoice · Revenue · Exp.' },
+              { icon: Icons.Maintenance, label: 'Operations',   color: '#8a3ffc', desc: 'Maintenance · Reports' },
+            ].map((m, i) => (
+              <div key={i} className="login-module-card" style={{animationDelay: `${.7 + i*.1}s`}}>
+                <div className="login-module-icon" style={{ background: `${m.color}18`, color: m.color }}>{m.icon}</div>
+                <div className="login-module-label">{m.label}</div>
+                <div className="login-module-desc">{m.desc}</div>
               </div>
             ))}
           </div>
         </div>
+
         <div className="login-footer">
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · Enterprise Resource Planning System
         </div>
       </div>
 
+      {/* ── RIGHT PANEL ── */}
       <div className="login-right">
         <div className="login-card">
+          {/* Card logo */}
           <div className="login-card-logo">
-            <TaurusLogo width={200} lightText={true} />
+            <TaurusLogo size={40} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '.04em' }}>TAURUS ERP</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', letterSpacing: '.08em', textTransform: 'uppercase' }}>Enterprise Edition</div>
+            </div>
           </div>
-          <div className="login-card-header">
-            <div className="login-card-title">Sign In</div>
-            <div className="login-card-sub">Sign in to your ERP dashboard</div>
+
+          <div className="login-card-header" style={{ marginBottom: 28 }}>
+            <div className="login-card-title">Welcome back</div>
+            <div className="login-card-sub">Sign in to your operations dashboard</div>
           </div>
 
           {err && (
@@ -268,12 +343,15 @@ function LoginPage() {
           <form onSubmit={onSubmit}>
             <div className="login-field">
               <label>Email Address</label>
-              <input
-                type="email" value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="admin@taurus.com"
-                required autoFocus autoComplete="username"
-              />
+              <div className="login-input-wrap">
+                <svg className="login-input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <input
+                  type="email" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="admin@taurus.com"
+                  required autoFocus autoComplete="username"
+                />
+              </div>
             </div>
             <div className="login-field">
               <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -285,13 +363,16 @@ function LoginPage() {
                   {showPass ? 'Hide' : 'Show'}
                 </span>
               </label>
-              <input
-                type={showPass ? 'text' : 'password'}
-                value={pass}
-                onChange={e => setPass(e.target.value)}
-                placeholder="Enter your password"
-                required autoComplete="current-password"
-              />
+              <div className="login-input-wrap">
+                <svg className="login-input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={pass}
+                  onChange={e => setPass(e.target.value)}
+                  placeholder="Enter your password"
+                  required autoComplete="current-password"
+                />
+              </div>
             </div>
 
             <button type="submit" className="login-btn" disabled={loading} style={{ marginTop: 8 }}>
@@ -300,11 +381,11 @@ function LoginPage() {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
                     <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
                   </svg>
-                  Signing in…
+                  Authenticating…
                 </>
               ) : (
                 <>
-                  Sign In
+                  Access Dashboard
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
@@ -313,18 +394,18 @@ function LoginPage() {
             </button>
           </form>
 
-          <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border-lg)', display: 'flex', justifyContent: 'center', gap: 24 }}>
-            {[
-              { icon: Icons.Trucks,   label: 'Fleet'     },
-              { icon: Icons.Stock,    label: 'Inventory' },
-              { icon: Icons.Revenue,  label: 'Finance'   },
-              { icon: Icons.Reports,  label: 'Reports'   },
-            ].map((m, i) => (
-              <div key={i} style={{ textAlign: 'center', color: 'var(--muted)' }}>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4, opacity: .6 }}>{m.icon}</div>
-                <div style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase' }}>{m.label}</div>
+          {/* Module icons footer */}
+          <div className="login-card-modules">
+            {MODULES.map((m, i) => (
+              <div key={i} className="login-card-module-item">
+                <div style={{ color: m.color, opacity: .7, display: 'flex', justifyContent: 'center' }}>{m.icon}</div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,.25)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 4 }}>{m.label}</div>
               </div>
             ))}
+          </div>
+
+          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,.18)' }}>
+            Protected by enterprise-grade security
           </div>
         </div>
       </div>
@@ -501,8 +582,10 @@ function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <div className="logo-mark">
-          <div className="logo-svg-wrap">
-            <TaurusLogo width={196} lightText={true} />
+          <TaurusLogo size={30} />
+          <div className="logo-text">
+            <div className="logo-name">Taurus Trade</div>
+            <div className="logo-sub">&amp; Logistics ERP</div>
           </div>
         </div>
       </div>
