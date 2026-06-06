@@ -87,32 +87,50 @@ const Icons = {
   Theme: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
 };
 
+const NAV_ICONS = {
+  Dashboard:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>,
+  Trucks:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 17h4V5H2v12h3m15 0h2v-3.34a2 2 0 0 0-.59-1.42L17.5 9H14"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
+  Drivers:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>,
+  Trips:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>,
+  Fuel:        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 22V7l9-5 9 5v15"/><path d="M9 22V12h6v10"/></svg>,
+  Purchase:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+  Issue:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>,
+  Stock:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>,
+  Invoicing:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+  Expenditure: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+  Revenue:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+  Maintenance: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  Reports:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>,
+  Users:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  AuditLog:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+};
+
 function Sidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
   const NAV = [
-    { label: 'Overview', items: [{ to: '/', icon: Icons.Dashboard, label: 'Dashboard' }] },
-    { label: 'Fleet Management', items: [
-      { to: '/trucks', icon: Icons.Fleet, label: 'Trucks', module: 'trucks' },
-      { to: '/drivers', icon: Icons.Fleet, label: 'Drivers', module: 'drivers' },
-      { to: '/trips', icon: Icons.Fleet, label: 'Trips', module: 'trips' },
-      { to: '/fuel', icon: Icons.Fleet, label: 'Fuel Control', module: 'fuel' },
+    { label: 'Overview', items: [{ to: '/', icon: NAV_ICONS.Dashboard, label: 'Dashboard' }] },
+    { label: 'Fleet', items: [
+      { to: '/trucks',  icon: NAV_ICONS.Trucks,  label: 'Trucks',       module: 'trucks' },
+      { to: '/drivers', icon: NAV_ICONS.Drivers, label: 'Drivers',      module: 'drivers' },
+      { to: '/trips',   icon: NAV_ICONS.Trips,   label: 'Trips',        module: 'trips' },
+      { to: '/fuel',    icon: NAV_ICONS.Fuel,    label: 'Fuel Control', module: 'fuel' },
     ]},
     { label: 'Inventory', items: [
-      { to: '/purchase', icon: Icons.Inventory, label: 'Purchase', module: 'purchase' },
-      { to: '/issue', icon: Icons.Inventory, label: 'Issue Items', module: 'issue' },
-      { to: '/stock', icon: Icons.Inventory, label: 'Stock Ledger', module: 'stock' },
+      { to: '/purchase', icon: NAV_ICONS.Purchase, label: 'Purchase',     module: 'purchase' },
+      { to: '/issue',    icon: NAV_ICONS.Issue,    label: 'Issue Items',  module: 'issue' },
+      { to: '/stock',    icon: NAV_ICONS.Stock,    label: 'Stock Ledger', module: 'stock' },
     ]},
     { label: 'Financials', items: [
-      { to: '/invoicing', icon: Icons.Finance, label: 'Invoicing', module: 'invoicing' },
-      { to: '/expenditure', icon: Icons.Finance, label: 'Expenditure', module: 'expenditure' },
-      { to: '/revenue', icon: Icons.Finance, label: 'Revenue', module: 'revenue' },
+      { to: '/invoicing',    icon: NAV_ICONS.Invoicing,   label: 'Invoicing',    module: 'invoicing' },
+      { to: '/expenditure',  icon: NAV_ICONS.Expenditure, label: 'Expenditure',  module: 'expenditure' },
+      { to: '/revenue',      icon: NAV_ICONS.Revenue,     label: 'Revenue',      module: 'revenue' },
     ]},
     { label: 'System', items: [
-      { to: '/maintenance', icon: Icons.Ops, label: 'Maintenance', module: 'maintenance' },
-      { to: '/reports', icon: Icons.Ops, label: 'Reports', module: 'reports' },
-      { to: '/users', icon: Icons.Admin, label: 'Users', adminOnly: true },
-      { to: '/audit-log', icon: Icons.Admin, label: 'Audit Log', adminOnly: true },
+      { to: '/maintenance', icon: NAV_ICONS.Maintenance, label: 'Maintenance', module: 'maintenance' },
+      { to: '/reports',     icon: NAV_ICONS.Reports,     label: 'Reports',     module: 'reports' },
+      { to: '/users',       icon: NAV_ICONS.Users,       label: 'Users',       adminOnly: true },
+      { to: '/audit-log',   icon: NAV_ICONS.AuditLog,    label: 'Audit Log',   adminOnly: true },
     ]},
   ];
 
@@ -127,31 +145,77 @@ function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo"><div className="logo-name">TAURUS</div></div>
+      {/* Logo */}
+      <div className="sidebar-logo">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 15, fontWeight: 900, color: '#fff', flexShrink: 0,
+            boxShadow: '0 2px 8px rgba(37,99,235,0.4)',
+          }}>T</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px', lineHeight: 1.1 }}>TAURUS</div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>Logistics ERP</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
       <div className="nav-container">
         {filteredNav.map(group => (
-          <div key={group.label}>
+          <div key={group.label} style={{ marginBottom: 4 }}>
             <div className="nav-group-label">{group.label}</div>
-            {group.items.map(item => (
-              <Link key={item.to} to={item.to} className={`nav-item ${location.pathname === item.to ? 'active' : ''}`}>
-                <span className="nav-icon" style={{ width: 18, height: 18 }}>{item.icon}</span>{item.label}
-              </Link>
-            ))}
+            {group.items.map(item => {
+              const isActive = location.pathname === item.to;
+              return (
+                <Link key={item.to} to={item.to} className={`nav-item ${isActive ? 'active' : ''}`}>
+                  <span className="nav-icon">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <span style={{
+                      marginLeft: 'auto', width: 6, height: 6,
+                      borderRadius: '50%', background: 'rgba(255,255,255,0.7)', flexShrink: 0,
+                    }} />
+                  )}
+                </Link>
+              );
+            })}
           </div>
         ))}
       </div>
-      <div style={{ padding: '16px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+
+      {/* User + Sign Out */}
+      <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: 8,
+            background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: 13, flexShrink: 0,
+          }}>{user?.first_name?.[0]}</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user?.first_name} {user?.last_name}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              {user?.role}
+            </div>
+          </div>
+        </div>
         <button onClick={logout} style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-          padding: '9px 12px', borderRadius: '7px', border: 'none',
-          background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)',
-          fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-          transition: 'all 0.15s',
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 10px', borderRadius: 7, border: 'none',
+          background: 'transparent', color: 'rgba(255,255,255,0.4)',
+          fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+          transition: 'all 0.15s', width: '100%',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.15)'; e.currentTarget.style.color = '#f87171'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.14)'; e.currentTarget.style.color = '#f87171'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
         >
-          <span style={{ width: 15, height: 15, flexShrink: 0 }}>{Icons.Logout}</span> Sign Out
+          <span style={{ width: 14, height: 14, flexShrink: 0, display: 'block' }}>{Icons.Logout}</span>
+          Sign Out
         </button>
       </div>
     </aside>
