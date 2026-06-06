@@ -123,6 +123,41 @@ function AlertsProvider({ children }) {
   );
 }
 
+// ── Taurus SVG Logo ─────────────────────────────────────────
+function TaurusLogo({ width = 260, lightText = false }) {
+  const textColor = lightText ? '#ffffff' : '#0F172A';
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width={width} height="auto" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id="tlPrimary" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#0F172A" />
+          <stop offset="100%" stopColor="#1E3A8A" />
+        </linearGradient>
+        <linearGradient id="tlAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F97316" />
+          <stop offset="100%" stopColor="#EA580C" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(15, 12)">
+        <path d="M15 20 L50 45 L15 70 L30 45 Z" fill="url(#tlPrimary)" opacity="0.4" />
+        <path d="M35 20 L80 45 L35 70 L50 45 Z" fill="url(#tlPrimary)" />
+        <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccent)" />
+        <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccent)" />
+      </g>
+      <text x="125" y="68"
+        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        fontSize="52" fontWeight="900" fill={textColor} letterSpacing="1">
+        TAURUS
+      </text>
+      <text x="127" y="94"
+        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        fontSize="14" fontWeight="700" fill="#EA580C" letterSpacing="5">
+        TRADING &amp; LOGISTICS
+      </text>
+    </svg>
+  );
+}
+
 // ── SVG Icons ───────────────────────────────────────────────
 const Icons = {
   Dashboard:    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
@@ -194,11 +229,7 @@ function LoginPage() {
         </div>
         <div className="login-brand">
           <div className="login-logo-wrap">
-            <div className="login-logo-badge">T</div>
-            <div>
-              <div className="login-logo-name">Taurus Trade</div>
-              <div className="login-logo-sub">&amp; Logistics ERP</div>
-            </div>
+            <TaurusLogo width={320} lightText={true} />
           </div>
           <div className="login-headline">Enterprise<br/>operations,<br/><em>unified.</em></div>
           <div className="login-sub">
@@ -220,8 +251,11 @@ function LoginPage() {
 
       <div className="login-right">
         <div className="login-card">
+          <div className="login-card-logo">
+            <TaurusLogo width={200} lightText={true} />
+          </div>
           <div className="login-card-header">
-            <div className="login-card-title">Welcome back</div>
+            <div className="login-card-title">Sign In</div>
             <div className="login-card-sub">Sign in to your ERP dashboard</div>
           </div>
 
@@ -467,10 +501,8 @@ function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <div className="logo-mark">
-          <div className="logo-badge">T</div>
-          <div className="logo-text">
-            <div className="logo-name">Taurus Trade</div>
-            <div className="logo-sub">&amp; Logistics ERP</div>
+          <div className="logo-svg-wrap">
+            <TaurusLogo width={196} lightText={true} />
           </div>
         </div>
       </div>
