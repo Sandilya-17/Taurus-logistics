@@ -584,8 +584,8 @@ function Sidebar() {
         <div className="logo-mark">
           <TaurusLogo size={30} />
           <div className="logo-text">
-            <div className="logo-name">Taurus Trade</div>
-            <div className="logo-sub">&amp; Logistics ERP</div>
+            <div className="logo-wordmark">Taurus</div>
+            <div className="logo-tagline">Trade &amp; Logistics</div>
           </div>
         </div>
       </div>
