@@ -3,7 +3,6 @@
    Clean, modern, no legacy cruft. Inspired by Linear/Notion.
    ========================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap');
 
 /* ── Design Tokens ───────────────────────────────────────── */
 :root {
@@ -86,7 +85,7 @@
 html { height: 100%; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 body {
   height: 100%;
-  font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
@@ -759,7 +758,7 @@ select option { color: var(--text); background: var(--bg-card); }
 .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 
 /* ── Utility ──────────────────────────────────────────────── */
-.mono   { font-family: 'Geist Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mono   { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace; font-variant-numeric: tabular-nums; }
 .muted  { color: var(--text-3); }
 .text-green { color: var(--c-green); }
 .text-red   { color: var(--c-red); }
