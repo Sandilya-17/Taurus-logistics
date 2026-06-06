@@ -32,16 +32,11 @@ const AlertsCtx = createContext(null);
 export const useAlerts = () => useContext(AlertsCtx);
 
 function ThemeProvider({ children }) {
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('erp-theme');
-    return saved === 'dark';
-  });
-
+  const [dark, setDark] = useState(() => localStorage.getItem('erp-theme') === 'dark');
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     localStorage.setItem('erp-theme', dark ? 'dark' : 'light');
   }, [dark]);
-
   return <ThemeCtx.Provider value={{ dark, toggle: () => setDark(!dark) }}>{children}</ThemeCtx.Provider>;
 }
 
@@ -49,27 +44,23 @@ function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
-
   const login = (userData, access, refresh) => {
     localStorage.setItem('access', access);
     localStorage.setItem('refresh', refresh);
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
   };
-
   const logout = async () => {
     try { await api.post('/auth/logout/', { refresh: localStorage.getItem('refresh') }); } catch {}
     localStorage.clear();
     setUser(null);
   };
-
   return <AuthCtx.Provider value={{ user, login, logout }}>{children}</AuthCtx.Provider>;
 }
 
 function AlertsProvider({ children }) {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
-
   const fetchAlerts = useCallback(async () => {
     if (!user) return;
     try {
@@ -77,13 +68,11 @@ function AlertsProvider({ children }) {
       setUnreadCount(data.results?.length || data.length || 0);
     } catch {}
   }, [user]);
-
   useEffect(() => {
     fetchAlerts();
     const t = setInterval(fetchAlerts, 60000);
     return () => clearInterval(t);
   }, [fetchAlerts]);
-
   return <AlertsCtx.Provider value={{ unreadCount }}>{children}</AlertsCtx.Provider>;
 }
 
@@ -101,21 +90,20 @@ const Icons = {
 function Sidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
-
   const NAV = [
-    { label: 'General', items: [{ to: '/', icon: Icons.Dashboard, label: 'Dashboard' }] },
-    { label: 'Fleet', items: [
+    { label: 'Overview', items: [{ to: '/', icon: Icons.Dashboard, label: 'Dashboard' }] },
+    { label: 'Fleet Management', items: [
       { to: '/trucks', icon: Icons.Fleet, label: 'Trucks', module: 'trucks' },
       { to: '/drivers', icon: Icons.Fleet, label: 'Drivers', module: 'drivers' },
       { to: '/trips', icon: Icons.Fleet, label: 'Trips', module: 'trips' },
-      { to: '/fuel', icon: Icons.Fleet, label: 'Fuel', module: 'fuel' },
+      { to: '/fuel', icon: Icons.Fleet, label: 'Fuel Control', module: 'fuel' },
     ]},
     { label: 'Inventory', items: [
       { to: '/purchase', icon: Icons.Inventory, label: 'Purchase', module: 'purchase' },
-      { to: '/issue', icon: Icons.Inventory, label: 'Issue', module: 'issue' },
-      { to: '/stock', icon: Icons.Inventory, label: 'Stock', module: 'stock' },
+      { to: '/issue', icon: Icons.Inventory, label: 'Issue Items', module: 'issue' },
+      { to: '/stock', icon: Icons.Inventory, label: 'Stock Ledger', module: 'stock' },
     ]},
-    { label: 'Finance', items: [
+    { label: 'Financials', items: [
       { to: '/invoicing', icon: Icons.Finance, label: 'Invoicing', module: 'invoicing' },
       { to: '/expenditure', icon: Icons.Finance, label: 'Expenditure', module: 'expenditure' },
       { to: '/revenue', icon: Icons.Finance, label: 'Revenue', module: 'revenue' },
@@ -146,15 +134,15 @@ function Sidebar() {
             <div className="nav-group-label">{group.label}</div>
             {group.items.map(item => (
               <Link key={item.to} to={item.to} className={`nav-item ${location.pathname === item.to ? 'active' : ''}`}>
-                <span className="nav-icon">{item.icon}</span>{item.label}
+                <span className="nav-icon" style={{ width: 18, height: 18 }}>{item.icon}</span>{item.label}
               </Link>
             ))}
           </div>
         ))}
       </div>
-      <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <button onClick={logout} className="btn btn-outline" style={{ width: '100%', color: '#fff', borderColor: 'rgba(255,255,255,0.2)' }}>
-          <span style={{ width: 16 }}>{Icons.Logout}</span> Sign Out
+      <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <button onClick={logout} className="btn btn-outline" style={{ width: '100%', color: '#fff', borderColor: 'rgba(255,255,255,0.2)', fontSize: '13px' }}>
+          <span style={{ width: 16, height: 16 }}>{Icons.Logout}</span> Sign Out
         </button>
       </div>
     </aside>
@@ -166,18 +154,21 @@ function Topbar() {
   const { toggle } = useTheme();
   const location = useLocation();
   const titles = { '/': 'Dashboard', '/trucks': 'Trucks', '/drivers': 'Drivers', '/trips': 'Trips', '/fuel': 'Fuel', '/purchase': 'Purchase', '/issue': 'Issue', '/stock': 'Stock', '/invoicing': 'Invoicing', '/expenditure': 'Expenditure', '/revenue': 'Revenue', '/maintenance': 'Maintenance', '/reports': 'Reports', '/users': 'Users', '/audit-log': 'Audit Log', '/profile': 'Profile' };
-
   return (
     <header className="topbar">
-      <h1 style={{ fontSize: '18px', fontWeight: 700, flex: 1 }}>{titles[location.pathname] || 'Taurus ERP'}</h1>
-      <div className="flex items-center gap-4">
-        <button onClick={toggle} className="btn btn-outline" style={{ padding: '8px' }}>{Icons.Theme}</button>
-        <div className="flex items-center gap-2">
+      <h1 style={{ fontSize: '20px', fontWeight: 800, flex: 1, color: 'var(--text-main)' }}>{titles[location.pathname] || 'Taurus ERP'}</h1>
+      <div className="flex items-center gap-6">
+        <button onClick={toggle} className="btn btn-outline" style={{ padding: '10px', borderRadius: '10px' }}>
+          <span style={{ width: 18, height: 18, display: 'block' }}>{Icons.Theme}</span>
+        </button>
+        <div className="flex items-center gap-3">
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700 }}>{user?.first_name} {user?.last_name}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{user?.role}</div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>{user?.first_name} {user?.last_name}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>{user?.role}</div>
           </div>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{user?.first_name?.[0]}</div>
+          <div style={{ width: 40, height: 40, borderRadius: '12px', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '16px', boxShadow: '0 4px 12px rgba(15, 98, 254, 0.2)' }}>
+            {user?.first_name?.[0]}
+          </div>
         </div>
       </div>
     </header>
@@ -191,9 +182,7 @@ function LoginPage() {
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-
   useEffect(() => { if (user) nav('/', { replace: true }); }, [user, nav]);
-
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr('');
@@ -204,16 +193,15 @@ function LoginPage() {
       nav('/');
     } catch (err) { setErr('Invalid email or password.'); } finally { setLoading(false); }
   };
-
   return (
     <div className="login-root">
       <div className="login-container">
         <div className="login-header">
-          <div style={{ fontSize: 32, fontWeight: 900, color: '#0f62fe' }}>TAURUS</div>
-          <h2 className="login-title">Enterprise Sign In</h2>
+          <div style={{ fontSize: 36, fontWeight: 900, color: '#0f62fe', letterSpacing: '-1.5px' }}>TAURUS</div>
+          <h2 className="login-title">Sign in to Enterprise</h2>
           <p className="login-subtitle">Access your logistics command center</p>
         </div>
-        {err && <div style={{ color: '#da1e28', background: '#fff1f1', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', textAlign: 'center', border: '1px solid #ffd7d7' }}>{err}</div>}
+        {err && <div style={{ color: '#da1e28', background: '#fff1f1', padding: '14px', borderRadius: '10px', marginBottom: '24px', fontSize: '14px', textAlign: 'center', border: '1px solid #ffd7d7' }}>{err}</div>}
         <form onSubmit={onSubmit}>
           <div className="form-group">
             <label className="form-label">Email Address</label>
