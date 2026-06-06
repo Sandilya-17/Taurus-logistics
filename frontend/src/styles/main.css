@@ -101,18 +101,25 @@ button { font-family: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 /* ── App Shell ────────────────────────────────────────────── */
-.app-shell { display: flex; height: 100vh; overflow: hidden; }
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
 
 /* ── Sidebar ──────────────────────────────────────────────── */
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
+  max-width: var(--sidebar-w);
   background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   z-index: 50;
   flex-shrink: 0;
+  position: relative; /* in-flow on desktop, overridden to fixed on mobile */
 }
 .sidebar-backdrop {
   display: none;
@@ -188,10 +195,11 @@ button { font-family: inherit; }
 /* ── Main Area ────────────────────────────────────────────── */
 .main-area {
   flex: 1;
+  min-width: 0;          /* prevent flex blowout */
+  max-width: calc(100% - var(--sidebar-w)); /* never bleed under sidebar */
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-width: 0;
 }
 
 /* ── Topbar ───────────────────────────────────────────────── */
@@ -206,7 +214,11 @@ button { font-family: inherit; }
   padding: 0 24px;
   gap: 16px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
   z-index: 30;
+  width: 100%;
+  box-sizing: border-box;
 }
 .topbar-left { display: flex; align-items: center; gap: 12px; }
 .topbar-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
@@ -840,6 +852,9 @@ select option { color: var(--text); background: var(--bg-card); }
   .g2, .g3 { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .form-row-2, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
+
+  /* main-area takes full width when sidebar is off-canvas */
+  .main-area { max-width: 100%; }
 
   /* Modal full-screen on mobile */
   .modal-overlay { padding: 12px; align-items: flex-end; }
