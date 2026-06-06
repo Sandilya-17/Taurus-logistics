@@ -6,6 +6,9 @@ cmds = ["npm run build"]
 
 [variables]
 REACT_APP_API_URL = "https://taurus-logistics-production-0a15.up.railway.app/api"
+CI = "false"
+GENERATE_SOURCEMAP = "false"
+SKIP_PREFLIGHT_CHECK = "true"
 
 [start]
 cmd = "npx serve -s build -p ${PORT:-3000}"
