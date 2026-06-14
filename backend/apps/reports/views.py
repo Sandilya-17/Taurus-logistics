@@ -162,9 +162,11 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             _fuel_qs = bfilter(FuelLog.objects.filter(date__gte=month_start, date__lte=today))
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
-            stock_value = StockLedger.objects.all().aggregate(
-                total=Sum('final_amount'))['total'] or Decimal('0')
-            stock_items = Item.objects.count()
+            stock_qs = StockLedger.objects.filter(branch_id=branch_id) if branch_id else StockLedger.objects.none()
+            stock_value = stock_qs.aggregate(total=Sum('final_amount'))['total'] or Decimal('0')
+            stock_items = Item.objects.filter(
+                ledger_entries__branch_id=branch_id
+            ).distinct().count() if branch_id else 0
 
             alerts = []
             for truck in bfilter(Truck.objects.filter(status=Truck.ACTIVE)):
@@ -415,13 +417,17 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
 
 class StockReportView(BranchFilterMixin, APIView):
     def get(self, request):
-        items = Item.objects.all().order_by('item_type', 'name')
+        branch_id = request.user.branch_id
+        branch = request.user.branch if branch_id else None
+        items = Item.objects.filter(
+            ledger_entries__branch_id=branch_id
+        ).distinct().order_by('item_type', 'name') if branch_id else Item.objects.none()
         headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH₵)', 'Reorder Level']
         rows = []
         total_value = Decimal('0')
         for item in items:
-            qty   = item.available_qty()
-            value = item.available_value()
+            qty   = item.available_qty(branch=branch)
+            value = item.available_value(branch=branch)
             total_value += value
             rows.append([item.name, item.get_item_type_display(), item.unit,
                          _fmt(qty), _fmt(value), _fmt(item.reorder_level)])
@@ -465,10 +471,12 @@ class InvoiceReportView(BranchFilterMixin, APIView):
 class SparePartsReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
+        branch_id = request.user.branch_id
         ledger = StockLedger.objects.filter(
             item__item_type='SPARE_PART',
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
+            **({'branch_id': branch_id} if branch_id else {'branch_id': -1}),
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location', 'Reference']
         rows = []
@@ -563,10 +571,12 @@ class TyreReportView(BranchFilterMixin, APIView):
 class LubricantReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
+        branch_id = request.user.branch_id
         ledger = StockLedger.objects.filter(
             item__item_type='LUBRICANT',
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
+            **({'branch_id': branch_id} if branch_id else {'branch_id': -1}),
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location']
         rows = []
