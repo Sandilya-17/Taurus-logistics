@@ -42,21 +42,27 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             actor = request.user
 
-            # ADMIN can only create MANAGER or EMPLOYEE — not another ADMIN / SUPER_ADMIN
             if actor.role == User.ADMIN:
+                # ADMIN can only create MANAGER or EMPLOYEE — not another ADMIN / SUPER_ADMIN
                 if role in (User.SUPER_ADMIN, User.ADMIN):
-                    raise serializers.ValidationError('Admins can only create Managers or Employees.')
-                # Admin can only create users in their own branch
+                    raise serializers.ValidationError(
+                        'Admins can only create Managers or Employees.'
+                    )
+                # ADMIN can only create users in their own branch
                 if branch and branch != actor.branch:
-                    raise serializers.ValidationError('You can only create users in your own branch.')
+                    raise serializers.ValidationError(
+                        'You can only create users in your own branch.'
+                    )
+                # Auto-assign ADMIN's branch if not provided
                 if not branch:
                     data['branch'] = actor.branch
 
         # SUPER_ADMIN users must NOT have a branch
         if role == User.SUPER_ADMIN and branch:
             raise serializers.ValidationError('Super Admin must not be assigned to a branch.')
+
         # Non-SUPER_ADMIN must have a branch
-        if role != User.SUPER_ADMIN and not branch and not data.get('branch'):
+        if role != User.SUPER_ADMIN and not data.get('branch'):
             raise serializers.ValidationError('A branch must be assigned for this role.')
 
         return data
@@ -65,6 +71,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         user = User(**validated_data)
         user.set_password(password)
+        # Give ADMIN/SUPER_ADMIN staff flag for Django admin access
+        if validated_data.get('role') in (User.ADMIN, User.SUPER_ADMIN):
+            user.is_staff = True
         user.save()
         return user
 
@@ -80,18 +89,34 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            actor = request.user
-            role   = data.get('role', self.instance.role if self.instance else User.EMPLOYEE)
-            branch = data.get('branch', self.instance.branch if self.instance else None)
+        if not request or not request.user.is_authenticated:
+            return data
 
-            if actor.role == User.ADMIN:
-                # Admin cannot promote to ADMIN or SUPER_ADMIN
-                if role in (User.SUPER_ADMIN, User.ADMIN):
-                    raise serializers.ValidationError('Admins cannot assign Admin or Super Admin role.')
-                # Admin cannot move user to a different branch
-                if branch and branch != actor.branch:
-                    raise serializers.ValidationError('You can only manage users in your own branch.')
+        actor  = request.user
+        role   = data.get('role', self.instance.role if self.instance else User.EMPLOYEE)
+        branch = data.get('branch', self.instance.branch if self.instance else None)
+
+        if actor.role == User.ADMIN:
+            # ADMIN cannot promote to ADMIN or SUPER_ADMIN
+            if role in (User.SUPER_ADMIN, User.ADMIN):
+                raise serializers.ValidationError(
+                    'Admins cannot assign Admin or Super Admin role.'
+                )
+            # ADMIN cannot move a user to a different branch
+            if branch and branch != actor.branch:
+                raise serializers.ValidationError(
+                    'You can only manage users in your own branch.'
+                )
+            # ADMIN cannot edit users outside their branch
+            if self.instance and self.instance.branch != actor.branch:
+                raise serializers.ValidationError(
+                    'You can only manage users in your own branch.'
+                )
+
+        # Keep SUPER_ADMIN branch-less
+        if role == User.SUPER_ADMIN:
+            data['branch'] = None
+
         return data
 
     def update(self, instance, validated_data):
@@ -100,6 +125,11 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
+        # Sync is_staff with role
+        if instance.role in (User.ADMIN, User.SUPER_ADMIN):
+            instance.is_staff = True
+        else:
+            instance.is_staff = False
         instance.save()
         return instance
 
