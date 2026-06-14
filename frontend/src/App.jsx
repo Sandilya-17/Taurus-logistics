@@ -347,7 +347,14 @@ function LoginPage() {
       login(data.user, data.access, data.refresh);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || 'Invalid email or password.');
+      const d = err.response?.data;
+      const msg = typeof d === 'string'
+        ? d
+        : d?.detail
+        || (Array.isArray(d?.non_field_errors) ? d.non_field_errors[0] : null)
+        || (Array.isArray(d) ? d[0] : null)
+        || 'Invalid email or password.';
+      setError(typeof msg === 'string' ? msg : 'Invalid email or password.');
     } finally { setLoading(false); }
   };
 
