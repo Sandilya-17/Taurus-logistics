@@ -58,7 +58,7 @@ def _branch_filter(request):
         return {}
     if user.branch_id:
         return {'branch_id': user.branch_id}
-    return {'branch_id': None}  # effectively shows nothing if no branch
+    return {'branch_id': -1}  # effectively shows nothing if no branch
 
 def _export_excel(headers, rows, sheet_name='Report'):
     try:
@@ -181,7 +181,9 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 total=Sum('final_amount')
             )['total'] or Decimal('0')
 
-            stock_items = Item.objects.filter(**bf).count()
+            # Item has no branch — count via ledger entries
+            stock_items = Item.objects.filter(**sl_filter).count() if not sl_filter else \
+                StockLedger.objects.filter(**sl_filter).values('item').distinct().count()
 
             alerts = []
             for truck in Truck.objects.filter(status=Truck.ACTIVE, **bf):
