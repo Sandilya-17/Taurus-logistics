@@ -23,6 +23,7 @@ class Driver(SoftDeleteModel):
     licence_expiry_date = models.DateField()
 
     status           = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ACTIVE)
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='drivers', db_index=True)
     assigned_truck   = models.ForeignKey('trucks.Truck', null=True, blank=True, on_delete=models.SET_NULL, related_name='drivers')
 
     class Meta:
