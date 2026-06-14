@@ -51,14 +51,25 @@ def _fmt(val):
 
 
 def _branch_filter(request):
-    """Returns a dict to filter querysets by the current user's branch."""
+    """Returns a Q object or empty dict to filter querysets by branch."""
     from apps.users.models import User
+    from django.db.models import Q
     user = request.user
     if user.role == User.SUPER_ADMIN:
         return {}
     if user.branch_id:
         return {'branch_id': user.branch_id}
     return {'branch_id': -1}  # effectively shows nothing if no branch
+
+
+def _apply_branch(qs, request):
+    """Apply branch filter directly to a queryset using extra() - works on any table."""    from apps.users.models import User
+    user = request.user
+    if user.role == User.SUPER_ADMIN:
+        return qs
+    if user.branch_id:
+        return qs.extra(where=['branch_id = %s'], params=[user.branch_id])
+    return qs.none()
 
 def _export_excel(headers, rows, sheet_name='Report'):
     try:
