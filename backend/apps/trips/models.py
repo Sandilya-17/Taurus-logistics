@@ -16,6 +16,7 @@ class Trip(TimeStampedModel):
         (DELAYED,'Delayed'),(COMPLETED,'Completed'),(CANCELLED,'Cancelled'),
     ]
 
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='trips', db_index=True)
     truck         = models.ForeignKey('trucks.Truck',   on_delete=models.PROTECT, related_name='trips')
     driver        = models.ForeignKey('drivers.Driver', on_delete=models.PROTECT, related_name='trips')
     waybill_no    = models.CharField(max_length=50, unique=True)
