@@ -37,7 +37,6 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
-    # Roles hierarchy: SUPER_ADMIN > ADMIN > MANAGER > EMPLOYEE
     SUPER_ADMIN = 'SUPER_ADMIN'
     ADMIN       = 'ADMIN'
     MANAGER     = 'MANAGER'
@@ -55,7 +54,8 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     phone      = models.CharField(max_length=20, blank=True)
     role       = models.CharField(max_length=15, choices=ROLE_CHOICES, default=EMPLOYEE)
 
-    # Branch assignment — NULL only for SUPER_ADMIN
+    # ALL roles including SUPER_ADMIN must have a branch.
+    # Super Admin has full CRUD within their assigned branch only.
     branch     = models.ForeignKey(
         Branch, null=True, blank=True,
         on_delete=models.PROTECT, related_name='users'
@@ -64,7 +64,6 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     is_active  = models.BooleanField(default=True)
     is_staff   = models.BooleanField(default=False)
 
-    # Module-level permissions granted by admin (stored as JSON list of module names)
     module_permissions = models.JSONField(default=list, blank=True)
 
     objects   = UserManager()
