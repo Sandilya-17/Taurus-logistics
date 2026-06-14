@@ -1,4 +1,16 @@
-"""apps/inventory/views.py"""
+"""apps/inventory/views.py
+
+FIX SUMMARY
+-----------
+1. StockLedgerList  – now filters by branch directly on the ledger row
+                      (old code joined via purchases which leaked cross-branch).
+2. StockLedgerList  – SUPER_ADMIN sees all branches unless ?branch_id= is given.
+3. ItemListCreate   – opening stock ledger entry now tagged with user's branch.
+4. post_opening_stock – tagged with user's branch.
+5. PurchaseService / IssueService calls in create() – branch is now passed through.
+6. ClosingStockView – respects branch filtering.
+7. available_stock  – respects branch filtering.
+"""
 from decimal import Decimal, InvalidOperation
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
@@ -12,6 +24,8 @@ from apps.core.models import Supplier
 from apps.core.branch_mixin import BranchScopedQuerysetMixin
 from apps.core.serializers import SupplierSerializer
 
+
+# ── Permissions ────────────────────────────────────────────────────────────────
 
 class IsAdminOrReadOnly(permissions.BasePermission):
     """Read for all authenticated; write/delete for ADMIN or SUPER_ADMIN."""
@@ -28,6 +42,32 @@ class IsAdmin(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and
                     getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'))
 
+
+# ── Helper: resolve the acting branch ─────────────────────────────────────────
+
+def _resolve_branch(user, request_data=None, query_params=None):
+    """
+    Return the Branch object to tag a new record with.
+    - SUPER_ADMIN: uses branch_id from POST body or ?branch_id= param; falls
+                   back to their own branch.
+    - Everyone else: always their own branch.
+    """
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        branch_id = None
+        if request_data:
+            branch_id = request_data.get('branch_id')
+        if not branch_id and query_params:
+            branch_id = query_params.get('branch_id')
+        if branch_id:
+            from apps.users.models import Branch
+            try:
+                return Branch.objects.get(pk=branch_id)
+            except Branch.DoesNotExist:
+                pass
+    return user.branch if user.branch_id else None
+
+
+# ── Suppliers ──────────────────────────────────────────────────────────────────
 
 class SupplierListCreate(generics.ListCreateAPIView):
     queryset         = Supplier.objects.all()
@@ -46,6 +86,8 @@ class SupplierDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
 
 
+# ── Locations (global – shared across branches intentionally) ──────────────────
+
 class LocationListCreate(generics.ListCreateAPIView):
     queryset         = Location.objects.all()
     serializer_class = LocationSerializer
@@ -55,6 +97,8 @@ class LocationDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset         = Location.objects.all()
     serializer_class = LocationSerializer
 
+
+# ── Items (global catalogue – branch isolation is at ledger level) ─────────────
 
 class ItemListCreate(generics.ListCreateAPIView):
     queryset         = Item.objects.all()
@@ -104,8 +148,13 @@ class ItemListCreate(generics.ListCreateAPIView):
                     loc = Location.objects.filter(deleted_at__isnull=True).first()
                     if not loc:
                         loc = Location.objects.create(name='Main Store', location_type='STORE')
+
+                # ── FIX: tag opening stock entry with the acting branch ──
+                branch = _resolve_branch(request.user, request.data, request.query_params)
+
                 StockLedger.objects.create(
                     item=item, location=loc,
+                    branch=branch,                          # ← NEW
                     transaction_type=StockLedger.OPENING,
                     quantity=opening_qty, unit_price=unit_price,
                     created_by=request.user if request.user.is_authenticated else None,
@@ -131,7 +180,15 @@ class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().destroy(request, *args, **kwargs)
 
 
+# ── Stock Ledger ───────────────────────────────────────────────────────────────
+
 class StockLedgerList(generics.ListAPIView):
+    """
+    FIX: Now filters directly on StockLedger.branch instead of the broken
+    join-via-purchases approach that leaked cross-branch data.
+
+    SUPER_ADMIN sees all branches unless ?branch_id= is supplied.
+    """
     serializer_class = StockLedgerSerializer
     filterset_fields = ('item', 'location', 'transaction_type')
     search_fields    = ('item__name', 'reference_type')
@@ -139,14 +196,20 @@ class StockLedgerList(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        qs   = StockLedger.objects.select_related('item', 'location', 'created_by')
+        qs   = StockLedger.objects.select_related('item', 'location', 'created_by', 'branch')
         if not user.is_authenticated:
             return qs.none()
+
+        # SUPER_ADMIN: all branches (or narrowed by ?branch_id=)
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            branch_id = self.request.query_params.get('branch_id')
+            if branch_id:
+                return qs.filter(branch_id=branch_id)
+            return qs  # all data
+
+        # Everyone else: strictly their own branch
         if user.branch_id:
-            branch_items = Purchase.objects.filter(
-                branch_id=user.branch_id
-            ).values('item_id')
-            return qs.filter(item_id__in=branch_items)
+            return qs.filter(branch_id=user.branch_id)
         return qs.none()
 
 
@@ -179,16 +242,32 @@ class StockLedgerDetail(generics.RetrieveUpdateAPIView):
 
 
 class ClosingStockView(APIView):
+    """
+    FIX: Respects branch isolation.
+    SUPER_ADMIN can pass ?branch_id= to narrow; otherwise sees all.
+    Other roles are restricted to their branch automatically.
+    """
     def get(self, request):
+        user        = request.user
         item_id     = request.query_params.get('item')
         location_id = request.query_params.get('location')
         as_of       = request.query_params.get('as_of')
-        data = StockService.get_closing_stock(item_id, location_id, as_of)
+
+        # Determine branch scope
+        branch_id = None
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            branch_id = request.query_params.get('branch_id')  # optional for super admin
+        else:
+            branch_id = user.branch_id  # mandatory for all others
+
+        data = StockService.get_closing_stock(item_id, location_id, as_of, branch_id=branch_id)
         return Response(list(data))
 
 
+# ── Purchases ──────────────────────────────────────────────────────────────────
+
 class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
-    queryset         = Purchase.objects.select_related('supplier', 'item', 'location')
+    queryset         = Purchase.objects.select_related('supplier', 'item', 'location', 'branch')
     serializer_class = PurchaseSerializer
     filterset_fields = ('supplier', 'item', 'location', 'purchase_date')
     search_fields    = ('invoice_number', 'item__name', 'supplier__name')
@@ -203,7 +282,10 @@ class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
                     defaults={'name': supplier_name}
                 )
                 data['supplier_id'] = supplier.pk
-            purchase = PurchaseService.create_purchase(data, user=request.user)
+
+            # ── FIX: resolve branch and pass to service ──
+            branch = _resolve_branch(request.user, request.data, request.query_params)
+            purchase = PurchaseService.create_purchase(data, user=request.user, branch=branch)
             return Response(PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -232,8 +314,10 @@ class PurchasePreviewView(APIView):
         return Response(s.validated_data)
 
 
+# ── Issues ────────────────────────────────────────────────────────────────────
+
 class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
-    queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
+    queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip', 'branch')
     serializer_class = IssueItemSerializer
     filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
 
@@ -241,7 +325,9 @@ class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
         import logging
         logger = logging.getLogger(__name__)
         try:
-            issue = IssueService.create_issue(request.data, user=request.user)
+            # ── FIX: resolve branch and pass to service ──
+            branch = _resolve_branch(request.user, request.data, request.query_params)
+            issue = IssueService.create_issue(request.data, user=request.user, branch=branch)
             return Response(IssueItemSerializer(issue).data, status=status.HTTP_201_CREATED)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -268,13 +354,28 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
         return result
 
 
+# ── Utility endpoints ─────────────────────────────────────────────────────────
+
 @api_view(['GET'])
 def available_stock(request):
+    """
+    FIX: Scopes available stock to the caller's branch.
+    SUPER_ADMIN can pass ?branch_id= to query a specific branch.
+    """
+    user        = request.user
     item_id     = request.query_params.get('item')
     location_id = request.query_params.get('location')
     if not item_id:
         return Response({'error': 'item param required'}, status=400)
-    qty = StockService.get_available_qty(item_id, location_id)
+
+    # Resolve branch scope
+    branch_id = None
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        branch_id = request.query_params.get('branch_id')
+    else:
+        branch_id = user.branch_id
+
+    qty = StockService.get_available_qty(item_id, location_id, branch_id=branch_id)
     return Response({'available_qty': float(qty)})
 
 
@@ -284,7 +385,15 @@ def fifo_stock_breakdown(request):
     location_id = request.query_params.get('location')
     if not item_id:
         return Response({'error': 'item param required'}, status=400)
-    batches = StockService.get_fifo_batches(item_id, location_id)
+
+    user      = request.user
+    branch_id = None
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        branch_id = request.query_params.get('branch_id')
+    else:
+        branch_id = user.branch_id
+
+    batches = StockService.get_fifo_batches(item_id, location_id, branch_id=branch_id)
     total_available = sum(b['remaining'] for b in batches)
     return Response({
         'total_available': float(total_available),
@@ -297,6 +406,7 @@ def fifo_stock_breakdown(request):
 
 @api_view(['POST'])
 def post_opening_stock(request):
+    """FIX: Tags the opening stock ledger entry with the user's branch."""
     item_id     = request.data.get('item_id')
     qty_raw     = request.data.get('quantity')
     price_raw   = request.data.get('unit_price')
@@ -325,8 +435,13 @@ def post_opening_stock(request):
         loc = Location.objects.filter(deleted_at__isnull=True).first()
         if not loc:
             loc = Location.objects.create(name='Main Store', location_type='STORE')
+
+    # ── FIX: tag with branch ──
+    branch = _resolve_branch(request.user, request.data, request.query_params)
+
     entry = StockLedger.objects.create(
         item=item, location=loc,
+        branch=branch,          # ← NEW
         transaction_type=StockLedger.OPENING,
         quantity=qty, unit_price=price,
         created_by=request.user if request.user.is_authenticated else None,
@@ -336,6 +451,7 @@ def post_opening_stock(request):
         'id': entry.pk,
         'item': item.name,
         'location': loc.name,
+        'branch': branch.name if branch else None,
         'quantity': float(qty),
         'unit_price': float(price),
         'final_amount': float(entry.final_amount),
