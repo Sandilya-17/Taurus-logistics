@@ -9,6 +9,7 @@ from .serializers import (ItemSerializer, LocationSerializer, StockLedgerSeriali
                            PurchaseSerializer, IssueItemSerializer, PurchasePreviewSerializer)
 from .services import PurchaseService, IssueService, StockService
 from apps.core.models import Supplier
+from apps.core.branch_mixin import BranchScopedQuerysetMixin
 from apps.core.serializers import SupplierSerializer
 
 
@@ -144,7 +145,7 @@ class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
 
 
 # ── Stock Ledger (read-only list) ─────────────────────────────────────────────
-class StockLedgerList(generics.ListAPIView):
+class StockLedgerList(BranchScopedQuerysetMixin, generics.ListAPIView):
     queryset         = StockLedger.objects.select_related('item', 'location', 'created_by')
     serializer_class = StockLedgerSerializer
     filterset_fields = ('item', 'location', 'transaction_type')
@@ -193,7 +194,7 @@ class ClosingStockView(APIView):
 
 
 # ── Purchase ──────────────────────────────────────────────────────────────────
-class PurchaseListCreate(generics.ListCreateAPIView):
+class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = Purchase.objects.select_related('supplier', 'item', 'location')
     serializer_class = PurchaseSerializer
     filterset_fields = ('supplier', 'item', 'location', 'purchase_date')
@@ -216,7 +217,7 @@ class PurchaseListCreate(generics.ListCreateAPIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PurchaseDetail(generics.RetrieveUpdateDestroyAPIView):
+class PurchaseDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset         = Purchase.objects.all()
     serializer_class = PurchaseSerializer
     permission_classes = [IsAdminOrReadOnly]
@@ -241,7 +242,7 @@ class PurchasePreviewView(APIView):
 
 
 # ── Issue ─────────────────────────────────────────────────────────────────────
-class IssueListCreate(generics.ListCreateAPIView):
+class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
     serializer_class = IssueItemSerializer
     filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
