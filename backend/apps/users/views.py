@@ -150,10 +150,16 @@ class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
                 {'error': True, 'message': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        # Admin cannot delete another Admin or Super Admin
+        # ADMIN cannot delete another ADMIN or SUPER_ADMIN
         if request.user.role == User.ADMIN and instance.role in (User.ADMIN, User.SUPER_ADMIN):
             return Response(
                 {'error': True, 'message': 'You do not have permission to delete this user.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        # ADMIN cannot delete users outside their branch
+        if request.user.role == User.ADMIN and instance.branch != request.user.branch:
+            return Response(
+                {'error': True, 'message': 'You can only manage users in your own branch.'},
                 status=status.HTTP_403_FORBIDDEN
             )
         logger.warning('User deleted: %s by %s', instance.email, request.user.email)
@@ -196,12 +202,28 @@ class MeView(APIView):
         return Response({'detail': 'Password updated successfully.'})
 
 
-# ── Branch management (Super Admin only) ──────────────────────────────────────
+# ── Branch management ─────────────────────────────────────────────────────────
 
 class BranchListCreateView(generics.ListCreateAPIView):
-    queryset         = Branch.objects.all().order_by('name')
+    """
+    Super Admin: full CRUD on branches.
+    Admin: read-only (GET) — they need to see their branch info.
+    """
     serializer_class = BranchSerializer
-    permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_super_admin:
+            return Branch.objects.all().order_by('name')
+        # ADMIN sees only their own branch
+        if user.branch_id:
+            return Branch.objects.filter(id=user.branch_id)
+        return Branch.objects.none()
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsSuperAdmin()]
+        return [IsAdminOrAbove()]
 
 
 class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
