@@ -57,8 +57,8 @@ def _branch_filter(request):
     if user.role == User.SUPER_ADMIN:
         return {}
     if user.branch_id:
-        return {'branch': user.branch_id}
-    return {'branch': None}  # effectively shows nothing if no branch
+        return {'branch_id': user.branch_id}
+    return {'branch_id': None}  # effectively shows nothing if no branch
 
 def _export_excel(headers, rows, sheet_name='Report'):
     try:
@@ -171,10 +171,10 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
 
-            # StockLedger has no direct branch — filter via item__branch
+            # StockLedger has no direct branch — filter via item__branch_id
             if bf:
-                branch_val = bf.get('branch')
-                sl_filter = {'item__branch': branch_val} if branch_val is not None else {}
+                branch_val = bf.get('branch_id')
+                sl_filter = {'item__branch_id': branch_val} if branch_val is not None else {}
             else:
                 sl_filter = {}
             stock_value = StockLedger.objects.filter(**sl_filter).aggregate(
