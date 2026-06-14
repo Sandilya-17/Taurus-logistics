@@ -4,8 +4,8 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('trips', '0004_trip_fuel_spare_costs'),
-        ('users', '0003_branch_and_user_role_update'),
+        ('trips', '0003_trip_fuel_spare_costs'),
+        ('users',   '0003_branch_and_user_role_update'),
     ]
 
     operations = [
