@@ -104,12 +104,20 @@ function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: editing
       ? { ...editing, password: '', branch: editing.branch ?? '' }
-      : { role: 'EMPLOYEE', is_active: true, module_permissions: [], branch: currentUser?.branch ?? '' }
+      : {
+          role: 'EMPLOYEE',
+          is_active: true,
+          module_permissions: [],
+          // Pre-fill branch for ADMIN users (their branch only)
+          branch: isAdmin ? (currentUser?.branch ?? '') : '',
+        }
   });
   const [saving, setSaving] = useState(false);
   const wRole = watch('role');
 
-  // Roles an ADMIN can assign (cannot assign ADMIN or SUPER_ADMIN)
+  // Roles available based on the actor's role:
+  // SUPER_ADMIN → can assign any role including ADMIN
+  // ADMIN       → can only assign MANAGER or EMPLOYEE
   const availableRoles = isSuperAdmin
     ? [
         { value: 'SUPER_ADMIN', label: 'Super Admin' },
@@ -127,7 +135,12 @@ function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
     try {
       const payload = { ...data };
       if (!payload.password) delete payload.password;
-      if (!payload.branch)   delete payload.branch;
+      // For SUPER_ADMIN role, never send branch
+      if (payload.role === 'SUPER_ADMIN') {
+        delete payload.branch;
+      } else if (!payload.branch) {
+        delete payload.branch;
+      }
       if (editing) {
         await api.patch(`/users/${editing.id}/`, payload);
         toast.success('User updated.');
@@ -138,10 +151,17 @@ function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
       onSaved(); onClose();
     } catch (e) {
       const err = e.response?.data;
-      const msg = typeof err === 'string' ? err : Object.values(err || {}).flat().join(', ');
+      const msg = typeof err === 'string' ? err
+        : Array.isArray(err) ? err.join(', ')
+        : Object.values(err || {}).flat().join(', ');
       toast.error(msg || 'Failed to save user.');
     } finally { setSaving(false); }
   };
+
+  // Determine the branch the current ADMIN belongs to (for display)
+  const adminBranchName = branches.find(b => b.id === currentUser?.branch)?.name
+    || currentUser?.branch_name
+    || 'Your Branch';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -171,32 +191,58 @@ function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
             </div>
             <div className="fg">
               <label>{editing ? 'New Password (leave blank to keep)' : 'Password *'}</label>
-              <input type="password" {...register('password', { required: !editing, minLength: { value: 8, message: 'Min 8 chars' } })} />
-              {errors.password && <span style={{ color: 'var(--red)', fontSize: 11 }}>{errors.password.message || 'Required'}</span>}
+              <input
+                type="password"
+                {...register('password', {
+                  required: !editing,
+                  minLength: { value: 8, message: 'Min 8 chars' },
+                })}
+              />
+              {errors.password && (
+                <span style={{ color: 'var(--red)', fontSize: 11 }}>
+                  {errors.password.message || 'Required'}
+                </span>
+              )}
             </div>
             <div className="fg">
               <label>Role *</label>
               <select {...register('role', { required: true })}>
-                {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {availableRoles.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
             </div>
 
-            {/* Branch selector — Super Admin sees all branches; ADMIN field is locked to their branch */}
+            {/* Branch selector */}
             {wRole !== 'SUPER_ADMIN' && (
               <div className="fg">
                 <label>Branch *</label>
                 {isSuperAdmin ? (
+                  // Super Admin picks from all branches
                   <select {...register('branch', { required: wRole !== 'SUPER_ADMIN' })}>
                     <option value="">— Select Branch —</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    readOnly
-                    value={branches.find(b => b.id === currentUser?.branch)?.name || 'Your Branch'}
-                    style={{ background: 'var(--surface)', color: 'var(--muted)' }}
-                  />
+                  // ADMIN: branch is locked to their own branch
+                  <>
+                    <input
+                      type="hidden"
+                      {...register('branch')}
+                      value={currentUser?.branch ?? ''}
+                    />
+                    <input
+                      type="text"
+                      readOnly
+                      value={adminBranchName}
+                      style={{ background: 'var(--surface)', color: 'var(--muted)', cursor: 'not-allowed' }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'block' }}>
+                      Users are created in your branch automatically.
+                    </span>
+                  </>
                 )}
               </div>
             )}
@@ -231,15 +277,15 @@ function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const [users,      setUsers]      = useState([]);
-  const [branches,   setBranches]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [search,     setSearch]     = useState('');
-  const [filterRole, setFilterRole] = useState('');
+  const [users,        setUsers]        = useState([]);
+  const [branches,     setBranches]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState('');
+  const [filterRole,   setFilterRole]   = useState('');
   const [filterBranch, setFilterBranch] = useState('');
-  const [showForm,   setShowForm]   = useState(false);
-  const [editing,    setEditing]    = useState(null);
-  const [permTarget, setPermTarget] = useState(null);
+  const [showForm,     setShowForm]     = useState(false);
+  const [editing,      setEditing]      = useState(null);
+  const [permTarget,   setPermTarget]   = useState(null);
 
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
@@ -249,14 +295,18 @@ export default function UsersPage() {
   const load = async () => {
     setLoading(true);
     try {
+      // Both SUPER_ADMIN and ADMIN fetch /users/branches/ — ADMIN gets back only their branch
       const [uRes, bRes] = await Promise.all([
         api.get('/users/'),
-        isSuperAdmin ? api.get('/users/branches/') : Promise.resolve({ data: [] }),
+        api.get('/users/branches/'),
       ]);
       setUsers(uRes.data.results || uRes.data);
       setBranches(bRes.data.results || bRes.data);
-    } catch { toast.error('Failed to load users.'); }
-    finally { setLoading(false); }
+    } catch {
+      toast.error('Failed to load users.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleActive = async (u) => {
@@ -306,7 +356,7 @@ export default function UsersPage() {
         <PermissionModal user={permTarget} onClose={() => setPermTarget(null)} onSaved={load} />
       )}
 
-      {/* Branch info banner for non-super admins */}
+      {/* Branch info banner for branch admins */}
       {!isSuperAdmin && currentUser?.branch_name && (
         <div className="alert alert-info mb16" style={{ fontWeight: 600 }}>
           🏢 Managing users for <strong>{currentUser.branch_name}</strong> branch only.
@@ -314,11 +364,11 @@ export default function UsersPage() {
       )}
 
       {/* KPIs */}
-      <div className="kpi-grid mb16" style={{ gridTemplateColumns: `repeat(${isSuperAdmin ? 6 : 5},1fr)` }}>
+      <div className="kpi-grid mb16" style={{ gridTemplateColumns: `repeat(${isSuperAdmin ? 6 : 4},1fr)` }}>
         {[
           ...(isSuperAdmin ? [{ label: 'Super Admins', val: countByRole('SUPER_ADMIN'), color: 'var(--red)' }] : []),
           { label: 'Total Users',  val: users.length,              color: 'var(--blue)'  },
-          { label: 'Admins',       val: countByRole('ADMIN'),      color: 'var(--red)'   },
+          ...(isSuperAdmin ? [{ label: 'Admins', val: countByRole('ADMIN'), color: 'var(--red)' }] : []),
           { label: 'Managers',     val: countByRole('MANAGER'),    color: 'var(--sky)'   },
           { label: 'Employees',    val: countByRole('EMPLOYEE'),   color: 'var(--green)' },
           { label: 'Inactive',     val: users.filter(u => !u.is_active).length, color: 'var(--muted)' },
@@ -336,7 +386,8 @@ export default function UsersPage() {
             <span className="card-title-ic">👥</span> User Management
           </div>
           <div className="flex gap8">
-            {isSuperAdmin && branches.length > 0 && (
+            {/* Branch filter — only Super Admin sees multiple branches */}
+            {isSuperAdmin && branches.length > 1 && (
               <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
                 style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--border)' }}>
                 <option value="">All Branches</option>
@@ -347,12 +398,17 @@ export default function UsersPage() {
               style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--border)' }}>
               <option value="">All Roles</option>
               {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
-              <option value="ADMIN">Admin</option>
+              {isSuperAdmin && <option value="ADMIN">Admin</option>}
               <option value="MANAGER">Manager</option>
               <option value="EMPLOYEE">Employee</option>
             </select>
-            <input type="text" placeholder="Search users…" value={search} onChange={e => setSearch(e.target.value)}
-              style={{ width: 200, padding: '7px 10px', fontSize: 12 }} />
+            <input
+              type="text"
+              placeholder="Search users…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: 200, padding: '7px 10px', fontSize: 12 }}
+            />
             <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true); }}>
               + Add User
             </button>
@@ -370,7 +426,11 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>Loading…</td></tr>
+                <tr>
+                  <td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
+                    Loading…
+                  </td>
+                </tr>
               )}
               {!loading && filtered.map(u => (
                 <tr key={u.id}>
@@ -382,7 +442,11 @@ export default function UsersPage() {
                   </td>
                   <td style={{ fontSize: 12 }}>{u.email}</td>
                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{u.phone || '—'}</td>
-                  <td><span className={`badge ${ROLE_BADGE[u.role] || 'b-gray'}`}>{u.role.replace('_', ' ')}</span></td>
+                  <td>
+                    <span className={`badge ${ROLE_BADGE[u.role] || 'b-gray'}`}>
+                      {u.role.replace('_', ' ')}
+                    </span>
+                  </td>
                   {isSuperAdmin && (
                     <td style={{ fontSize: 11 }}>
                       {u.branch_name
@@ -420,21 +484,32 @@ export default function UsersPage() {
                   </td>
                   <td>
                     <div className="flex gap8">
-                      {/* Can't edit a Super Admin unless you are one */}
-                      {(isSuperAdmin || u.role !== 'SUPER_ADMIN') && (
-                        <button className="btn btn-ghost btn-xs" onClick={() => { setEditing(u); setShowForm(true); }}>
+                      {/* Edit: Super Admin can edit anyone; Admin can only edit non-admins in their branch */}
+                      {(isSuperAdmin || (u.role !== 'SUPER_ADMIN' && u.role !== 'ADMIN')) && (
+                        <button
+                          className="btn btn-ghost btn-xs"
+                          onClick={() => { setEditing(u); setShowForm(true); }}
+                        >
                           Edit
                         </button>
                       )}
+                      {/* Permissions: only for MANAGER and EMPLOYEE */}
                       {u.role !== 'ADMIN' && u.role !== 'SUPER_ADMIN' && (
-                        <button className="btn btn-xs" style={{ background: '#eff6ff', color: 'var(--blue)', border: '1px solid #bfdbfe' }}
-                          onClick={() => setPermTarget(u)}>
+                        <button
+                          className="btn btn-xs"
+                          style={{ background: '#eff6ff', color: 'var(--blue)', border: '1px solid #bfdbfe' }}
+                          onClick={() => setPermTarget(u)}
+                        >
                           🔐 Perms
                         </button>
                       )}
-                      {u.id !== currentUser?.id && u.role !== 'SUPER_ADMIN' && (
-                        <button className={`btn btn-xs ${u.is_active ? 'btn-danger' : 'btn-success'}`}
-                          onClick={() => toggleActive(u)}>
+                      {/* Activate/Deactivate: cannot touch yourself or Super Admins */}
+                      {u.id !== currentUser?.id && u.role !== 'SUPER_ADMIN' &&
+                        (isSuperAdmin || u.role !== 'ADMIN') && (
+                        <button
+                          className={`btn btn-xs ${u.is_active ? 'btn-danger' : 'btn-success'}`}
+                          onClick={() => toggleActive(u)}
+                        >
                           {u.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                       )}
@@ -443,7 +518,11 @@ export default function UsersPage() {
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>No users found</td></tr>
+                <tr>
+                  <td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>
+                    No users found
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
