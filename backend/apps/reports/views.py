@@ -151,7 +151,8 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             def bfilter(qs):
                 if is_super:
                     return qs
-                return qs.filter(branch_id=branch_id)
+                # Use branch_id directly (works for both FK and raw integer columns)
+                return qs.extra(where=['branch_id = %s'], params=[branch_id])
 
             active_trucks  = bfilter(Truck.objects.filter(status=Truck.ACTIVE)).count()
             active_drivers = bfilter(Driver.objects.filter(status=Driver.ACTIVE)).count()
@@ -178,13 +179,11 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
 
-            # StockLedger has no direct branch — filter via item__branch_id
-            if is_super:
-                sl_qs = StockLedger.objects.all()
-            else:
-                sl_qs = StockLedger.objects.filter(item__branch_id=branch_id)
+            # StockLedger and Item have no branch field — show all items count/value
+            # (inventory is company-wide, not branch-specific in this schema)
+            sl_qs = StockLedger.objects.all()
             stock_value = sl_qs.aggregate(total=Sum('final_amount'))['total'] or Decimal('0')
-            stock_items = sl_qs.values('item').distinct().count()
+            stock_items = Item.objects.count()
 
             alerts = []
             for truck in bfilter(Truck.objects.filter(status=Truck.ACTIVE)):
