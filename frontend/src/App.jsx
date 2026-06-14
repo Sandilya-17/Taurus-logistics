@@ -138,8 +138,8 @@ const NAV = [
     items: [
       { to: '/maintenance', icon: Icons.Wrench, label: 'Maintenance' },
       { to: '/reports',     icon: Icons.BarChart, label: 'Reports' },
-      { to: '/users',       icon: Icons.Users,  label: 'Users',     roles: ['ADMIN'] },
-      { to: '/audit',       icon: Icons.Log,    label: 'Audit Log', roles: ['ADMIN'] },
+      { to: '/users',       icon: Icons.Users,  label: 'Users',     roles: ['ADMIN', 'SUPER_ADMIN'] },
+      { to: '/audit',       icon: Icons.Log,    label: 'Audit Log', roles: ['ADMIN', 'SUPER_ADMIN'] },
     ],
   },
 ];
@@ -206,7 +206,7 @@ function Sidebar({ open, onClose }) {
           <div className="avatar avatar-sm">{initials(user)}</div>
           <div className="sidebar-user-info">
             <div className="sidebar-user-name">{fullName(user)}</div>
-            <div className="sidebar-user-role">{user?.role || 'Admin'}</div>
+            <div className="sidebar-user-role">{user?.role?.replace('_', ' ') || 'Admin'}</div>
           </div>
         </div>
       </aside>
@@ -254,7 +254,7 @@ function Topbar({ onMenu }) {
             <div className="avatar avatar-sm">{initials(user)}</div>
             <div style={{ textAlign: 'left' }}>
               <div className="user-chip-name">{fullName(user)}</div>
-              <div className="user-chip-role">{user?.role || 'Admin'}</div>
+              <div className="user-chip-role">{user?.role?.replace('_', ' ') || 'Admin'}</div>
             </div>
           </button>
           {menuOpen && (
