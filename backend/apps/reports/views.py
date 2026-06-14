@@ -143,40 +143,48 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
         try:
             today = timezone.now().date()
             month_start = today.replace(day=1)
+            bf = self._bf()  # branch filter dict
 
-            active_trucks  = Truck.objects.filter(status=Truck.ACTIVE).count()
-            active_drivers = Driver.objects.filter(status=Driver.ACTIVE).count()
+            active_trucks  = Truck.objects.filter(status=Truck.ACTIVE, **bf).count()
+            active_drivers = Driver.objects.filter(status=Driver.ACTIVE, **bf).count()
             ongoing_trips  = Trip.objects.filter(
-                status__in=[Trip.EN_ROUTE, Trip.PLANNED]
+                status__in=[Trip.EN_ROUTE, Trip.PLANNED], **bf
             ).count()
 
             trips_this_month = Trip.objects.filter(
                 loading_time__date__gte=month_start,
                 loading_time__date__lte=today,
+                **bf
             ).count()
 
             monthly_revenue = Revenue.objects.filter(
-                date__gte=month_start, date__lte=today
+                date__gte=month_start, date__lte=today, **bf
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
             monthly_expenditure = Expenditure.objects.filter(
-                date__gte=month_start, date__lte=today
+                date__gte=month_start, date__lte=today, **bf
             ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
             # Split into two queries — avoids MySQL incompatibility with
             # Count(..., filter=Q(...)) conditional aggregation
-            _fuel_qs = FuelLog.objects.filter(date__gte=month_start, date__lte=today)
+            _fuel_qs = FuelLog.objects.filter(date__gte=month_start, date__lte=today, **bf)
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
 
-            stock_value = StockLedger.objects.aggregate(
+            # StockLedger has no direct branch — filter via item__branch
+            if bf:
+                branch_val = bf.get('branch')
+                sl_filter = {'item__branch': branch_val} if branch_val is not None else {}
+            else:
+                sl_filter = {}
+            stock_value = StockLedger.objects.filter(**sl_filter).aggregate(
                 total=Sum('final_amount')
             )['total'] or Decimal('0')
 
-            stock_items = Item.objects.count()
+            stock_items = Item.objects.filter(**bf).count()
 
             alerts = []
-            for truck in Truck.objects.filter(status=Truck.ACTIVE):
+            for truck in Truck.objects.filter(status=Truck.ACTIVE, **bf):
                 try:
                     alerts.extend(truck.expiry_alerts())
                 except Exception:
@@ -184,7 +192,7 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             alerts.sort(key=lambda a: a['days_remaining'])
 
             try:
-                breakdown = self._truck_breakdown(month_start, today)
+                breakdown = self._truck_breakdown(month_start, today, bf)
             except Exception as e:
                 _logger.error('Dashboard truck_breakdown failed: %s', e, exc_info=True)
                 breakdown = []
@@ -215,9 +223,11 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 status=500
             )
 
-    def _truck_breakdown(self, date_from, date_to):
+    def _truck_breakdown(self, date_from, date_to, bf=None):
+        if bf is None:
+            bf = {}
         rows = []
-        for truck in Truck.objects.filter(status=Truck.ACTIVE):
+        for truck in Truck.objects.filter(status=Truck.ACTIVE, **bf):
             trips = Trip.objects.filter(
                 truck=truck,
                 loading_time__date__gte=date_from,
