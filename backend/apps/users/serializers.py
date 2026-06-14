@@ -1,20 +1,29 @@
-"""apps/users/serializers.py – With UserUpdateSerializer for admin edits."""
+"""apps/users/serializers.py – Branch-aware serializers."""
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import User
+from .models import User, Branch
+
+
+class BranchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Branch
+        fields = ('id', 'name', 'code', 'address', 'phone', 'is_active', 'created_at')
+        read_only_fields = ('created_at',)
 
 
 class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
+    full_name   = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = User
         fields = ('id', 'email', 'first_name', 'last_name', 'full_name', 'phone',
-                  'role', 'module_permissions', 'is_active', 'created_at')
+                  'role', 'branch', 'branch_name', 'module_permissions', 'is_active', 'created_at')
         read_only_fields = ('created_at',)
 
-    def get_full_name(self, obj): return obj.get_full_name()
+    def get_full_name(self, obj):   return obj.get_full_name()
+    def get_branch_name(self, obj): return obj.branch.name if obj.branch else None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -23,7 +32,34 @@ class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = ('email', 'first_name', 'last_name', 'phone', 'role',
-                  'module_permissions', 'is_active', 'password')
+                  'branch', 'module_permissions', 'is_active', 'password')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        role    = data.get('role', User.EMPLOYEE)
+        branch  = data.get('branch')
+
+        if request and request.user.is_authenticated:
+            actor = request.user
+
+            # ADMIN can only create MANAGER or EMPLOYEE — not another ADMIN / SUPER_ADMIN
+            if actor.role == User.ADMIN:
+                if role in (User.SUPER_ADMIN, User.ADMIN):
+                    raise serializers.ValidationError('Admins can only create Managers or Employees.')
+                # Admin can only create users in their own branch
+                if branch and branch != actor.branch:
+                    raise serializers.ValidationError('You can only create users in your own branch.')
+                if not branch:
+                    data['branch'] = actor.branch
+
+        # SUPER_ADMIN users must NOT have a branch
+        if role == User.SUPER_ADMIN and branch:
+            raise serializers.ValidationError('Super Admin must not be assigned to a branch.')
+        # Non-SUPER_ADMIN must have a branch
+        if role != User.SUPER_ADMIN and not branch and not data.get('branch'):
+            raise serializers.ValidationError('A branch must be assigned for this role.')
+
+        return data
 
     def create(self, validated_data):
         password = validated_data.pop('password')
@@ -40,7 +76,23 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = ('email', 'first_name', 'last_name', 'phone', 'role',
-                  'module_permissions', 'is_active', 'password')
+                  'branch', 'module_permissions', 'is_active', 'password')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            actor = request.user
+            role   = data.get('role', self.instance.role if self.instance else User.EMPLOYEE)
+            branch = data.get('branch', self.instance.branch if self.instance else None)
+
+            if actor.role == User.ADMIN:
+                # Admin cannot promote to ADMIN or SUPER_ADMIN
+                if role in (User.SUPER_ADMIN, User.ADMIN):
+                    raise serializers.ValidationError('Admins cannot assign Admin or Super Admin role.')
+                # Admin cannot move user to a different branch
+                if branch and branch != actor.branch:
+                    raise serializers.ValidationError('You can only manage users in your own branch.')
+        return data
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
