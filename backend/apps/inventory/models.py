@@ -141,6 +141,7 @@ class StockLedger(TimeStampedModel):
 
 
 class Purchase(TimeStampedModel):
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='+', db_index=True)
     """Purchase order – creates a StockLedger entry on save."""
     supplier    = models.ForeignKey('core.Supplier', on_delete=models.PROTECT, related_name='purchases')
     item        = models.ForeignKey(Item,            on_delete=models.PROTECT, related_name='purchases')
@@ -168,6 +169,7 @@ class Purchase(TimeStampedModel):
 
 
 class IssueItem(TimeStampedModel):
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='+', db_index=True)
     """Issue – reduces stock via negative StockLedger entry.
     Can be linked to a trip so the cost auto-updates the trip's spare_parts_cost.
     """
