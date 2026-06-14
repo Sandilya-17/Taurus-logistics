@@ -145,12 +145,29 @@ class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
 
 
 # ── Stock Ledger (read-only list) ─────────────────────────────────────────────
-class StockLedgerList(BranchScopedQuerysetMixin, generics.ListAPIView):
-    queryset         = StockLedger.objects.select_related('item', 'location', 'created_by')
+class StockLedgerList(generics.ListAPIView):
     serializer_class = StockLedgerSerializer
     filterset_fields = ('item', 'location', 'transaction_type')
     search_fields    = ('item__name', 'reference_type')
     ordering_fields  = ('created_at',)
+
+    def get_queryset(self):
+        from apps.users.models import User
+        user = self.request.user
+        qs = StockLedger.objects.select_related('item', 'location', 'created_by')
+        if not user.is_authenticated:
+            return qs.none()
+        # StockLedger has no branch — filter via related Purchase branch
+        if user.role == User.SUPER_ADMIN:
+            return qs
+        if user.branch_id:
+            # Get items that belong to this branch via purchases
+            from django.db.models import Subquery, OuterRef
+            branch_items = Purchase.objects.filter(
+                branch_id=user.branch_id
+            ).values('item_id')
+            return qs.filter(item_id__in=branch_items)
+        return qs.none()
 
 
 class StockLedgerDetail(generics.RetrieveUpdateAPIView):
