@@ -6,7 +6,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('inventory', '0003_alter_item_item_type'),
-        ('trips', '0004_trip_fuel_spare_costs'),
+        ('trips', '0003_trip_fuel_spare_costs'),
     ]
 
     operations = [
