@@ -21,10 +21,7 @@ from apps.maintenance.models import MaintenanceLog
 from apps.tyres.models import Tyre, TyreAssignment
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────
-
 class BranchFilterMixin:
-    """Adds branch-scoped queryset helper to report views."""
     def _bf(self):
         return _branch_filter(self.request)
 
@@ -48,29 +45,21 @@ def _fmt(val):
     return float(round(Decimal(str(val)), 2))
 
 
-
-
 def _branch_filter(request):
-    """Returns a Q object or empty dict to filter querysets by branch."""
-    from apps.users.models import User
-    from django.db.models import Q
+    """ALL roles including SUPER_ADMIN are scoped to their assigned branch."""
     user = request.user
-    if user.role == User.SUPER_ADMIN:
-        return {}
     if user.branch_id:
         return {'branch_id': user.branch_id}
-    return {'branch_id': -1}  # effectively shows nothing if no branch
+    return {'branch_id': -1}
 
 
 def _apply_branch(qs, request):
-    """Apply branch filter directly to a queryset using extra() - works on any table."""
-    from apps.users.models import User
+    """ALL roles including SUPER_ADMIN are scoped to their assigned branch."""
     user = request.user
-    if user.role == User.SUPER_ADMIN:
-        return qs
     if user.branch_id:
         return qs.extra(where=['branch_id = %s'], params=[user.branch_id])
     return qs.none()
+
 
 def _export_excel(headers, rows, sheet_name='Report'):
     try:
@@ -105,7 +94,6 @@ def _export_pdf(headers, rows, title='Report'):
         from reportlab.lib import colors
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
         from reportlab.lib.styles import getSampleStyleSheet
-
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                                 leftMargin=20, rightMargin=20,
@@ -139,62 +127,43 @@ def _respond(request, headers, rows, summary=None, sheet_name='Report'):
         return _export_excel(headers, rows, sheet_name)
     if export == 'pdf':
         return _export_pdf(headers, rows, sheet_name)
-    return Response({
-        'headers': headers,
-        'rows': rows,
-        'summary': summary or {},
-    })
+    return Response({'headers': headers, 'rows': rows, 'summary': summary or {}})
 
-
-# ── Dashboard ────────────────────────────────────────────────────────────
 
 class DashboardSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         import logging
         _logger = logging.getLogger('apps.reports')
         try:
-            today = timezone.now().date()
+            today       = timezone.now().date()
             month_start = today.replace(day=1)
-            user = request.user
-            from apps.users.models import User as _User
-            branch_id = user.branch_id if user.role != _User.SUPER_ADMIN else None
-            is_super = user.role == _User.SUPER_ADMIN
+            branch_id   = request.user.branch_id
 
             def bfilter(qs):
-                if is_super:
-                    return qs
-                # Use branch_id directly (works for both FK and raw integer columns)
-                return qs.extra(where=['branch_id = %s'], params=[branch_id])
+                if branch_id:
+                    return qs.extra(where=['branch_id = %s'], params=[branch_id])
+                return qs.none()
 
             active_trucks  = bfilter(Truck.objects.filter(status=Truck.ACTIVE)).count()
             active_drivers = bfilter(Driver.objects.filter(status=Driver.ACTIVE)).count()
             ongoing_trips  = bfilter(Trip.objects.filter(
                 status__in=[Trip.EN_ROUTE, Trip.PLANNED]
             )).count()
-
             trips_this_month = bfilter(Trip.objects.filter(
                 loading_time__date__gte=month_start,
                 loading_time__date__lte=today,
             )).count()
-
             monthly_revenue = bfilter(Revenue.objects.filter(
                 date__gte=month_start, date__lte=today
             )).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-
             monthly_expenditure = bfilter(Expenditure.objects.filter(
                 date__gte=month_start, date__lte=today
             )).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-
-            # Split into two queries — avoids MySQL incompatibility with
-            # Count(..., filter=Q(...)) conditional aggregation
             _fuel_qs = bfilter(FuelLog.objects.filter(date__gte=month_start, date__lte=today))
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
-
-            # StockLedger and Item have no branch field — show all items count/value
-            # (inventory is company-wide, not branch-specific in this schema)
-            sl_qs = StockLedger.objects.all()
-            stock_value = sl_qs.aggregate(total=Sum('final_amount'))['total'] or Decimal('0')
+            stock_value = StockLedger.objects.all().aggregate(
+                total=Sum('final_amount'))['total'] or Decimal('0')
             stock_items = Item.objects.count()
 
             alerts = []
@@ -206,7 +175,7 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             alerts.sort(key=lambda a: a['days_remaining'])
 
             try:
-                breakdown = self._truck_breakdown(month_start, today, branch_id, is_super)
+                breakdown = self._truck_breakdown(month_start, today, branch_id)
             except Exception as e:
                 _logger.error('Dashboard truck_breakdown failed: %s', e, exc_info=True)
                 breakdown = []
@@ -226,7 +195,7 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 },
                 'stock_value': _fmt(stock_value),
                 'stock_items': stock_items,
-                'expiry_alerts': alerts,
+                'expiry_alerts':   alerts,
                 'truck_breakdown': breakdown,
             })
 
@@ -237,10 +206,10 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 status=500
             )
 
-    def _truck_breakdown(self, date_from, date_to, branch_id=None, is_super=True):
+    def _truck_breakdown(self, date_from, date_to, branch_id=None):
         rows = []
         qs = Truck.objects.filter(status=Truck.ACTIVE)
-        if not is_super and branch_id:
+        if branch_id:
             qs = qs.filter(branch_id=branch_id)
         for truck in qs:
             trips = Trip.objects.filter(
@@ -248,38 +217,31 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 loading_time__date__gte=date_from,
                 loading_time__date__lte=date_to,
             )
-            trip_rev = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
-            total_exp = _fmt(
-                Expenditure.objects.filter(
-                    truck=truck, date__gte=date_from, date__lte=date_to
-                ).aggregate(t=Sum('amount'))['t']
-            )
+            trip_rev  = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
+            total_exp = _fmt(Expenditure.objects.filter(
+                truck=truck, date__gte=date_from, date__lte=date_to
+            ).aggregate(t=Sum('amount'))['t'])
             net = round(trip_rev - total_exp, 2)
             rows.append({
-                'truck':     truck.truck_number,
-                'model':     truck.model,
-                'trips':     trips.count(),
-                'revenue':   trip_rev,
+                'truck':       truck.truck_number,
+                'model':       truck.model,
+                'trips':       trips.count(),
+                'revenue':     trip_rev,
                 'expenditure': total_exp,
-                'net':       net,
+                'net':         net,
             })
         rows.sort(key=lambda r: -r['revenue'])
         return rows
 
 
-# ── Revenue vs Expenditure ───────────────────────────────────────────────
-
 class RevenueExpenditureReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-
         revenues     = Revenue.objects.filter(date__gte=date_from, date__lte=date_to)
         expenditures = Expenditure.objects.filter(date__gte=date_from, date__lte=date_to)
-
         total_rev = revenues.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         total_exp = expenditures.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         net       = total_rev - total_exp
-
         headers = ['Date', 'Type', 'Category / Source', 'Truck', 'Description', 'Reference', 'Amount (GH₵)']
         rows = []
         for r in revenues.order_by('date'):
@@ -291,7 +253,6 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
             rows.append([str(e.date), 'Expenditure', e.get_category_display(),
                          truck_num, e.description or '', e.reference or '', _fmt(e.amount)])
         rows.sort(key=lambda x: x[0])
-
         summary = {
             'Total Revenue':     _fmt(total_rev),
             'Total Expenditure': _fmt(total_exp),
@@ -300,15 +261,12 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Revenue vs Expenditure')
 
 
-# ── Fuel Report ──────────────────────────────────────────────────────────
-
 class FuelReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         logs = FuelLog.objects.filter(
             date__gte=date_from, date__lte=date_to
         ).select_related('truck', 'trip').order_by('date')
-
         headers = ['Date', 'Truck', 'Trip / Waybill', 'Litres', 'Limit', 'Excess',
                    'Price/L (GH₵)', 'Total Cost (GH₵)', 'Remark']
         rows = []
@@ -319,7 +277,6 @@ class FuelReportView(BranchFilterMixin, APIView):
                 _fmt(fl.litres), _fmt(fl.fuel_limit), _fmt(fl.excess_fuel),
                 _fmt(fl.price_per_litre), _fmt(fl.total_cost), fl.remark or '',
             ])
-
         agg = logs.aggregate(
             total_litres=Sum('litres'), total_excess=Sum('excess_fuel'), total_cost=Sum('total_cost'),
         )
@@ -332,8 +289,6 @@ class FuelReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Fuel Report')
 
 
-# ── Trip Report ──────────────────────────────────────────────────────────
-
 class TripReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -345,7 +300,6 @@ class TripReportView(BranchFilterMixin, APIView):
         if truck_id:
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
-
         headers = ['Waybill', 'Truck', 'Driver', 'Origin', 'Destination', 'Material',
                    'Loaded (t)', 'Delivered (t)', 'Status', 'Revenue (GH₵)', 'Loading Date']
         rows = []
@@ -358,7 +312,6 @@ class TripReportView(BranchFilterMixin, APIView):
                 t.get_status_display(), _fmt(t.trip_revenue),
                 str(t.loading_time.date()),
             ])
-
         agg = qs.aggregate(
             total_rev=Sum('trip_revenue'),
             total_loaded=Sum('loaded_qty'),
@@ -373,8 +326,6 @@ class TripReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Trip Report')
 
 
-# ── Trip P&L Report ──────────────────────────────────────────────────────
-
 class TripDetailReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -386,7 +337,6 @@ class TripDetailReportView(BranchFilterMixin, APIView):
         if truck_id:
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
-
         headers = ['Waybill', 'Truck', 'Driver', 'Route',
                    'Revenue (GH₵)', 'Fuel Cost (GH₵)', 'Spare Parts (GH₵)', 'Net Profit (GH₵)']
         rows = []
@@ -397,7 +347,6 @@ class TripDetailReportView(BranchFilterMixin, APIView):
                 _fmt(t.trip_revenue), _fmt(t.fuel_cost),
                 _fmt(t.spare_parts_cost), _fmt(t.net_profit),
             ])
-
         summary = {
             'Total Revenue (GH₵)':     round(sum(float(r[4]) for r in rows), 2),
             'Total Fuel Cost (GH₵)':   round(sum(float(r[5]) for r in rows), 2),
@@ -407,8 +356,6 @@ class TripDetailReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Trip P&L')
 
 
-# ── Truck-wise Summary ───────────────────────────────────────────────────
-
 class TruckWiseSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -416,7 +363,6 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
         qs = Truck.objects.all()
         if truck_id:
             qs = qs.filter(id=truck_id)
-
         headers = [
             'Truck', 'Model', 'Status', 'Trips',
             'Trip Revenue (GH₵)', 'Other Revenue (GH₵)', 'Total Revenue (GH₵)',
@@ -432,53 +378,33 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
                 loading_time__date__lte=date_to,
             )
             trip_count = trips.count()
-
-            # Revenue: trip-linked + direct revenue entries on this truck's trips
-            trip_rev_agg = trips.aggregate(t=Sum('trip_revenue'))
-            trip_rev = _fmt(trip_rev_agg['t'])
-
-            # Revenue linked via trip FK on Revenue model
-            other_rev_agg = Revenue.objects.filter(
-                date__gte=date_from, date__lte=date_to,
-                trip__truck=truck,
-            ).exclude(
-                source='TRIP_REVENUE'
-            ).aggregate(t=Sum('amount'))
-            other_rev = _fmt(other_rev_agg['t'])
-
-            total_rev = round(trip_rev + other_rev, 2)
-
-            # Expenditure: all categories per truck
-            exp_qs = Expenditure.objects.filter(
-                truck=truck,
-                date__gte=date_from, date__lte=date_to,
-            )
+            trip_rev   = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
+            other_rev  = _fmt(Revenue.objects.filter(
+                date__gte=date_from, date__lte=date_to, trip__truck=truck,
+            ).exclude(source='TRIP_REVENUE').aggregate(t=Sum('amount'))['t'])
+            total_rev  = round(trip_rev + other_rev, 2)
+            exp_qs = Expenditure.objects.filter(truck=truck, date__gte=date_from, date__lte=date_to)
             def _exp_cat(cat):
                 return _fmt(exp_qs.filter(category=cat).aggregate(t=Sum('amount'))['t'])
-
             fuel_exp  = _exp_cat(Expenditure.FUEL)
             maint_exp = _exp_cat(Expenditure.MAINTENANCE)
             tyre_exp  = _exp_cat(Expenditure.TYRE)
             spare_exp = _exp_cat(Expenditure.SPARE_PART)
             wage_exp  = _exp_cat(Expenditure.DRIVER_WAGE)
             toll_exp  = _exp_cat(Expenditure.TOLL)
-            other_exp = round(
-                _fmt(exp_qs.filter(category__in=[Expenditure.ADMIN, Expenditure.OTHER])
-                     .aggregate(t=Sum('amount'))['t']), 2
-            )
+            other_exp = round(_fmt(exp_qs.filter(
+                category__in=[Expenditure.ADMIN, Expenditure.OTHER]
+            ).aggregate(t=Sum('amount'))['t']), 2)
             total_exp = round(fuel_exp + maint_exp + tyre_exp + spare_exp + wage_exp + toll_exp + other_exp, 2)
             net = round(total_rev - total_exp, 2)
-
             if trip_count == 0 and total_rev == 0 and total_exp == 0 and not truck_id:
                 continue
-
             rows.append([
                 truck.truck_number, truck.model, truck.get_status_display(), trip_count,
                 trip_rev, other_rev, total_rev,
                 fuel_exp, maint_exp, tyre_exp, spare_exp, wage_exp, toll_exp, other_exp,
                 total_exp, net,
             ])
-
         summary = {
             'Total Revenue (GH₵)':     round(sum(float(r[6])  for r in rows), 2),
             'Total Expenditure (GH₵)': round(sum(float(r[14]) for r in rows), 2),
@@ -486,8 +412,6 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
         }
         return _respond(request, headers, rows, summary, 'Truck-wise Summary')
 
-
-# ── Stock Report ─────────────────────────────────────────────────────────
 
 class StockReportView(BranchFilterMixin, APIView):
     def get(self, request):
@@ -501,7 +425,6 @@ class StockReportView(BranchFilterMixin, APIView):
             total_value += value
             rows.append([item.name, item.get_item_type_display(), item.unit,
                          _fmt(qty), _fmt(value), _fmt(item.reorder_level)])
-
         summary = {
             'Total Items':       len(rows),
             'Total Value (GH₵)': _fmt(total_value),
@@ -510,15 +433,12 @@ class StockReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Stock Report')
 
 
-# ── Invoice Report ───────────────────────────────────────────────────────
-
 class InvoiceReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         invoices = Invoice.objects.filter(
             invoice_date__gte=date_from, invoice_date__lte=date_to
         ).order_by('invoice_date')
-
         headers = ['Invoice #', 'Client', 'Date', 'Status', 'Subtotal (GH₵)',
                    'VAT (GH₵)', 'Total (GH₵)', 'Paid (GH₵)', 'Balance (GH₵)']
         rows = []
@@ -529,7 +449,6 @@ class InvoiceReportView(BranchFilterMixin, APIView):
                 _fmt(inv.subtotal), _fmt(inv.vat_amount), _fmt(inv.total_amount),
                 _fmt(inv.paid_amount), _fmt(inv.balance_due),
             ])
-
         agg = invoices.aggregate(
             total=Sum('total_amount'), paid=Sum('paid_amount'),
             balance=Sum('balance_due'), vat=Sum('vat_amount'),
@@ -543,8 +462,6 @@ class InvoiceReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Invoice Report')
 
 
-# ── Spare Parts Report ───────────────────────────────────────────────────
-
 class SparePartsReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -553,7 +470,6 @@ class SparePartsReportView(BranchFilterMixin, APIView):
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
         ).select_related('item', 'location').order_by('created_at')
-
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location', 'Reference']
         rows = []
         for entry in ledger:
@@ -562,14 +478,12 @@ class SparePartsReportView(BranchFilterMixin, APIView):
                 entry.get_transaction_type_display(),
                 _fmt(entry.quantity), _fmt(entry.unit_price), _fmt(entry.final_amount),
                 entry.location.name if entry.location else '—',
-                entry.reference_type or '',  # ← FIXED: was entry.reference
+                entry.reference_type or '',
             ])
         agg = ledger.aggregate(total=Sum('final_amount'))
         summary = {'Total Value (GH₵)': _fmt(agg['total'])}
         return _respond(request, headers, rows, summary, 'Spare Parts Report')
 
-
-# ── Maintenance Report ───────────────────────────────────────────────────
 
 class MaintenanceReportView(BranchFilterMixin, APIView):
     def get(self, request):
@@ -577,7 +491,6 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
         logs = MaintenanceLog.objects.filter(
             service_date__gte=date_from, service_date__lte=date_to
         ).select_related('truck', 'mechanic').order_by('service_date')
-
         headers = ['Date', 'Truck', 'Type', 'Description', 'Mechanic',
                    'Labour Cost (GH₵)', 'Parts Cost (GH₵)', 'Total (GH₵)', 'Status']
         rows = []
@@ -586,12 +499,9 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
                 str(log.service_date), log.truck.truck_number,
                 log.get_maintenance_type_display(), log.description or '',
                 log.mechanic.name if log.mechanic else '—',
-                _fmt(log.labour_cost),
-                _fmt(log.parts_cost),
-                _fmt(log.total_cost),
+                _fmt(log.labour_cost), _fmt(log.parts_cost), _fmt(log.total_cost),
                 log.get_status_display(),
             ])
-
         agg = logs.aggregate(
             total_labour=Sum('labour_cost'),
             total_parts=Sum('parts_cost'),
@@ -606,8 +516,6 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Maintenance Report')
 
 
-# ── VAT Report ───────────────────────────────────────────────────────────
-
 class VATReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -615,7 +523,6 @@ class VATReportView(BranchFilterMixin, APIView):
             invoice_date__gte=date_from, invoice_date__lte=date_to,
             vat_applicable=True,
         ).order_by('invoice_date')
-
         headers = ['Invoice #', 'Client', 'Date', 'Subtotal (GH₵)', 'VAT %', 'VAT Amount (GH₵)', 'Total (GH₵)']
         rows = []
         for inv in invoices:
@@ -624,20 +531,14 @@ class VATReportView(BranchFilterMixin, APIView):
                 _fmt(inv.subtotal), _fmt(inv.vat_percentage),
                 _fmt(inv.vat_amount), _fmt(inv.total_amount),
             ])
-
         total_vat = invoices.aggregate(t=Sum('vat_amount'))['t'] or Decimal('0')
         summary   = {'Total VAT Collected (GH₵)': _fmt(total_vat)}
         return _respond(request, headers, rows, summary, 'VAT Report')
 
 
-# ── Tyre Report ──────────────────────────────────────────────────────────
-
 class TyreReportView(BranchFilterMixin, APIView):
     def get(self, request):
-        tyres = Tyre.objects.all().prefetch_related(
-            'assignments__truck'
-        ).order_by('status', 'serial_number')
-
+        tyres = Tyre.objects.all().prefetch_related('assignments__truck').order_by('status', 'serial_number')
         headers = ['Serial #', 'Brand', 'Model', 'Size', 'Status',
                    'Unit Cost (GH₵)', 'Truck Fitted', 'Position', 'KM Used']
         rows = []
@@ -650,7 +551,6 @@ class TyreReportView(BranchFilterMixin, APIView):
                 asgn.position          if asgn else '—',
                 _fmt(asgn.km_used)     if asgn and asgn.km_used else '—',
             ])
-
         summary = {
             'Total Tyres': len(rows),
             'Fitted':      sum(1 for t in tyres if t.status == Tyre.FITTED),
@@ -660,8 +560,6 @@ class TyreReportView(BranchFilterMixin, APIView):
         return _respond(request, headers, rows, summary, 'Tyre Report')
 
 
-# ── Lubricant Report ─────────────────────────────────────────────────────
-
 class LubricantReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -670,7 +568,6 @@ class LubricantReportView(BranchFilterMixin, APIView):
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
         ).select_related('item', 'location').order_by('created_at')
-
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location']
         rows = []
         for entry in ledger:
@@ -685,8 +582,6 @@ class LubricantReportView(BranchFilterMixin, APIView):
         summary = {'Total Value (GH₵)': _fmt(agg['total'])}
         return _respond(request, headers, rows, summary, 'Lubricant Report')
 
-
-# ── Utility views ────────────────────────────────────────────────────────
 
 class CleanupOrphanedRevenueView(APIView):
     def post(self, request):
