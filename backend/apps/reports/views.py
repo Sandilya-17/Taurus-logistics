@@ -63,7 +63,8 @@ def _branch_filter(request):
 
 
 def _apply_branch(qs, request):
-    """Apply branch filter directly to a queryset using extra() - works on any table."""    from apps.users.models import User
+    """Apply branch filter directly to a queryset using extra() - works on any table."""
+    from apps.users.models import User
     user = request.user
     if user.role == User.SUPER_ADMIN:
         return qs
