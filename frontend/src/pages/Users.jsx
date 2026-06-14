@@ -1,4 +1,4 @@
-// src/pages/Users.jsx  – Admin User Management with full permissions
+// src/pages/Users.jsx – Multi-branch user management (Super Admin / Admin / Manager / Employee)
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../utils/api';
@@ -23,8 +23,14 @@ const ALL_MODULES = [
   { key: 'users',        label: '👥 Users'        },
 ];
 
-const ROLE_BADGE = { ADMIN: 'b-red', MANAGER: 'b-blue', EMPLOYEE: 'b-gray' };
+const ROLE_BADGE = {
+  SUPER_ADMIN: 'b-red',
+  ADMIN:       'b-red',
+  MANAGER:     'b-blue',
+  EMPLOYEE:    'b-gray',
+};
 
+// ── Permission Modal ─────────────────────────────────────────────────────────
 function PermissionModal({ user: target, onClose, onSaved }) {
   const [selected, setSelected] = useState(target.module_permissions || []);
   const [saving,   setSaving]   = useState(false);
@@ -32,19 +38,14 @@ function PermissionModal({ user: target, onClose, onSaved }) {
   const toggle = (key) =>
     setSelected(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
 
-  const selectAll   = () => setSelected(ALL_MODULES.map(m => m.key));
-  const clearAll    = () => setSelected([]);
-
   const save = async () => {
     setSaving(true);
     try {
       await api.patch(`/users/${target.id}/`, { module_permissions: selected });
       toast.success(`Permissions updated for ${target.first_name}.`);
-      onSaved();
-      onClose();
-    } catch {
-      toast.error('Failed to update permissions.');
-    } finally { setSaving(false); }
+      onSaved(); onClose();
+    } catch { toast.error('Failed to update permissions.'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -54,19 +55,16 @@ function PermissionModal({ user: target, onClose, onSaved }) {
           <span>🔐 Module Permissions — {target.first_name} {target.last_name}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
-
         <div className="alert alert-info mb16">
           <span>Admins always have full access. Permissions below apply to <strong>Manager</strong> and <strong>Employee</strong> roles.</span>
         </div>
-
         <div className="flex gap8 mb12">
-          <button className="btn btn-ghost btn-sm" onClick={selectAll}>✓ Select All</button>
-          <button className="btn btn-ghost btn-sm" onClick={clearAll}>✕ Clear All</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setSelected(ALL_MODULES.map(m => m.key))}>✓ Select All</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setSelected([])}>✕ Clear All</button>
           <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12 }}>
-            {selected.length}/{ALL_MODULES.length} modules selected
+            {selected.length}/{ALL_MODULES.length} selected
           </span>
         </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
           {ALL_MODULES.map(m => {
             const checked = selected.includes(m.key);
@@ -87,7 +85,6 @@ function PermissionModal({ user: target, onClose, onSaved }) {
             );
           })}
         </div>
-
         <div className="flex gap8">
           <button className="btn btn-primary" onClick={save} disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>
             {saving ? '⏳ Saving…' : '✓ Save Permissions'}
@@ -99,20 +96,38 @@ function PermissionModal({ user: target, onClose, onSaved }) {
   );
 }
 
-function UserFormModal({ editing, onClose, onSaved }) {
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm({
+// ── User Form Modal ──────────────────────────────────────────────────────────
+function UserFormModal({ editing, onClose, onSaved, branches, currentUser }) {
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isAdmin      = currentUser?.role === 'ADMIN';
+
+  const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: editing
-      ? { ...editing, password: '' }
-      : { role: 'EMPLOYEE', is_active: true, module_permissions: [] }
+      ? { ...editing, password: '', branch: editing.branch ?? '' }
+      : { role: 'EMPLOYEE', is_active: true, module_permissions: [], branch: currentUser?.branch ?? '' }
   });
   const [saving, setSaving] = useState(false);
   const wRole = watch('role');
+
+  // Roles an ADMIN can assign (cannot assign ADMIN or SUPER_ADMIN)
+  const availableRoles = isSuperAdmin
+    ? [
+        { value: 'SUPER_ADMIN', label: 'Super Admin' },
+        { value: 'ADMIN',       label: 'Admin'       },
+        { value: 'MANAGER',     label: 'Manager'     },
+        { value: 'EMPLOYEE',    label: 'Employee'    },
+      ]
+    : [
+        { value: 'MANAGER',  label: 'Manager'  },
+        { value: 'EMPLOYEE', label: 'Employee' },
+      ];
 
   const onSubmit = async (data) => {
     setSaving(true);
     try {
       const payload = { ...data };
-      if (!payload.password) delete payload.password; // Don't send empty password on edit
+      if (!payload.password) delete payload.password;
+      if (!payload.branch)   delete payload.branch;
       if (editing) {
         await api.patch(`/users/${editing.id}/`, payload);
         toast.success('User updated.');
@@ -162,11 +177,30 @@ function UserFormModal({ editing, onClose, onSaved }) {
             <div className="fg">
               <label>Role *</label>
               <select {...register('role', { required: true })}>
-                <option value="EMPLOYEE">Employee</option>
-                <option value="MANAGER">Manager</option>
-                <option value="ADMIN">Admin</option>
+                {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
+
+            {/* Branch selector — Super Admin sees all branches; ADMIN field is locked to their branch */}
+            {wRole !== 'SUPER_ADMIN' && (
+              <div className="fg">
+                <label>Branch *</label>
+                {isSuperAdmin ? (
+                  <select {...register('branch', { required: wRole !== 'SUPER_ADMIN' })}>
+                    <option value="">— Select Branch —</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    readOnly
+                    value={branches.find(b => b.id === currentUser?.branch)?.name || 'Your Branch'}
+                    style={{ background: 'var(--surface)', color: 'var(--muted)' }}
+                  />
+                )}
+              </div>
+            )}
+
             <div className="fg">
               <label>Status</label>
               <select {...register('is_active')}>
@@ -176,7 +210,7 @@ function UserFormModal({ editing, onClose, onSaved }) {
             </div>
           </div>
 
-          {wRole !== 'ADMIN' && (
+          {wRole !== 'ADMIN' && wRole !== 'SUPER_ADMIN' && (
             <div className="alert alert-info mt8" style={{ fontSize: 12 }}>
               💡 After creating the user, use the <strong>Permissions</strong> button to assign module access.
             </div>
@@ -194,26 +228,35 @@ function UserFormModal({ editing, onClose, onSaved }) {
   );
 }
 
+// ── Main Page ────────────────────────────────────────────────────────────────
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const [users,       setUsers]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [search,      setSearch]      = useState('');
-  const [filterRole,  setFilterRole]  = useState('');
-  const [showForm,    setShowForm]    = useState(false);
-  const [editing,     setEditing]     = useState(null);
-  const [permTarget,  setPermTarget]  = useState(null);
+  const [users,      setUsers]      = useState([]);
+  const [branches,   setBranches]   = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterBranch, setFilterBranch] = useState('');
+  const [showForm,   setShowForm]   = useState(false);
+  const [editing,    setEditing]    = useState(null);
+  const [permTarget, setPermTarget] = useState(null);
 
-  // Only ADMIN can manage users
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
 
   useEffect(() => { load(); }, []);
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    api.get('/users/').then(r => setUsers(r.data.results || r.data))
-      .catch(() => toast.error('Failed to load users.'))
-      .finally(() => setLoading(false));
+    try {
+      const [uRes, bRes] = await Promise.all([
+        api.get('/users/'),
+        isSuperAdmin ? api.get('/users/branches/') : Promise.resolve({ data: [] }),
+      ]);
+      setUsers(uRes.data.results || uRes.data);
+      setBranches(bRes.data.results || bRes.data);
+    } catch { toast.error('Failed to load users.'); }
+    finally { setLoading(false); }
   };
 
   const toggleActive = async (u) => {
@@ -226,18 +269,15 @@ export default function UsersPage() {
   };
 
   const filtered = users.filter(u => {
+    const q = search.toLowerCase();
     const matchSearch =
-      u.email?.toLowerCase().includes(search.toLowerCase()) ||
-      u.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.last_name?.toLowerCase().includes(search.toLowerCase());
-    const matchRole = !filterRole || u.role === filterRole;
-    return matchSearch && matchRole;
+      u.email?.toLowerCase().includes(q) ||
+      u.first_name?.toLowerCase().includes(q) ||
+      u.last_name?.toLowerCase().includes(q);
+    const matchRole   = !filterRole   || u.role === filterRole;
+    const matchBranch = !filterBranch || String(u.branch) === filterBranch;
+    return matchSearch && matchRole && matchBranch;
   });
-
-  const totalAdmins   = users.filter(u => u.role === 'ADMIN').length;
-  const totalManagers = users.filter(u => u.role === 'MANAGER').length;
-  const totalEmployees = users.filter(u => u.role === 'EMPLOYEE').length;
-  const inactive      = users.filter(u => !u.is_active).length;
 
   if (!isAdmin) {
     return (
@@ -249,32 +289,39 @@ export default function UsersPage() {
     );
   }
 
+  const countByRole = (role) => users.filter(u => u.role === role).length;
+
   return (
     <div>
-      {/* Modals */}
       {showForm && (
         <UserFormModal
           editing={editing}
+          branches={branches}
+          currentUser={currentUser}
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSaved={load}
         />
       )}
       {permTarget && (
-        <PermissionModal
-          user={permTarget}
-          onClose={() => setPermTarget(null)}
-          onSaved={load}
-        />
+        <PermissionModal user={permTarget} onClose={() => setPermTarget(null)} onSaved={load} />
+      )}
+
+      {/* Branch info banner for non-super admins */}
+      {!isSuperAdmin && currentUser?.branch_name && (
+        <div className="alert alert-info mb16" style={{ fontWeight: 600 }}>
+          🏢 Managing users for <strong>{currentUser.branch_name}</strong> branch only.
+        </div>
       )}
 
       {/* KPIs */}
-      <div className="kpi-grid mb16" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
+      <div className="kpi-grid mb16" style={{ gridTemplateColumns: `repeat(${isSuperAdmin ? 6 : 5},1fr)` }}>
         {[
-          { label: 'Total Users',    val: users.length,    color: 'var(--blue)'  },
-          { label: 'Admins',         val: totalAdmins,     color: 'var(--red)'   },
-          { label: 'Managers',       val: totalManagers,   color: 'var(--sky)'   },
-          { label: 'Employees',      val: totalEmployees,  color: 'var(--green)' },
-          { label: 'Inactive',       val: inactive,        color: 'var(--muted)' },
+          ...(isSuperAdmin ? [{ label: 'Super Admins', val: countByRole('SUPER_ADMIN'), color: 'var(--red)' }] : []),
+          { label: 'Total Users',  val: users.length,              color: 'var(--blue)'  },
+          { label: 'Admins',       val: countByRole('ADMIN'),      color: 'var(--red)'   },
+          { label: 'Managers',     val: countByRole('MANAGER'),    color: 'var(--sky)'   },
+          { label: 'Employees',    val: countByRole('EMPLOYEE'),   color: 'var(--green)' },
+          { label: 'Inactive',     val: users.filter(u => !u.is_active).length, color: 'var(--muted)' },
         ].map((k, i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
@@ -289,9 +336,17 @@ export default function UsersPage() {
             <span className="card-title-ic">👥</span> User Management
           </div>
           <div className="flex gap8">
+            {isSuperAdmin && branches.length > 0 && (
+              <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
+                style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--border)' }}>
+                <option value="">All Branches</option>
+                {branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+              </select>
+            )}
             <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
               style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--border)' }}>
               <option value="">All Roles</option>
+              {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
               <option value="ADMIN">Admin</option>
               <option value="MANAGER">Manager</option>
               <option value="EMPLOYEE">Employee</option>
@@ -309,12 +364,13 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th>Name</th><th>Email</th><th>Phone</th><th>Role</th>
+                {isSuperAdmin && <th>Branch</th>}
                 <th>Module Access</th><th>Status</th><th>Joined</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>Loading…</td></tr>
+                <tr><td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>Loading…</td></tr>
               )}
               {!loading && filtered.map(u => (
                 <tr key={u.id}>
@@ -326,14 +382,21 @@ export default function UsersPage() {
                   </td>
                   <td style={{ fontSize: 12 }}>{u.email}</td>
                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{u.phone || '—'}</td>
-                  <td><span className={`badge ${ROLE_BADGE[u.role]}`}>{u.role}</span></td>
+                  <td><span className={`badge ${ROLE_BADGE[u.role] || 'b-gray'}`}>{u.role.replace('_', ' ')}</span></td>
+                  {isSuperAdmin && (
+                    <td style={{ fontSize: 11 }}>
+                      {u.branch_name
+                        ? <span className="badge b-navy">{u.branch_name}</span>
+                        : <span style={{ color: 'var(--muted)' }}>—</span>}
+                    </td>
+                  )}
                   <td>
-                    {u.role === 'ADMIN' ? (
+                    {(u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') ? (
                       <span className="badge b-red">Full Access</span>
                     ) : (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxWidth: 240 }}>
                         {(u.module_permissions || []).length === 0 ? (
-                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>No modules assigned</span>
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>No modules</span>
                         ) : (
                           (u.module_permissions || []).slice(0, 4).map(m => (
                             <span key={m} className="badge b-navy" style={{ fontSize: 10 }}>{m}</span>
@@ -357,16 +420,19 @@ export default function UsersPage() {
                   </td>
                   <td>
                     <div className="flex gap8">
-                      <button className="btn btn-ghost btn-xs" onClick={() => { setEditing(u); setShowForm(true); }}>
-                        Edit
-                      </button>
-                      {u.role !== 'ADMIN' && (
+                      {/* Can't edit a Super Admin unless you are one */}
+                      {(isSuperAdmin || u.role !== 'SUPER_ADMIN') && (
+                        <button className="btn btn-ghost btn-xs" onClick={() => { setEditing(u); setShowForm(true); }}>
+                          Edit
+                        </button>
+                      )}
+                      {u.role !== 'ADMIN' && u.role !== 'SUPER_ADMIN' && (
                         <button className="btn btn-xs" style={{ background: '#eff6ff', color: 'var(--blue)', border: '1px solid #bfdbfe' }}
                           onClick={() => setPermTarget(u)}>
                           🔐 Perms
                         </button>
                       )}
-                      {u.id !== currentUser?.id && (
+                      {u.id !== currentUser?.id && u.role !== 'SUPER_ADMIN' && (
                         <button className={`btn btn-xs ${u.is_active ? 'btn-danger' : 'btn-success'}`}
                           onClick={() => toggleActive(u)}>
                           {u.is_active ? 'Deactivate' : 'Activate'}
@@ -377,21 +443,22 @@ export default function UsersPage() {
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>No users found</td></tr>
+                <tr><td colSpan={isSuperAdmin ? 9 : 8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>No users found</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Permission Legend */}
+      {/* Role legend */}
       <div className="card mt16">
-        <div className="card-title"><span className="card-title-ic">ℹ️</span>Permission Model</div>
+        <div className="card-title"><span className="card-title-ic">ℹ️</span>Role Hierarchy</div>
         <div className="g3" style={{ gap: 12 }}>
           {[
-            { role: 'ADMIN', color: 'var(--red)', desc: 'Full system access. Can manage all modules, users, and permissions. Cannot be restricted.' },
-            { role: 'MANAGER', color: 'var(--blue)', desc: 'Access controlled by module permissions below. Can view and edit assigned modules.' },
-            { role: 'EMPLOYEE', color: '#64748b', desc: 'Access controlled by module permissions. Typically restricted to specific modules only.' },
+            { role: 'SUPER ADMIN', color: '#dc2626', desc: 'Controls both branches. Full access to all data across Branch 1 and Branch 2. Can create/manage Admins.' },
+            { role: 'ADMIN (per branch)', color: 'var(--red)', desc: 'Full access within their branch only. Can create Managers and Employees in their branch. Cannot see the other branch.' },
+            { role: 'MANAGER', color: 'var(--blue)', desc: 'Access controlled by module permissions set by their Admin. Can view and edit assigned modules within their branch.' },
+            { role: 'EMPLOYEE', color: '#64748b', desc: 'Access controlled by module permissions. Typically restricted to specific modules only within their branch.' },
           ].map(r => (
             <div key={r.role} style={{ background: 'var(--surface)', borderRadius: 8, padding: 14, border: '1px solid var(--border)' }}>
               <div style={{ fontWeight: 700, color: r.color, fontSize: 12.5, marginBottom: 6 }}>{r.role}</div>
