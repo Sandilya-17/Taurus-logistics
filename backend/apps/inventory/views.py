@@ -13,24 +13,22 @@ from apps.core.branch_mixin import BranchScopedQuerysetMixin
 from apps.core.serializers import SupplierSerializer
 
 
-# ── Permission helpers ────────────────────────────────────────────────────────
 class IsAdminOrReadOnly(permissions.BasePermission):
-    """Read access for all authenticated users; write/delete for ADMIN only."""
+    """Read for all authenticated; write/delete for ADMIN or SUPER_ADMIN."""
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in permissions.SAFE_METHODS:
             return True
-        return getattr(request.user, 'role', None) == 'ADMIN'
+        return getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN')
 
 
 class IsAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and
-                    getattr(request.user, 'role', None) == 'ADMIN')
+                    getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'))
 
 
-# ── Suppliers ─────────────────────────────────────────────────────────────────
 class SupplierListCreate(generics.ListCreateAPIView):
     queryset         = Supplier.objects.all()
     serializer_class = SupplierSerializer
@@ -43,12 +41,11 @@ class SupplierListCreate(generics.ListCreateAPIView):
 
 
 class SupplierDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Supplier.objects.all()
-    serializer_class = SupplierSerializer
+    queryset           = Supplier.objects.all()
+    serializer_class   = SupplierSerializer
     permission_classes = [IsAdmin]
 
 
-# ── Locations ─────────────────────────────────────────────────────────────────
 class LocationListCreate(generics.ListCreateAPIView):
     queryset         = Location.objects.all()
     serializer_class = LocationSerializer
@@ -59,7 +56,6 @@ class LocationDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LocationSerializer
 
 
-# ── Items ─────────────────────────────────────────────────────────────────────
 class ItemListCreate(generics.ListCreateAPIView):
     queryset         = Item.objects.all()
     serializer_class = ItemSerializer
@@ -75,7 +71,6 @@ class ItemListCreate(generics.ListCreateAPIView):
         data = request.data.copy()
         if hasattr(data, 'dict'):
             data = data.dict()
-
         opening_qty_raw = data.pop('opening_qty', None)
         unit_price_raw  = data.pop('unit_price',  None)
         location_id     = data.pop('location_id', None)
@@ -88,12 +83,10 @@ class ItemListCreate(generics.ListCreateAPIView):
         opening_qty_raw = _scalar(opening_qty_raw)
         unit_price_raw  = _scalar(unit_price_raw)
         location_id     = _scalar(location_id)
-
         try:
             opening_qty = Decimal(str(opening_qty_raw)) if opening_qty_raw not in (None, '', '0', 0, '0.0') else None
         except (InvalidOperation, TypeError):
             opening_qty = None
-
         try:
             unit_price = Decimal(str(unit_price_raw)) if unit_price_raw not in (None, '', '0', 0, '0.0') else None
         except (InvalidOperation, TypeError):
@@ -110,16 +103,11 @@ class ItemListCreate(generics.ListCreateAPIView):
                 else:
                     loc = Location.objects.filter(deleted_at__isnull=True).first()
                     if not loc:
-                        loc = Location.objects.create(
-                            name='Main Store',
-                            location_type='STORE',
-                        )
+                        loc = Location.objects.create(name='Main Store', location_type='STORE')
                 StockLedger.objects.create(
-                    item=item,
-                    location=loc,
+                    item=item, location=loc,
                     transaction_type=StockLedger.OPENING,
-                    quantity=opening_qty,
-                    unit_price=unit_price,
+                    quantity=opening_qty, unit_price=unit_price,
                     created_by=request.user if request.user.is_authenticated else None,
                     remark='Initial Opening Stock',
                 )
@@ -128,14 +116,13 @@ class ItemListCreate(generics.ListCreateAPIView):
                 logging.getLogger(__name__).error(
                     "Failed to create opening stock ledger for item %s: %s", item.pk, ex
                 )
-
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Item.objects.all()
-    serializer_class = ItemSerializer
+    queryset           = Item.objects.all()
+    serializer_class   = ItemSerializer
     permission_classes = [IsAdminOrReadOnly]
 
     def destroy(self, request, *args, **kwargs):
@@ -144,7 +131,6 @@ class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().destroy(request, *args, **kwargs)
 
 
-# ── Stock Ledger (read-only list) ─────────────────────────────────────────────
 class StockLedgerList(generics.ListAPIView):
     serializer_class = StockLedgerSerializer
     filterset_fields = ('item', 'location', 'transaction_type')
@@ -152,17 +138,11 @@ class StockLedgerList(generics.ListAPIView):
     ordering_fields  = ('created_at',)
 
     def get_queryset(self):
-        from apps.users.models import User
         user = self.request.user
-        qs = StockLedger.objects.select_related('item', 'location', 'created_by')
+        qs   = StockLedger.objects.select_related('item', 'location', 'created_by')
         if not user.is_authenticated:
             return qs.none()
-        # StockLedger has no branch — filter via related Purchase branch
-        if user.role == User.SUPER_ADMIN:
-            return qs
         if user.branch_id:
-            # Get items that belong to this branch via purchases
-            from django.db.models import Subquery, OuterRef
             branch_items = Purchase.objects.filter(
                 branch_id=user.branch_id
             ).values('item_id')
@@ -171,9 +151,8 @@ class StockLedgerList(generics.ListAPIView):
 
 
 class StockLedgerDetail(generics.RetrieveUpdateAPIView):
-    """PATCH /inventory/ledger/<pk>/ — allows editing qty & unit_price of an OPENING entry."""
-    queryset         = StockLedger.objects.all()
-    serializer_class = StockLedgerSerializer
+    queryset          = StockLedger.objects.all()
+    serializer_class  = StockLedgerSerializer
     http_method_names = ['get', 'patch', 'head', 'options']
 
     def partial_update(self, request, *args, **kwargs):
@@ -199,8 +178,6 @@ class StockLedgerDetail(generics.RetrieveUpdateAPIView):
         return Response(StockLedgerSerializer(instance).data)
 
 
-
-# ── Closing Stock Report ──────────────────────────────────────────────────────
 class ClosingStockView(APIView):
     def get(self, request):
         item_id     = request.query_params.get('item')
@@ -210,7 +187,6 @@ class ClosingStockView(APIView):
         return Response(list(data))
 
 
-# ── Purchase ──────────────────────────────────────────────────────────────────
 class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = Purchase.objects.select_related('supplier', 'item', 'location')
     serializer_class = PurchaseSerializer
@@ -220,7 +196,6 @@ class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         try:
             data = request.data.copy()
-            # Handle manual supplier name: create or get supplier by name
             supplier_name = data.get('supplier_name', '').strip()
             if supplier_name and not data.get('supplier_id'):
                 supplier, _ = Supplier.objects.get_or_create(
@@ -235,8 +210,8 @@ class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
 
 
 class PurchaseDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Purchase.objects.all()
-    serializer_class = PurchaseSerializer
+    queryset           = Purchase.objects.all()
+    serializer_class   = PurchaseSerializer
     permission_classes = [IsAdminOrReadOnly]
 
     def destroy(self, request, *args, **kwargs):
@@ -250,7 +225,6 @@ class PurchaseDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAP
         return self.update(request, *args, **kwargs)
 
 
-# ── Purchase Preview (auto-calc endpoint) ─────────────────────────────────────
 class PurchasePreviewView(APIView):
     def post(self, request):
         s = PurchasePreviewSerializer(data=request.data)
@@ -258,7 +232,6 @@ class PurchasePreviewView(APIView):
         return Response(s.validated_data)
 
 
-# ── Issue ─────────────────────────────────────────────────────────────────────
 class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip')
     serializer_class = IssueItemSerializer
@@ -280,13 +253,13 @@ class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
 
 
 class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = IssueItem.objects.all()
-    serializer_class = IssueItemSerializer
+    queryset           = IssueItem.objects.all()
+    serializer_class   = IssueItemSerializer
     permission_classes = [IsAdminOrReadOnly]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        trip = instance.trip  # save reference before delete
+        trip = instance.trip
         if instance.ledger_entry_id:
             StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
         result = super().destroy(request, *args, **kwargs)
@@ -295,7 +268,6 @@ class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
         return result
 
 
-# ── Available Stock Check ─────────────────────────────────────────────────────
 @api_view(['GET'])
 def available_stock(request):
     item_id     = request.query_params.get('item')
@@ -306,17 +278,8 @@ def available_stock(request):
     return Response({'available_qty': float(qty)})
 
 
-# ── FIFO Stock Breakdown ──────────────────────────────────────────────────────
 @api_view(['GET'])
 def fifo_stock_breakdown(request):
-    """
-    Returns the FIFO batch breakdown for a given item/location.
-    Used by the Issue page to show which batches will be consumed and at what price.
-
-    Query params:
-        item     (required) – item ID
-        location (optional) – location ID
-    """
     item_id     = request.query_params.get('item')
     location_id = request.query_params.get('location')
     if not item_id:
@@ -326,45 +289,33 @@ def fifo_stock_breakdown(request):
     return Response({
         'total_available': float(total_available),
         'batches': [
-            {
-                'ledger_id':  b['ledger_id'],
-                'unit_price': float(b['unit_price']),
-                'remaining':  float(b['remaining']),
-            }
+            {'ledger_id': b['ledger_id'], 'unit_price': float(b['unit_price']), 'remaining': float(b['remaining'])}
             for b in batches
         ],
     })
 
 
-# ── Opening Stock (standalone endpoint) ──────────────────────────────────────
 @api_view(['POST'])
 def post_opening_stock(request):
-    from decimal import Decimal, InvalidOperation
-
     item_id     = request.data.get('item_id')
     qty_raw     = request.data.get('quantity')
     price_raw   = request.data.get('unit_price')
     location_id = request.data.get('location_id')
-
     if not item_id:
         return Response({'error': 'item_id is required'}, status=400)
-
     try:
         qty   = Decimal(str(qty_raw))
         price = Decimal(str(price_raw))
     except (InvalidOperation, TypeError, ValueError):
         return Response({'error': 'Invalid quantity or unit_price'}, status=400)
-
     if qty <= 0:
         return Response({'error': 'Quantity must be greater than 0'}, status=400)
     if price <= 0:
         return Response({'error': 'Unit price must be greater than 0'}, status=400)
-
     try:
         item = Item.objects.get(pk=item_id)
     except Item.DoesNotExist:
         return Response({'error': 'Item not found'}, status=404)
-
     if location_id:
         try:
             loc = Location.objects.get(pk=location_id)
@@ -374,17 +325,13 @@ def post_opening_stock(request):
         loc = Location.objects.filter(deleted_at__isnull=True).first()
         if not loc:
             loc = Location.objects.create(name='Main Store', location_type='STORE')
-
     entry = StockLedger.objects.create(
-        item=item,
-        location=loc,
+        item=item, location=loc,
         transaction_type=StockLedger.OPENING,
-        quantity=qty,
-        unit_price=price,
+        quantity=qty, unit_price=price,
         created_by=request.user if request.user.is_authenticated else None,
         remark='Opening Stock',
     )
-
     return Response({
         'id': entry.pk,
         'item': item.name,
