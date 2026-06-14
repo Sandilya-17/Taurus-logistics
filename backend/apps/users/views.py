@@ -1,33 +1,64 @@
-"""apps/users/views.py – Enterprise user management with throttled login."""
+"""apps/users/views.py – Branch-isolated, role-based user management."""
 import logging
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status, permissions, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import User
-from .serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer, LoginSerializer
+from .models import User, Branch
+from .serializers import (
+    UserSerializer, UserCreateSerializer, UserUpdateSerializer,
+    LoginSerializer, BranchSerializer,
+)
 
 logger = logging.getLogger('apps.users')
 
 
+# ── Throttle ──────────────────────────────────────────────────────────────────
+
 class LoginThrottle(AnonRateThrottle):
-    """Dedicated throttle for the login endpoint: 10 attempts/minute per IP."""
-    rate = '10/min'
+    rate  = '10/min'
     scope = 'auth'
 
 
-class IsAdminUser(permissions.BasePermission):
-    """Allow access only to users with role=ADMIN."""
+# ── Permissions ───────────────────────────────────────────────────────────────
+
+class IsSuperAdmin(permissions.BasePermission):
+    """Only the Super Admin."""
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == User.ADMIN)
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role == User.SUPER_ADMIN)
 
 
-class IsManagerOrAdmin(permissions.BasePermission):
-    """Allow access to MANAGER or ADMIN roles."""
+class IsAdminOrAbove(permissions.BasePermission):
+    """ADMIN or SUPER_ADMIN."""
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role in (User.ADMIN, User.SUPER_ADMIN))
+
+
+class IsManagerOrAbove(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_manager)
 
+
+# ── Branch queryset mixin ──────────────────────────────────────────────────────
+
+class BranchScopedMixin:
+    """
+    Restrict queryset to the current user's branch.
+    Super Admin sees everything.
+    """
+    def get_branch_queryset(self, qs):
+        user = self.request.user
+        if user.is_super_admin:
+            return qs
+        if user.branch_id:
+            return qs.filter(branch=user.branch)
+        return qs.none()
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 class LoginView(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -36,14 +67,8 @@ class LoginView(APIView):
     def post(self, request):
         s = LoginSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-
-        # Log successful login
         user_data = s.validated_data.get('user', {})
-        logger.info(
-            'User login: %s from %s',
-            user_data.get('email', '?'),
-            self._get_ip(request)
-        )
+        logger.info('User login: %s from %s', user_data.get('email', '?'), self._get_ip(request))
         return Response(s.validated_data)
 
     @staticmethod
@@ -63,20 +88,41 @@ class LogoutView(APIView):
         return Response({'detail': 'Logged out.'})
 
 
-class UserListCreateView(generics.ListCreateAPIView):
-    queryset = User.objects.all().order_by('role', 'first_name')
+# ── Users ─────────────────────────────────────────────────────────────────────
+
+class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
+    """
+    GET  – list users visible to the current user (branch-scoped for ADMIN).
+    POST – create a user; ADMIN can only create in their branch with lower roles.
+    """
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields   = ['email', 'first_name', 'last_name']
+    ordering_fields = ['role', 'first_name', 'created_at']
+
+    def get_queryset(self):
+        qs = User.objects.all().order_by('role', 'first_name')
+        return self.get_branch_queryset(qs)
 
     def get_serializer_class(self):
         return UserCreateSerializer if self.request.method == 'POST' else UserSerializer
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAdminUser()]
+            return [IsAdminOrAbove()]
         return [permissions.IsAuthenticated()]
 
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
 
-class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = User.objects.all()
+
+class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
+    """ADMIN can manage users only in their own branch; SUPER_ADMIN can manage all."""
+
+    def get_queryset(self):
+        qs = User.objects.all()
+        return self.get_branch_queryset(qs)
 
     def get_serializer_class(self):
         if self.request.method in ('PUT', 'PATCH'):
@@ -86,23 +132,31 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_permissions(self):
         if self.request.method == 'GET':
             return [permissions.IsAuthenticated()]
-        return [IsAdminUser()]
+        return [IsAdminOrAbove()]
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
 
     def partial_update(self, request, *args, **kwargs):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Prevent admin from deleting themselves."""
         instance = self.get_object()
         if instance == request.user:
             return Response(
                 {'error': True, 'message': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        logger.warning(
-            'User deleted: %s by admin=%s', instance.email, request.user.email
-        )
+        # Admin cannot delete another Admin or Super Admin
+        if request.user.role == User.ADMIN and instance.role in (User.ADMIN, User.SUPER_ADMIN):
+            return Response(
+                {'error': True, 'message': 'You do not have permission to delete this user.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        logger.warning('User deleted: %s by %s', instance.email, request.user.email)
         return super().destroy(request, *args, **kwargs)
 
 
@@ -111,7 +165,6 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
     def patch(self, request):
-        """Allow any authenticated user to update their own profile (not role/permissions)."""
         allowed_fields = {'first_name', 'last_name', 'phone'}
         data = {k: v for k, v in request.data.items() if k in allowed_fields}
         serializer = UserSerializer(request.user, data=data, partial=True)
@@ -120,29 +173,47 @@ class MeView(APIView):
         return Response(serializer.data)
 
     def put(self, request):
-        """Allow changing own password."""
         old_password = request.data.get('old_password', '')
         new_password = request.data.get('new_password', '')
-
         if not old_password or not new_password:
             return Response(
                 {'error': True, 'message': 'old_password and new_password are required.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         if not request.user.check_password(old_password):
             return Response(
                 {'error': True, 'message': 'Current password is incorrect.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         if len(new_password) < 8:
             return Response(
                 {'error': True, 'message': 'New password must be at least 8 characters.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         request.user.set_password(new_password)
         request.user.save(update_fields=['password'])
         logger.info('Password changed for user: %s', request.user.email)
         return Response({'detail': 'Password updated successfully.'})
+
+
+# ── Branch management (Super Admin only) ──────────────────────────────────────
+
+class BranchListCreateView(generics.ListCreateAPIView):
+    queryset         = Branch.objects.all().order_by('name')
+    serializer_class = BranchSerializer
+    permission_classes = [IsSuperAdmin]
+
+
+class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset         = Branch.objects.all()
+    serializer_class = BranchSerializer
+    permission_classes = [IsSuperAdmin]
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.users.filter(is_active=True).exists():
+            return Response(
+                {'error': True, 'message': 'Cannot delete a branch that has active users.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
