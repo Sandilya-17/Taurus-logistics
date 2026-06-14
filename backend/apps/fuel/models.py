@@ -16,6 +16,7 @@ class FuelLimit(TimeStampedModel):
 
 
 class FuelLog(TimeStampedModel):
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='+', db_index=True)
     """Every fuel fill-up.  excess_fuel is auto-calculated.
     When linked to a trip, the trip's fuel_cost is auto-updated.
     """
