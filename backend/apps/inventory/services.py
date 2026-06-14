@@ -1,10 +1,20 @@
 """apps/inventory/services.py – Stock ledger business logic.
 
+FIX SUMMARY
+-----------
+- _fifo_batches()         → accepts branch_id; only looks at THAT branch's inward rows.
+- _fifo_weighted_price()  → passes branch_id through.
+- StockService methods    → all accept optional branch_id for filtering.
+- PurchaseService         → accepts branch kwarg; stamps Purchase + StockLedger row.
+- IssueService            → accepts branch kwarg; stamps IssueItem + StockLedger row.
+                            Also passes branch_id to _fifo_weighted_price so FIFO
+                            only consumes stock from the correct branch.
+
 FIFO COSTING
 ------------
 When issuing stock, oldest inward batches (OPENING first, then PURCHASE,
 ordered by created_at ASC) are consumed first.  The unit_price stored on
-the IssueItem and its ledger entry is a **weighted-average** of the batches
+the IssueItem and its ledger entry is a weighted-average of the batches
 consumed, so final_amount = sum(batch_qty_consumed × batch_price).
 """
 from decimal import Decimal
@@ -31,19 +41,15 @@ def _column_exists(table, column):
 
 # ── FIFO helpers ─────────────────────────────────────────────────────────────
 
-def _fifo_batches(item_id, location_id=None):
+def _fifo_batches(item_id, location_id=None, branch_id=None):
     """
-    Return still-available inward batches for this item/location, oldest-first.
+    Return still-available inward batches for this item/location/branch,
+    oldest-first.
+
+    FIX: branch_id parameter added so each branch only sees its own stock.
 
     Each element:
         { 'ledger_id': int, 'unit_price': Decimal, 'remaining': Decimal }
-
-    Algorithm
-    ---------
-    1. Fetch all OPENING / PURCHASE entries ordered by created_at ASC.
-    2. Compute total units already issued (all ISSUE / TRANSFER_OUT).
-    3. Walk batches oldest-first, subtracting issued units, to find how much
-       remains in each batch.
     """
     # 1. Inward batches (oldest first)
     inward_qs = (
@@ -56,12 +62,15 @@ def _fifo_batches(item_id, location_id=None):
     )
     if location_id:
         inward_qs = inward_qs.filter(location_id=location_id)
+    if branch_id is not None:
+        inward_qs = inward_qs.filter(branch_id=branch_id)
+
     inward_batches = list(
         inward_qs.order_by('created_at')
                  .values('id', 'unit_price', 'quantity')
     )
 
-    # 2. Total outward already issued
+    # 2. Total outward already issued (scoped to same branch)
     outward_qs = StockLedger.objects.filter(
         item_id=item_id,
         transaction_type__in=[StockLedger.ISSUE, StockLedger.TRANSFER_OUT],
@@ -69,6 +78,9 @@ def _fifo_batches(item_id, location_id=None):
     )
     if location_id:
         outward_qs = outward_qs.filter(location_id=location_id)
+    if branch_id is not None:
+        outward_qs = outward_qs.filter(branch_id=branch_id)
+
     total_issued = abs(
         outward_qs.aggregate(t=Sum('quantity'))['t'] or Decimal('0')
     )
@@ -93,14 +105,17 @@ def _fifo_batches(item_id, location_id=None):
     return available_batches
 
 
-def _fifo_weighted_price(item_id, qty_needed, location_id=None):
+def _fifo_weighted_price(item_id, qty_needed, location_id=None, branch_id=None):
     """
     Consume qty_needed units from FIFO batches (oldest first) and return the
     weighted-average unit price across batches consumed.
 
+    FIX: branch_id parameter added — FIFO only considers stock owned by
+    the same branch, preventing branch cross-contamination.
+
     Raises ValueError if insufficient stock.
     """
-    batches = _fifo_batches(item_id, location_id)
+    batches = _fifo_batches(item_id, location_id, branch_id=branch_id)
 
     total_available = sum(b['remaining'] for b in batches)
     if total_available < qty_needed:
@@ -128,20 +143,27 @@ def _fifo_weighted_price(item_id, qty_needed, location_id=None):
 class StockService:
 
     @staticmethod
-    def get_closing_stock(item_id=None, location_id=None, as_of=None):
-        from django.db.models import Sum
+    def get_closing_stock(item_id=None, location_id=None, as_of=None, branch_id=None):
+        """
+        FIX: branch_id parameter added.
+        - Branch admin:  always pass their branch_id → sees only their stock.
+        - SUPER_ADMIN:   pass branch_id to narrow, or omit to see all branches.
+        """
+        from django.db.models import Q, Sum
         from django.db.models.functions import Coalesce
 
         qs = Item.objects.all()
         if item_id:
             qs = qs.filter(id=item_id)
 
-        from django.db.models import Q
         ledger_filter = Q()
         if location_id:
             ledger_filter &= Q(ledger_entries__location_id=location_id)
         if as_of:
             ledger_filter &= Q(ledger_entries__created_at__date__lte=as_of)
+        # ── FIX: branch scope ──
+        if branch_id is not None:
+            ledger_filter &= Q(ledger_entries__branch_id=branch_id)
 
         result = qs.annotate(
             closing_qty=Coalesce(Sum('ledger_entries__quantity', filter=ledger_filter), Decimal('0')),
@@ -170,16 +192,20 @@ class StockService:
         return out
 
     @staticmethod
-    def get_available_qty(item_id, location_id=None):
+    def get_available_qty(item_id, location_id=None, branch_id=None):
+        """FIX: branch_id parameter added."""
         qs = StockLedger.objects.filter(item_id=item_id)
         if location_id:
             qs = qs.filter(location_id=location_id)
+        if branch_id is not None:
+            qs = qs.filter(branch_id=branch_id)
         total = qs.aggregate(t=Sum('quantity'))['t']
         return total or Decimal('0')
 
     @staticmethod
-    def validate_stock(item_id, quantity, location_id=None):
-        available = StockService.get_available_qty(item_id, location_id)
+    def validate_stock(item_id, quantity, location_id=None, branch_id=None):
+        """FIX: branch_id parameter added."""
+        available = StockService.get_available_qty(item_id, location_id, branch_id=branch_id)
         if available < Decimal(str(quantity)):
             raise ValueError(
                 f"Insufficient stock. Available: {available}, Requested: {quantity}"
@@ -187,9 +213,9 @@ class StockService:
         return available
 
     @staticmethod
-    def get_fifo_batches(item_id, location_id=None):
+    def get_fifo_batches(item_id, location_id=None, branch_id=None):
         """Public helper — returns FIFO batch breakdown for API/frontend preview."""
-        return _fifo_batches(item_id, location_id)
+        return _fifo_batches(item_id, location_id, branch_id=branch_id)
 
 
 # ── PurchaseService ───────────────────────────────────────────────────────────
@@ -198,9 +224,14 @@ class PurchaseService:
 
     @staticmethod
     @transaction.atomic
-    def create_purchase(data, user=None):
+    def create_purchase(data, user=None, branch=None):
         """
         Create Purchase record and post to StockLedger.
+
+        FIX: `branch` parameter added — both the Purchase row and its
+        StockLedger entry are now stamped with the branch, preventing
+        cross-branch stock leakage.
+
         data keys: supplier_id, item_id, location_id, quantity, unit_price,
                    vat_applicable, vat_percentage, invoice_number, purchase_date, remark
         """
@@ -213,6 +244,7 @@ class PurchaseService:
         final_amt = base_amt + vat_amt
 
         purchase = Purchase.objects.create(
+            branch         = branch,               # ← FIX
             supplier_id    = data['supplier_id'],
             item_id        = data['item_id'],
             location_id    = data['location_id'],
@@ -230,6 +262,7 @@ class PurchaseService:
         )
 
         ledger = StockLedger.objects.create(
+            branch           = branch,             # ← FIX
             item_id          = data['item_id'],
             location_id      = data['location_id'],
             transaction_type = StockLedger.PURCHASE,
@@ -253,28 +286,29 @@ class IssueService:
 
     @staticmethod
     @transaction.atomic
-    def create_issue(data, user=None):
+    def create_issue(data, user=None, branch=None):
         """
         Validate stock, compute FIFO weighted-average unit price, create
         IssueItem and post a negative entry to StockLedger.
+
+        FIX: `branch` parameter added — FIFO only draws from that branch's
+        inward batches, and both the IssueItem and its StockLedger row are
+        stamped with the branch.
 
         FIFO rule
         ---------
         Oldest inward batches (OPENING first, then PURCHASE by created_at)
         are consumed before newer ones.  The unit_price on the issue record
-        is the weighted-average across the batches consumed, so old stock is
-        always costed at its original purchase price.  Only after old stock
-        is exhausted does the current-month purchase price apply.
+        is the weighted-average across the batches consumed.
 
         data keys:
             item_id, location_id, quantity, issue_type,
             truck_id, trip_id (optional), issue_date, remark
         """
-        # ── Validate required fields ──────────────────────────────────────────
-        item_id     = data.get('item_id')
-        location_id = data.get('location_id')
-        issue_type  = data.get('issue_type')
-        issue_date  = data.get('issue_date')
+        item_id      = data.get('item_id')
+        location_id  = data.get('location_id')
+        issue_type   = data.get('issue_type')
+        issue_date   = data.get('issue_date')
         quantity_raw = data.get('quantity')
 
         if not item_id:
@@ -296,13 +330,13 @@ class IssueService:
         if qty <= 0:
             raise ValueError("Quantity must be greater than 0.")
 
-        # ── FIFO weighted-average price (also validates sufficient stock) ─────
-        unit_price = _fifo_weighted_price(item_id, qty, location_id)
+        # ── FIX: FIFO weighted-average scoped to this branch ─────────────────
+        branch_id  = branch.pk if branch else None
+        unit_price = _fifo_weighted_price(item_id, qty, location_id, branch_id=branch_id)
         final_amt  = (qty * unit_price).quantize(Decimal('0.01'))
 
-        # Build create kwargs — skip trip_id if the column doesn't exist yet
-        # (guards against production DBs where migration 0005 hasn't run)
         create_kwargs = dict(
+            branch       = branch,             # ← FIX
             item_id      = item_id,
             location_id  = location_id,
             truck_id     = data.get('truck_id') or None,
@@ -322,6 +356,7 @@ class IssueService:
 
         # Post to ledger (negative quantity = outward)
         ledger = StockLedger.objects.create(
+            branch           = branch,         # ← FIX
             item_id          = item_id,
             location_id      = location_id,
             transaction_type = StockLedger.ISSUE,
