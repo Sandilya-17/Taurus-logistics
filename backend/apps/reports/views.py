@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date, timedelta
 import io
 
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Q
 from django.utils import timezone
 from django.http import HttpResponse
 
@@ -160,14 +160,9 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             date__gte=month_start, date__lte=today
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
-        fuel_agg = FuelLog.objects.filter(
-            date__gte=month_start, date__lte=today
-        ).aggregate(
-            litres=Sum('litres'),
-            excess_events=Count('id', filter=Q(excess_fuel__gt=0)),
-        )
-        fuel_litres        = fuel_agg['litres'] or Decimal('0')
-        fuel_excess_events = fuel_agg['excess_events'] or 0
+        _fuel_qs = FuelLog.objects.filter(date__gte=month_start, date__lte=today)
+        fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
+        fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
 
         stock_value = StockLedger.objects.aggregate(
             total=Sum('final_amount')
