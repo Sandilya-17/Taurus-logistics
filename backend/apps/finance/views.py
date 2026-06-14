@@ -13,10 +13,9 @@ class ExpenditureListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIVie
     search_fields    = ('description', 'reference', 'truck__truck_number')
 
     def perform_create(self, serializer):
-        from apps.users.models import User
-        user = self.request.user
+        user   = self.request.user
         kwargs = {'created_by': user}
-        if user.role != User.SUPER_ADMIN and user.branch_id:
+        if user.branch_id:
             kwargs['branch'] = user.branch
         serializer.save(**kwargs)
 
@@ -33,15 +32,14 @@ class RevenueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     search_fields    = ('description', 'reference')
 
     def perform_create(self, serializer):
-        from apps.users.models import User
         if serializer.validated_data.get('invoice') or serializer.validated_data.get('trip'):
             raise ValidationError(
                 "Revenue for haulage jobs is recorded automatically when an invoice is marked PAID. "
                 "Use this form only for cash jobs, rental income, or other income without an invoice."
             )
-        user = self.request.user
+        user   = self.request.user
         kwargs = {'created_by': user}
-        if user.role != User.SUPER_ADMIN and user.branch_id:
+        if user.branch_id:
             kwargs['branch'] = user.branch
         serializer.save(**kwargs)
 
