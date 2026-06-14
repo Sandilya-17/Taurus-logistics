@@ -23,6 +23,12 @@ from apps.tyres.models import Tyre, TyreAssignment
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
+class BranchFilterMixin:
+    """Adds branch-scoped queryset helper to report views."""
+    def _bf(self):
+        return _branch_filter(self.request)
+
+
 def _parse_dates(request):
     today = timezone.now().date()
     try:
@@ -41,6 +47,18 @@ def _fmt(val):
         return 0
     return float(round(Decimal(str(val)), 2))
 
+
+
+
+def _branch_filter(request):
+    """Returns a dict to filter querysets by the current user's branch."""
+    from apps.users.models import User
+    user = request.user
+    if user.role == User.SUPER_ADMIN:
+        return {}
+    if user.branch_id:
+        return {'branch': user.branch_id}
+    return {'branch': None}  # effectively shows nothing if no branch
 
 def _export_excel(headers, rows, sheet_name='Report'):
     try:
@@ -118,7 +136,7 @@ def _respond(request, headers, rows, summary=None, sheet_name='Report'):
 
 # ── Dashboard ────────────────────────────────────────────────────────────
 
-class DashboardSummaryView(APIView):
+class DashboardSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         today = timezone.now().date()
         month_start = today.replace(day=1)
@@ -210,7 +228,7 @@ class DashboardSummaryView(APIView):
 
 # ── Revenue vs Expenditure ───────────────────────────────────────────────
 
-class RevenueExpenditureReportView(APIView):
+class RevenueExpenditureReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
 
@@ -243,7 +261,7 @@ class RevenueExpenditureReportView(APIView):
 
 # ── Fuel Report ──────────────────────────────────────────────────────────
 
-class FuelReportView(APIView):
+class FuelReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         logs = FuelLog.objects.filter(
@@ -275,7 +293,7 @@ class FuelReportView(APIView):
 
 # ── Trip Report ──────────────────────────────────────────────────────────
 
-class TripReportView(APIView):
+class TripReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
@@ -316,7 +334,7 @@ class TripReportView(APIView):
 
 # ── Trip P&L Report ──────────────────────────────────────────────────────
 
-class TripDetailReportView(APIView):
+class TripDetailReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
@@ -350,7 +368,7 @@ class TripDetailReportView(APIView):
 
 # ── Truck-wise Summary ───────────────────────────────────────────────────
 
-class TruckWiseSummaryView(APIView):
+class TruckWiseSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
@@ -430,7 +448,7 @@ class TruckWiseSummaryView(APIView):
 
 # ── Stock Report ─────────────────────────────────────────────────────────
 
-class StockReportView(APIView):
+class StockReportView(BranchFilterMixin, APIView):
     def get(self, request):
         items = Item.objects.all().order_by('item_type', 'name')
         headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH₵)', 'Reorder Level']
@@ -453,7 +471,7 @@ class StockReportView(APIView):
 
 # ── Invoice Report ───────────────────────────────────────────────────────
 
-class InvoiceReportView(APIView):
+class InvoiceReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         invoices = Invoice.objects.filter(
@@ -486,7 +504,7 @@ class InvoiceReportView(APIView):
 
 # ── Spare Parts Report ───────────────────────────────────────────────────
 
-class SparePartsReportView(APIView):
+class SparePartsReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         ledger = StockLedger.objects.filter(
@@ -512,7 +530,7 @@ class SparePartsReportView(APIView):
 
 # ── Maintenance Report ───────────────────────────────────────────────────
 
-class MaintenanceReportView(APIView):
+class MaintenanceReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         logs = MaintenanceLog.objects.filter(
@@ -549,7 +567,7 @@ class MaintenanceReportView(APIView):
 
 # ── VAT Report ───────────────────────────────────────────────────────────
 
-class VATReportView(APIView):
+class VATReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         invoices = Invoice.objects.filter(
@@ -573,7 +591,7 @@ class VATReportView(APIView):
 
 # ── Tyre Report ──────────────────────────────────────────────────────────
 
-class TyreReportView(APIView):
+class TyreReportView(BranchFilterMixin, APIView):
     def get(self, request):
         tyres = Tyre.objects.all().prefetch_related(
             'assignments__truck'
@@ -603,7 +621,7 @@ class TyreReportView(APIView):
 
 # ── Lubricant Report ─────────────────────────────────────────────────────
 
-class LubricantReportView(APIView):
+class LubricantReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         ledger = StockLedger.objects.filter(
