@@ -14,24 +14,18 @@ from .serializers import (
 logger = logging.getLogger('apps.users')
 
 
-# ── Throttle ──────────────────────────────────────────────────────────────────
-
 class LoginThrottle(AnonRateThrottle):
     rate  = '10/min'
     scope = 'auth'
 
 
-# ── Permissions ───────────────────────────────────────────────────────────────
-
 class IsSuperAdmin(permissions.BasePermission):
-    """Only the Super Admin."""
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and request.user.role == User.SUPER_ADMIN)
 
 
 class IsAdminOrAbove(permissions.BasePermission):
-    """ADMIN or SUPER_ADMIN."""
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and request.user.role in (User.ADMIN, User.SUPER_ADMIN))
@@ -42,23 +36,14 @@ class IsManagerOrAbove(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_manager)
 
 
-# ── Branch queryset mixin ──────────────────────────────────────────────────────
-
 class BranchScopedMixin:
-    """
-    Restrict queryset to the current user's branch.
-    Super Admin sees everything.
-    """
+    """ALL roles (including Super Admin) see only their assigned branch."""
     def get_branch_queryset(self, qs):
         user = self.request.user
-        if user.is_super_admin:
-            return qs
         if user.branch_id:
             return qs.filter(branch=user.branch)
         return qs.none()
 
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
 
 class LoginView(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -88,13 +73,7 @@ class LogoutView(APIView):
         return Response({'detail': 'Logged out.'})
 
 
-# ── Users ─────────────────────────────────────────────────────────────────────
-
 class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
-    """
-    GET  – list users visible to the current user (branch-scoped for ADMIN).
-    POST – create a user; ADMIN can only create in their branch with lower roles.
-    """
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields   = ['email', 'first_name', 'last_name']
     ordering_fields = ['role', 'first_name', 'created_at']
@@ -118,8 +97,6 @@ class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
 
 
 class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
-    """ADMIN can manage users only in their own branch; SUPER_ADMIN can manage all."""
-
     def get_queryset(self):
         qs = User.objects.all()
         return self.get_branch_queryset(qs)
@@ -150,14 +127,12 @@ class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
                 {'error': True, 'message': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        # ADMIN cannot delete another ADMIN or SUPER_ADMIN
         if request.user.role == User.ADMIN and instance.role in (User.ADMIN, User.SUPER_ADMIN):
             return Response(
                 {'error': True, 'message': 'You do not have permission to delete this user.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        # ADMIN cannot delete users outside their branch
-        if request.user.role == User.ADMIN and instance.branch != request.user.branch:
+        if instance.branch != request.user.branch:
             return Response(
                 {'error': True, 'message': 'You can only manage users in your own branch.'},
                 status=status.HTTP_403_FORBIDDEN
@@ -202,20 +177,11 @@ class MeView(APIView):
         return Response({'detail': 'Password updated successfully.'})
 
 
-# ── Branch management ─────────────────────────────────────────────────────────
-
 class BranchListCreateView(generics.ListCreateAPIView):
-    """
-    Super Admin: full CRUD on branches.
-    Admin: read-only (GET) — they need to see their branch info.
-    """
     serializer_class = BranchSerializer
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_super_admin:
-            return Branch.objects.all().order_by('name')
-        # ADMIN sees only their own branch
         if user.branch_id:
             return Branch.objects.filter(id=user.branch_id)
         return Branch.objects.none()
@@ -227,9 +193,14 @@ class BranchListCreateView(generics.ListCreateAPIView):
 
 
 class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Branch.objects.all()
-    serializer_class = BranchSerializer
+    serializer_class   = BranchSerializer
     permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.branch_id:
+            return Branch.objects.filter(id=user.branch_id)
+        return Branch.objects.none()
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
