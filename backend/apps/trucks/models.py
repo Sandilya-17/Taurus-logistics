@@ -28,6 +28,7 @@ class Truck(SoftDeleteModel):
     vit_last_paid_date = models.DateField(null=True, blank=True)
     vit_next_due_date  = models.DateField(null=True, blank=True)
 
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='trucks', db_index=True)
     current_odometer = models.DecimalField(max_digits=10, decimal_places=1, default=0)
 
     class Meta:
