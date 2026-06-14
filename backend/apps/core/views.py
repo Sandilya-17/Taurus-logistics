@@ -17,7 +17,8 @@ logger = logging.getLogger('apps.core')
 
 class IsAdminUser(permissions.BasePermission):
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == User.ADMIN)
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role in (User.ADMIN, User.SUPER_ADMIN))
 
 
 class IsManagerOrAdmin(permissions.BasePermission):
@@ -116,7 +117,12 @@ class AuditLogListView(generics.ListAPIView):
     ordering         = ['-created_at']
 
     def get_queryset(self):
+        from apps.users.models import User as UserModel
         qs = AuditLog.objects.select_related('user').order_by('-created_at')
+        # Super Admin sees all; Admin sees only their branch's users
+        req_user = self.request.user
+        if req_user.role != UserModel.SUPER_ADMIN and req_user.branch_id:
+            qs = qs.filter(user__branch=req_user.branch)
         user_id = self.request.query_params.get('user')
         if user_id:
             qs = qs.filter(user_id=user_id)
