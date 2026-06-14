@@ -157,7 +157,10 @@ SIMPLE_JWT = {
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL', default=True, cast=bool)
-CORS_ALLOWED_ORIGINS   = config('CORS_ALLOWED_ORIGINS', default='').split(',') if not CORS_ALLOW_ALL_ORIGINS else []
+CORS_ALLOWED_ORIGINS = (
+    [o for o in config('CORS_ALLOWED_ORIGINS', default='').split(',') if o]
+    if not CORS_ALLOW_ALL_ORIGINS else []
+)
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = [
     'Content-Disposition',
@@ -166,10 +169,12 @@ CORS_EXPOSE_HEADERS = [
 ]
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
-CSRF_TRUSTED_ORIGINS = config(
-    'CSRF_TRUSTED_ORIGINS',
-    default='https://*.up.railway.app,https://taurus-logistics-production.up.railway.app,https://taurus-logistics-production-0a15.up.railway.app'
-).split(',')
+CSRF_TRUSTED_ORIGINS = [
+    o for o in config(
+        'CSRF_TRUSTED_ORIGINS',
+        default='https://*.up.railway.app,https://taurus-logistics-production.up.railway.app,https://taurus-logistics-production-0a15.up.railway.app'
+    ).split(',') if o
+]
 
 # ── SECURITY HEADERS (enterprise hardening) ───────────────────────────────────
 if not DEBUG:
