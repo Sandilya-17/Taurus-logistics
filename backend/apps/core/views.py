@@ -26,8 +26,6 @@ class IsManagerOrAdmin(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_manager)
 
 
-# ── Supplier ─────────────────────────────────────────────────────────────────
-
 class SupplierListCreateView(generics.ListCreateAPIView):
     queryset         = Supplier.objects.all().order_by('name')
     serializer_class = SupplierSerializer
@@ -51,8 +49,6 @@ class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
         return [IsManagerOrAdmin()]
 
 
-# ── Vendor ───────────────────────────────────────────────────────────────────
-
 class VendorListCreateView(generics.ListCreateAPIView):
     queryset         = Vendor.objects.all().order_by('name')
     serializer_class = VendorSerializer
@@ -75,8 +71,6 @@ class VendorDetailView(generics.RetrieveUpdateDestroyAPIView):
         return [IsManagerOrAdmin()]
 
 
-# ── System Alerts ─────────────────────────────────────────────────────────────
-
 class SystemAlertListView(generics.ListAPIView):
     serializer_class = SystemAlertSerializer
     filter_backends  = [DjangoFilterBackend, filters.OrderingFilter]
@@ -85,14 +79,12 @@ class SystemAlertListView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = SystemAlert.objects.all()
-        unread_only = self.request.query_params.get('unread')
-        if unread_only and unread_only.lower() == 'true':
+        if self.request.query_params.get('unread', '').lower() == 'true':
             qs = qs.filter(is_read=False)
         return qs
 
 
 class SystemAlertMarkReadView(APIView):
-    """Mark one or all alerts as read. POST {ids: [1,2,3]} or {all: true}."""
     def post(self, request):
         if request.data.get('all'):
             count = SystemAlert.objects.filter(is_read=False).update(is_read=True)
@@ -104,25 +96,23 @@ class SystemAlertMarkReadView(APIView):
         return Response({'marked_read': count})
 
 
-# ── Audit Log (admin-only) ────────────────────────────────────────────────────
-
 class AuditLogListView(generics.ListAPIView):
-    """Read-only audit trail – accessible only by ADMIN users."""
-    serializer_class = AuditLogSerializer
+    serializer_class   = AuditLogSerializer
     permission_classes = [IsAdminUser]
-    filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['action', 'model_name', 'http_method']
-    search_fields    = ['user__email', 'endpoint', 'object_repr']
-    ordering_fields  = ['created_at']
-    ordering         = ['-created_at']
+    filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields   = ['action', 'model_name', 'http_method']
+    search_fields      = ['user__email', 'endpoint', 'object_repr']
+    ordering_fields    = ['created_at']
+    ordering           = ['-created_at']
 
     def get_queryset(self):
-        from apps.users.models import User as UserModel
-        qs = AuditLog.objects.select_related('user').order_by('-created_at')
-        # Super Admin sees all; Admin sees only their branch's users
+        qs       = AuditLog.objects.select_related('user').order_by('-created_at')
         req_user = self.request.user
-        if req_user.role != UserModel.SUPER_ADMIN and req_user.branch_id:
+        # ALL roles (including Super Admin) see only their branch's audit logs
+        if req_user.branch_id:
             qs = qs.filter(user__branch=req_user.branch)
+        else:
+            qs = qs.none()
         user_id = self.request.query_params.get('user')
         if user_id:
             qs = qs.filter(user_id=user_id)
