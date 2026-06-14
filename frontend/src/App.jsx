@@ -30,6 +30,46 @@ export const useAuth  = () => useContext(AuthCtx);
 const ThemeCtx  = createContext(null);
 export const useTheme = () => useContext(ThemeCtx);
 
+/* ── Branch Context (Super Admin multi-branch control) ─────── */
+const BranchCtx = createContext(null);
+export const useBranch = () => useContext(BranchCtx);
+
+function BranchProvider({ user, children }) {
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  // null = all branches (super admin default), or a numeric branch id
+  const [activeBranchId, setActiveBranchId] = useState(
+    isSuperAdmin ? null : (user?.branch?.id ?? null)
+  );
+  const [branches, setBranches] = useState([]);
+
+  // Load all branches once for SUPER_ADMIN (for the dropdown)
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.get('/auth/branches/')
+      .then(r => setBranches(r.data?.results ?? r.data ?? []))
+      .catch(() => {});
+  }, [isSuperAdmin]);
+
+  // branchQS: object to spread into axios `params` on every API call
+  const branchQS = activeBranchId ? { branch_id: activeBranchId } : {};
+  // branchParam: ready-to-append query string e.g. "?branch_id=2"
+  const branchParam = activeBranchId ? `?branch_id=${activeBranchId}` : '';
+
+  return (
+    <BranchCtx.Provider value={{
+      isSuperAdmin,
+      activeBranchId,
+      setActiveBranchId,
+      branches,
+      branchQS,
+      branchParam,
+    }}>
+      {children}
+    </BranchCtx.Provider>
+  );
+}
+
 /* ── Theme ─────────────────────────────────────────────────── */
 function ThemeProvider({ children }) {
   const [dark, setDark] = useState(() => localStorage.getItem('taurus-theme') === 'dark');
@@ -128,18 +168,18 @@ const NAV = [
   {
     label: 'Financials',
     items: [
-      { to: '/invoicing',   icon: Icons.Receipt, label: 'Invoicing' },
+      { to: '/invoicing',   icon: Icons.Receipt,     label: 'Invoicing' },
       { to: '/expenditure', icon: Icons.Expenditure, label: 'Expenditure' },
-      { to: '/revenue',     icon: Icons.Chart,   label: 'Revenue' },
+      { to: '/revenue',     icon: Icons.Chart,       label: 'Revenue' },
     ],
   },
   {
     label: 'System',
     items: [
-      { to: '/maintenance', icon: Icons.Wrench, label: 'Maintenance' },
+      { to: '/maintenance', icon: Icons.Wrench,   label: 'Maintenance' },
       { to: '/reports',     icon: Icons.BarChart, label: 'Reports' },
-      { to: '/users',       icon: Icons.Users,  label: 'Users',     roles: ['ADMIN', 'SUPER_ADMIN'] },
-      { to: '/audit',       icon: Icons.Log,    label: 'Audit Log', roles: ['ADMIN', 'SUPER_ADMIN'] },
+      { to: '/users',       icon: Icons.Users,    label: 'Users',     roles: ['ADMIN', 'SUPER_ADMIN'] },
+      { to: '/audit',       icon: Icons.Log,      label: 'Audit Log', roles: ['ADMIN', 'SUPER_ADMIN'] },
     ],
   },
 ];
@@ -214,6 +254,44 @@ function Sidebar({ open, onClose }) {
   );
 }
 
+/* ── Branch Selector (Super Admin only) ──────────────────────── */
+function BranchSelector() {
+  const branchCtx = useBranch();
+  if (!branchCtx || !branchCtx.isSuperAdmin) return null;
+  const { activeBranchId, setActiveBranchId, branches } = branchCtx;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
+      <span style={{
+        fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
+      }}>
+        Branch
+      </span>
+      <select
+        value={activeBranchId ?? ''}
+        onChange={e => setActiveBranchId(e.target.value ? Number(e.target.value) : null)}
+        style={{
+          fontSize: 12, fontWeight: 600,
+          padding: '5px 10px',
+          borderRadius: 6,
+          border: '1.5px solid var(--border)',
+          background: 'var(--bg-card)',
+          color: 'var(--text)',
+          cursor: 'pointer',
+          outline: 'none',
+          minWidth: 130,
+        }}
+      >
+        <option value="">All Branches</option>
+        {branches.map(b => (
+          <option key={b.id} value={b.id}>{b.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /* ── Topbar ──────────────────────────────────────────────────── */
 function Topbar({ onMenu }) {
   const { dark, toggle } = useTheme();
@@ -242,6 +320,9 @@ function Topbar({ onMenu }) {
       </div>
 
       <div className="topbar-right">
+        {/* Branch selector — only visible for SUPER_ADMIN */}
+        <BranchSelector />
+
         <button className="icon-btn" onClick={toggle} title={dark ? 'Light mode' : 'Dark mode'}>
           {dark ? Icons.Sun : Icons.Moon}
         </button>
@@ -570,6 +651,12 @@ function RequireAuth({ children }) {
   return children;
 }
 
+/* ── Branch Provider Wrapper (reads user from auth context) ──── */
+function BranchProviderWrapper({ children }) {
+  const { user } = useAuth();
+  return <BranchProvider user={user}>{children}</BranchProvider>;
+}
+
 /* ── Root ────────────────────────────────────────────────────── */
 export default function App() {
   return (
@@ -596,28 +683,30 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/*" element={
                 <RequireAuth>
-                  <AppLayout>
-                    <Routes>
-                      <Route path="/"            element={<Dashboard />} />
-                      <Route path="/trucks"      element={<Trucks />} />
-                      <Route path="/drivers"     element={<Drivers />} />
-                      <Route path="/trips"       element={<Trips />} />
-                      <Route path="/fuel"        element={<Fuel />} />
-                      <Route path="/purchase"    element={<Purchase />} />
-                      <Route path="/issue"       element={<Issue />} />
-                      <Route path="/stock"       element={<Stock />} />
-                      <Route path="/tyres"       element={<Tyres />} />
-                      <Route path="/invoicing"   element={<Invoicing />} />
-                      <Route path="/expenditure" element={<Expenditure />} />
-                      <Route path="/revenue"     element={<Revenue />} />
-                      <Route path="/maintenance" element={<Maintenance />} />
-                      <Route path="/reports"     element={<Reports />} />
-                      <Route path="/users"       element={<Users />} />
-                      <Route path="/audit"       element={<AuditLog />} />
-                      <Route path="/profile"     element={<Profile />} />
-                      <Route path="*"            element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </AppLayout>
+                  <BranchProviderWrapper>
+                    <AppLayout>
+                      <Routes>
+                        <Route path="/"            element={<Dashboard />} />
+                        <Route path="/trucks"      element={<Trucks />} />
+                        <Route path="/drivers"     element={<Drivers />} />
+                        <Route path="/trips"       element={<Trips />} />
+                        <Route path="/fuel"        element={<Fuel />} />
+                        <Route path="/purchase"    element={<Purchase />} />
+                        <Route path="/issue"       element={<Issue />} />
+                        <Route path="/stock"       element={<Stock />} />
+                        <Route path="/tyres"       element={<Tyres />} />
+                        <Route path="/invoicing"   element={<Invoicing />} />
+                        <Route path="/expenditure" element={<Expenditure />} />
+                        <Route path="/revenue"     element={<Revenue />} />
+                        <Route path="/maintenance" element={<Maintenance />} />
+                        <Route path="/reports"     element={<Reports />} />
+                        <Route path="/users"       element={<Users />} />
+                        <Route path="/audit"       element={<AuditLog />} />
+                        <Route path="/profile"     element={<Profile />} />
+                        <Route path="*"            element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </AppLayout>
+                  </BranchProviderWrapper>
                 </RequireAuth>
               } />
             </Routes>
