@@ -157,13 +157,23 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
                 **bf
             ).count()
 
-            monthly_revenue = Revenue.objects.filter(
-                date__gte=month_start, date__lte=today, **bf
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            try:
+                monthly_revenue = Revenue.objects.filter(
+                    date__gte=month_start, date__lte=today, **bf
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            except Exception:
+                monthly_revenue = Revenue.objects.filter(
+                    date__gte=month_start, date__lte=today
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
-            monthly_expenditure = Expenditure.objects.filter(
-                date__gte=month_start, date__lte=today, **bf
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            try:
+                monthly_expenditure = Expenditure.objects.filter(
+                    date__gte=month_start, date__lte=today, **bf
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            except Exception:
+                monthly_expenditure = Expenditure.objects.filter(
+                    date__gte=month_start, date__lte=today
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
             # Split into two queries — avoids MySQL incompatibility with
             # Count(..., filter=Q(...)) conditional aggregation
