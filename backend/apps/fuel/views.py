@@ -2,28 +2,35 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from apps.core.branch_mixin import BranchScopedQuerysetMixin
 from .models import FuelLimit, FuelLog
 from .serializers import FuelLimitSerializer, FuelLogSerializer, FuelPreviewSerializer
 
 
-class FuelLimitListCreate(generics.ListCreateAPIView):
+class FuelLimitListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = FuelLimit.objects.select_related('truck')
     serializer_class = FuelLimitSerializer
 
 
-class FuelLimitDetail(generics.RetrieveUpdateAPIView):
+class FuelLimitDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateAPIView):
     queryset         = FuelLimit.objects.all()
     serializer_class = FuelLimitSerializer
 
 
-class FuelLogListCreate(generics.ListCreateAPIView):
+class FuelLogListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     queryset         = FuelLog.objects.select_related('truck', 'trip')
     serializer_class = FuelLogSerializer
     filterset_fields = ('truck', 'date')
     search_fields    = ('truck__truck_number',)
+    branch_field     = 'branch'
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        from apps.users.models import User
+        user = self.request.user
+        kwargs = {'created_by': user}
+        if user.role != User.SUPER_ADMIN and user.branch_id:
+            kwargs['branch'] = user.branch
+        serializer.save(**kwargs)
 
     def create(self, request, *args, **kwargs):
         try:
@@ -32,7 +39,7 @@ class FuelLogListCreate(generics.ListCreateAPIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class FuelLogDetail(generics.RetrieveAPIView):
+class FuelLogDetail(BranchScopedQuerysetMixin, generics.RetrieveAPIView):
     queryset         = FuelLog.objects.all()
     serializer_class = FuelLogSerializer
 
