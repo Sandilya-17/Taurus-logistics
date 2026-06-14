@@ -138,61 +138,82 @@ def _respond(request, headers, rows, summary=None, sheet_name='Report'):
 
 class DashboardSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
-        today = timezone.now().date()
-        month_start = today.replace(day=1)
+        import logging
+        _logger = logging.getLogger('apps.reports')
+        try:
+            today = timezone.now().date()
+            month_start = today.replace(day=1)
 
-        active_trucks  = Truck.objects.filter(status=Truck.ACTIVE).count()
-        active_drivers = Driver.objects.filter(status=Driver.ACTIVE).count()
-        ongoing_trips  = Trip.objects.filter(
-            status__in=[Trip.EN_ROUTE, Trip.PLANNED]
-        ).count()
+            active_trucks  = Truck.objects.filter(status=Truck.ACTIVE).count()
+            active_drivers = Driver.objects.filter(status=Driver.ACTIVE).count()
+            ongoing_trips  = Trip.objects.filter(
+                status__in=[Trip.EN_ROUTE, Trip.PLANNED]
+            ).count()
 
-        trips_this_month = Trip.objects.filter(
-            loading_time__date__gte=month_start,
-            loading_time__date__lte=today,
-        ).count()
+            trips_this_month = Trip.objects.filter(
+                loading_time__date__gte=month_start,
+                loading_time__date__lte=today,
+            ).count()
 
-        monthly_revenue = Revenue.objects.filter(
-            date__gte=month_start, date__lte=today
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            monthly_revenue = Revenue.objects.filter(
+                date__gte=month_start, date__lte=today
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
-        monthly_expenditure = Expenditure.objects.filter(
-            date__gte=month_start, date__lte=today
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            monthly_expenditure = Expenditure.objects.filter(
+                date__gte=month_start, date__lte=today
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
-        _fuel_qs = FuelLog.objects.filter(date__gte=month_start, date__lte=today)
-        fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
-        fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
+            # Split into two queries — avoids MySQL incompatibility with
+            # Count(..., filter=Q(...)) conditional aggregation
+            _fuel_qs = FuelLog.objects.filter(date__gte=month_start, date__lte=today)
+            fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
+            fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
 
-        stock_value = StockLedger.objects.aggregate(
-            total=Sum('final_amount')
-        )['total'] or Decimal('0')
+            stock_value = StockLedger.objects.aggregate(
+                total=Sum('final_amount')
+            )['total'] or Decimal('0')
 
-        stock_items = Item.objects.count()
+            stock_items = Item.objects.count()
 
-        alerts = []
-        for truck in Truck.objects.filter(status=Truck.ACTIVE):
-            alerts.extend(truck.expiry_alerts())
-        alerts.sort(key=lambda a: a['days_remaining'])
+            alerts = []
+            for truck in Truck.objects.filter(status=Truck.ACTIVE):
+                try:
+                    alerts.extend(truck.expiry_alerts())
+                except Exception:
+                    pass
+            alerts.sort(key=lambda a: a['days_remaining'])
 
-        return Response({
-            'fleet': {
-                'active_trucks':  active_trucks,
-                'active_drivers': active_drivers,
-                'ongoing_trips':  ongoing_trips,
-            },
-            'this_month': {
-                'trips':              trips_this_month,
-                'revenue':            str(_fmt(monthly_revenue)),
-                'expenditure':        str(_fmt(monthly_expenditure)),
-                'fuel_litres':        _fmt(fuel_litres),
-                'fuel_excess_events': fuel_excess_events,
-            },
-            'stock_value': _fmt(stock_value),
-            'stock_items': stock_items,
-            'expiry_alerts': alerts,
-            'truck_breakdown': self._truck_breakdown(month_start, today),
-        })
+            try:
+                breakdown = self._truck_breakdown(month_start, today)
+            except Exception as e:
+                _logger.error('Dashboard truck_breakdown failed: %s', e, exc_info=True)
+                breakdown = []
+
+            return Response({
+                'fleet': {
+                    'active_trucks':  active_trucks,
+                    'active_drivers': active_drivers,
+                    'ongoing_trips':  ongoing_trips,
+                },
+                'this_month': {
+                    'trips':              trips_this_month,
+                    'revenue':            str(_fmt(monthly_revenue)),
+                    'expenditure':        str(_fmt(monthly_expenditure)),
+                    'fuel_litres':        _fmt(fuel_litres),
+                    'fuel_excess_events': fuel_excess_events,
+                },
+                'stock_value': _fmt(stock_value),
+                'stock_items': stock_items,
+                'expiry_alerts': alerts,
+                'truck_breakdown': breakdown,
+            })
+
+        except Exception as e:
+            _logger.error('Dashboard summary failed: %s', e, exc_info=True)
+            return Response(
+                {'detail': f'Dashboard data failed to load: {str(e)}'},
+                status=500
+            )
 
     def _truck_breakdown(self, date_from, date_to):
         rows = []
