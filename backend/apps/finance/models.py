@@ -5,6 +5,7 @@ from apps.core.models import TimeStampedModel
 
 
 class Expenditure(TimeStampedModel):
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='+', db_index=True)
     FUEL        = 'FUEL'
     MAINTENANCE = 'MAINTENANCE'
     TYRE        = 'TYRE'
@@ -53,6 +54,7 @@ class Expenditure(TimeStampedModel):
 
 
 class Revenue(TimeStampedModel):
+    branch = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='+', db_index=True)
     # Core sources
     HAULAGE      = 'HAULAGE'
     OTHER        = 'OTHER'
