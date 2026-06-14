@@ -29,8 +29,9 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS('Super Admin created: superadmin@taurus.com / superadmin1234'))
         else:
-            # Make sure existing admin@taurus.com is SUPER_ADMIN
-            User.objects.filter(email='admin@taurus.com').update(role=User.SUPER_ADMIN, branch=None)
+            User.objects.filter(email='superadmin@taurus.com').update(
+                role=User.SUPER_ADMIN, branch=None, is_staff=True, is_superuser=True
+            )
             self.stdout.write('Super Admin already exists')
 
         # ── Admin for Branch 1 ───────────────────────────────────────────────
@@ -46,6 +47,10 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS('Branch 1 Admin created: admin1@taurus.com / admin1234'))
         else:
+            # Ensure branch assignment is correct
+            User.objects.filter(email='admin1@taurus.com').update(
+                role=User.ADMIN, branch=branch1, is_staff=True
+            )
             self.stdout.write('Branch 1 Admin already exists')
 
         # ── Admin for Branch 2 ───────────────────────────────────────────────
@@ -61,4 +66,22 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS('Branch 2 Admin created: admin2@taurus.com / admin1234'))
         else:
+            User.objects.filter(email='admin2@taurus.com').update(
+                role=User.ADMIN, branch=branch2, is_staff=True
+            )
             self.stdout.write('Branch 2 Admin already exists')
+
+        # ── Migrate legacy admin@taurus.com if present ───────────────────────
+        legacy = User.objects.filter(email='admin@taurus.com').first()
+        if legacy:
+            legacy.role = User.SUPER_ADMIN
+            legacy.branch = None
+            legacy.is_staff = True
+            legacy.is_superuser = True
+            legacy.save(update_fields=['role', 'branch', 'is_staff', 'is_superuser'])
+            self.stdout.write(self.style.WARNING('Migrated legacy admin@taurus.com → SUPER_ADMIN'))
+
+        self.stdout.write(self.style.SUCCESS('\nSetup complete.'))
+        self.stdout.write('  superadmin@taurus.com / superadmin1234  (Super Admin)')
+        self.stdout.write('  admin1@taurus.com     / admin1234        (Admin – Branch 1)')
+        self.stdout.write('  admin2@taurus.com     / admin1234        (Admin – Branch 2)')
