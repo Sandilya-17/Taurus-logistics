@@ -1,10 +1,5 @@
 """
 Migration 0005 – Safe re-application of the issue_items.trip_id column.
-
-Migration 0004 added this column via Django ORM but may not have been
-applied to the production database (Railway/MySQL). This migration uses
-RunPython with a raw cursor to check and add the column only if missing —
-fully idempotent and MySQL-compatible.
 """
 from django.db import migrations, connection
 
@@ -12,7 +7,6 @@ from django.db import migrations, connection
 def add_trip_id_column(apps, schema_editor):
     db = connection.settings_dict['NAME']
     with connection.cursor() as cursor:
-        # Check if column already exists
         cursor.execute("""
             SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = %s
@@ -56,7 +50,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('inventory', '0004_issueitem_trip'),
-        ('trips', '0004_trip_fuel_spare_costs'),
+        ('trips', '0003_trip_fuel_spare_costs'),
     ]
 
     operations = [
