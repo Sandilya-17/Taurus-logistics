@@ -1,8 +1,8 @@
 // src/pages/Issue.jsx – Multi-item issue with FIFO costing & truck/trip linkage
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api from '../utils/api';
 import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
@@ -38,6 +38,7 @@ function fifoPrice(batches, qty) {
 export default function IssuePage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const { user } = useAuth();
   const isAdmin  = user?.role === 'ADMIN';
 
@@ -248,7 +249,7 @@ export default function IssuePage() {
             color: i === 0 ? 'var(--green)' : 'var(--amber)',
             borderRadius: 4, padding: '1px 6px', fontWeight: 600,
           }}>
-            {c.take.toFixed(3)} × {fmtGHS(c.unit_price)}
+            {c.take.toFixed(3)} × {fmt(c.unit_price)}
             {i === 0 ? ' (old stock)' : ' (new stock)'}
           </span>
         ))}
@@ -489,10 +490,10 @@ export default function IssuePage() {
                       <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, color: line.lineTotal > 0 ? 'var(--text)' : 'var(--muted)' }}>
                         {line.item_id === OTHER_ITEM
                           ? <span style={{ color: '#8b5cf6', fontSize: 10 }}>no ledger</span>
-                          : line.lineTotal > 0 ? fmtGHS(line.lineTotal) : '—'}
+                          : line.lineTotal > 0 ? fmt(line.lineTotal) : '—'}
                         {line.unitPrice > 0 && line.item_id !== OTHER_ITEM && (
                           <div style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
-                            @{fmtGHS(line.unitPrice)}/u
+                            @{fmt(line.unitPrice)}/u
                           </div>
                         )}
                       </div>
@@ -533,7 +534,7 @@ export default function IssuePage() {
                       📦 <strong style={{ color: 'var(--text)' }}>{readyLines.length}</strong> item{readyLines.length !== 1 ? 's' : ''} ready to issue
                     </span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--green)' }}>
-                      Total: {fmtGHS(grandTotal)}
+                      Total: {fmt(grandTotal)}
                     </span>
                   </div>
                 )}
@@ -571,7 +572,7 @@ export default function IssuePage() {
                 <tr>
                   <th>Date</th><th>Item</th><th>Type</th><th>Truck</th><th>Trip</th>
                   <th style={{ textAlign: 'right' }}>Qty</th>
-                  <th style={{ textAlign: 'right' }}>Value (GH₵)</th>
+                  <th style={{ textAlign: 'right' }}>Value ({symbol})</th>
                   {isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
