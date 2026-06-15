@@ -1,6 +1,7 @@
 // src/pages/Invoicing.jsx – Enhanced with Quantity in Units, Auto-Revenue Push, Trip/Truck Data
 import { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtGHS } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -30,6 +31,8 @@ const fmtQty = (qty, unit) => {
 };
 
 export default function InvoicingPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [trips,      setTrips]      = useState([]);
   const [trucks,     setTrucks]     = useState([]);
   const [invoices,   setInvoices]   = useState([]);
@@ -54,8 +57,8 @@ export default function InvoicingPage() {
 
   // ── Load data on mount ────────────────────────────────────────────────────
   useEffect(() => {
-    api.get('/trips/?status=COMPLETED').then(r => setTrips(r.data.results || r.data));
-    api.get('/trucks/').then(r => setTrucks(r.data.results || r.data));
+    api.get('/trips/?status=COMPLETED', { params: branchQS }).then(r => setTrips(r.data.results || r.data));
+    api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data));
     loadInvoices();
   }, []);
 
@@ -84,7 +87,7 @@ export default function InvoicingPage() {
   };
 
   const loadInvoices = () => {
-    api.get('/invoicing/').then(r => setInvoices(r.data.results || r.data));
+    api.get('/invoicing/', { params: branchQS }).then(r => setInvoices(r.data.results || r.data));
   };
 
   const onSubmit = async (data) => {
