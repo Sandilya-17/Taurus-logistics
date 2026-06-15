@@ -8,25 +8,27 @@ from .models import User, Branch
 class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Branch
-        fields = ('id', 'name', 'code', 'address', 'phone', 'is_active', 'created_at')
+        fields = ('id', 'name', 'code', 'address', 'phone', 'is_active', 'currency', 'created_at')
         read_only_fields = ('created_at',)
 
 
 class UserSerializer(serializers.ModelSerializer):
-    full_name   = serializers.SerializerMethodField()
-    branch_name = serializers.SerializerMethodField()
-    branch_id   = serializers.SerializerMethodField()
+    full_name      = serializers.SerializerMethodField()
+    branch_name    = serializers.SerializerMethodField()
+    branch_id      = serializers.SerializerMethodField()
+    branch_currency = serializers.SerializerMethodField()
 
     class Meta:
         model  = User
         fields = ('id', 'email', 'first_name', 'last_name', 'full_name', 'phone',
-                  'role', 'branch', 'branch_id', 'branch_name', 'module_permissions',
-                  'is_active', 'created_at')
+                  'role', 'branch', 'branch_id', 'branch_name', 'branch_currency',
+                  'module_permissions', 'is_active', 'created_at')
         read_only_fields = ('created_at',)
 
-    def get_full_name(self, obj):   return obj.get_full_name()
-    def get_branch_name(self, obj): return obj.branch.name if obj.branch else None
-    def get_branch_id(self, obj):   return obj.branch.id if obj.branch else None
+    def get_full_name(self, obj):       return obj.get_full_name()
+    def get_branch_name(self, obj):     return obj.branch.name     if obj.branch else None
+    def get_branch_id(self, obj):       return obj.branch.id       if obj.branch else None
+    def get_branch_currency(self, obj): return obj.branch.currency if obj.branch else 'GHS'
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
