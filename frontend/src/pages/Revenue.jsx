@@ -99,8 +99,6 @@ export default function RevenuePage() {
 
   // ── Load revenue records ────────────────────────────────────────────────
 
-  useEffect(() => { loadRevenue(); }, [loadRevenue, branchCtx?.activeBranchId]);
-
   const loadRevenue = useCallback(async () => {
     try {
       let results = [];
@@ -117,6 +115,8 @@ export default function RevenuePage() {
       setItems(results);
     } catch { /* silently ignore */ }
   }, [branchCtx?.activeBranchId]);
+
+  useEffect(() => { loadRevenue(); }, [loadRevenue]);
 
   // ── Load invoices (HAULAGE) ─────────────────────────────────────────────
   useEffect(() => {
