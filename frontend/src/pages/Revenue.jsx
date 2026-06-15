@@ -1,5 +1,5 @@
 // src/pages/Revenue.jsx – Auto-pulls from Trips, Trucks, Purchase, Issue | Taurus ERP
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate, todayGH } from '../utils/api';
@@ -98,9 +98,10 @@ export default function RevenuePage() {
   const watchAmount = watch('amount');
 
   // ── Load revenue records ────────────────────────────────────────────────
+
   useEffect(() => { loadRevenue(); }, [loadRevenue, branchCtx?.activeBranchId]);
 
-  const loadRevenue = async () => {
+  const loadRevenue = useCallback(async () => {
     try {
       let results = [];
       let nextUrl = '/finance/revenue/';
@@ -115,7 +116,7 @@ export default function RevenuePage() {
       }
       setItems(results);
     } catch { /* silently ignore */ }
-  };
+  }, [branchCtx?.activeBranchId]);
 
   // ── Load invoices (HAULAGE) ─────────────────────────────────────────────
   useEffect(() => {
