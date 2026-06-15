@@ -1,6 +1,6 @@
 // src/pages/Reports.jsx – Professional Reports Center | Taurus ERP
 import { useState, useEffect } from 'react';
-import { useBranch } from '../App';
+import { useBranch, useCurrency } from '../App';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -21,12 +21,13 @@ const REPORTS = [
 
 const fmtCurrency = (v) => {
   if (typeof v !== 'number') return String(v);
-  if (v % 1 !== 0) return `GH₵ ${v.toLocaleString('en-GH', { minimumFractionDigits: 2 })}`;
+  if (v % 1 !== 0) return fmtCur(v);
   return v.toLocaleString();
 };
 
 export default function ReportsPage() {
   const branchCtx = useBranch();
+  const { fmt: fmtCur, symbol } = useCurrency();
   const branchQS  = branchCtx?.branchQS || {};
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
   const [dateFrom, setDateFrom] = useState(new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
