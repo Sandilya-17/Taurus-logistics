@@ -1,5 +1,5 @@
 // src/pages/Tyres.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate } from '../utils/api';
@@ -21,12 +21,13 @@ export default function TyresPage() {
 
   const { register, handleSubmit, reset } = useForm({ defaultValues: { status: 'STORE' } });
 
+
   useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
-  const load = () => {
+  const load = useCallback(() => {
     api.get('/tyres/', { params: branchQS }).then(r => setTyres(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
-  };
+  }, [branchCtx?.activeBranchId]);
 
   const startEdit = (t) => { setEditing(t.id); reset({ ...t }); setTab('form'); };
   const cancelForm = () => { reset({ status: 'STORE' }); setEditing(null); setTab('list'); };
