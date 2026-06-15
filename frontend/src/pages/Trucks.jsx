@@ -1,5 +1,5 @@
 // src/pages/Trucks.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch } from '../App';
 import api, { fmtDate } from '../utils/api';
@@ -21,12 +21,13 @@ export default function TrucksPage() {
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm();
   const wStatus = watch('status');
 
+
   useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
-  const load = () => {
+  const load = useCallback(() => {
     api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/alerts/', { params: branchQS }).then(r => setAlerts(r.data)).catch(() => {});
-  };
+  }, [branchCtx?.activeBranchId]);
 
   const startEdit = (truck) => {
     setEditing(truck.id);
