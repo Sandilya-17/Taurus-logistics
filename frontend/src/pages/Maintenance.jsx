@@ -44,14 +44,14 @@ export default function MaintenancePage() {
   const watchTotal  = watchLabour + watchParts;
 
 
-  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
-
   const load = useCallback(() => {
     api.get('/maintenance/logs/', { params: branchQS }).then(r => setRecords(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
     // Try to load mechanics if endpoint exists
     api.get('/maintenance/mechanics/', { params: branchQS }).then(r => setMechanics(r.data.results || r.data)).catch(() => {});
   }, [branchCtx?.activeBranchId]);
+
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const startNew = () => {
     setEditing(null);
