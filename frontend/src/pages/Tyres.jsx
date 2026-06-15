@@ -1,8 +1,8 @@
 // src/pages/Tyres.jsx
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS, fmtDate } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { fmtDate } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_BADGE = { STORE: 'b-blue', FITTED: 'b-green', WORKSHOP: 'b-amber', CONDEMNED: 'b-red' };
@@ -10,6 +10,7 @@ const STATUS_BADGE = { STORE: 'b-blue', FITTED: 'b-green', WORKSHOP: 'b-amber', 
 export default function TyresPage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [tyres,   setTyres]   = useState([]);
   const [trucks,  setTrucks]  = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -81,7 +82,7 @@ export default function TyresPage() {
           { label: 'Fitted',       val: fitted,       color: 'var(--sky)'   },
           { label: 'Workshop',     val: workshop,     color: '#b45309'      },
           { label: 'Condemned',    val: condemned,    color: 'var(--red)'   },
-          { label: 'Total Value',  val: fmtGHS(totalValue), color: 'var(--green)', isValue: true },
+          { label: 'Total Value',  val: fmt(totalValue), color: 'var(--green)', isValue: true },
         ].map((k, i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
@@ -132,7 +133,7 @@ export default function TyresPage() {
                 <input type="text" placeholder="11R22.5" {...register('size', { required: true })} />
               </div>
               <div className="fg">
-                <label>Unit Cost (GH₵) *</label>
+                <label>Unit Cost ({symbol}) *</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" {...register('unit_price', { required: true })} />
               </div>
               <div className="fg">
@@ -168,7 +169,7 @@ export default function TyresPage() {
                     <td>{t.brand}</td>
                     <td style={{ fontSize: 11, color: 'var(--muted)' }}>{t.model || '—'}</td>
                     <td><span className="badge b-gray">{t.size}</span></td>
-                    <td className="ced">{fmtGHS(t.unit_price)}</td>
+                    <td className="ced">{fmt(t.unit_price)}</td>
                     <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
                     <td style={{ fontSize: 11 }}>
                       {t.current_assignment ? `${t.current_assignment.truck_number} / ${t.current_assignment.position}` : '—'}
