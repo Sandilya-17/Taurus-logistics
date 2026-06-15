@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api, { fmtGHS } from '../utils/api';
+import { useBranch } from '../App';
 
 const StatCard = ({ label, value, color, sub, icon, pct }) => (
   <div className="kpi" style={{ color }}>
@@ -20,11 +21,13 @@ export default function Dashboard() {
   const [kpis,    setKpis]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
 
   const fetchDashboard = useCallback(() => {
     setLoading(true);
     setError(null);
-    api.get('/reports/dashboard/')
+    api.get('/reports/dashboard/', { params: branchQS })
       .then(r => {
         if (r.data?.detail) {
           setError(r.data.detail);
@@ -37,7 +40,7 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard, branchCtx?.activeBranchId]);
 
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
