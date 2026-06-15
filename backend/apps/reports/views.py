@@ -46,18 +46,40 @@ def _fmt(val):
 
 
 def _branch_filter(request):
-    """ALL roles including SUPER_ADMIN are scoped to their assigned branch."""
+    """Returns a dict filter for branch scoping.
+    - SUPER_ADMIN: uses ?branch_id= param if given, else no filter (all branches).
+    - All others: scoped to their assigned branch.
+    """
     user = request.user
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        param = request.query_params.get('branch_id')
+        if param:
+            try:
+                return {'branch_id': int(param)}
+            except (ValueError, TypeError):
+                pass
+        return {}  # SUPER_ADMIN with no filter = all branches
     if user.branch_id:
         return {'branch_id': user.branch_id}
     return {'branch_id': -1}
 
 
 def _apply_branch(qs, request):
-    """ALL roles including SUPER_ADMIN are scoped to their assigned branch."""
+    """Applies branch filter to a queryset.
+    - SUPER_ADMIN: uses ?branch_id= param if given, else returns full qs.
+    - All others: scoped to their assigned branch.
+    """
     user = request.user
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        param = request.query_params.get('branch_id')
+        if param:
+            try:
+                return qs.filter(branch_id=int(param))
+            except (ValueError, TypeError):
+                pass
+        return qs  # all branches
     if user.branch_id:
-        return qs.extra(where=['branch_id = %s'], params=[user.branch_id])
+        return qs.filter(branch_id=user.branch_id)
     return qs.none()
 
 
@@ -137,11 +159,26 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
         try:
             today       = timezone.now().date()
             month_start = today.replace(day=1)
-            branch_id   = request.user.branch_id
+
+            # SUPER_ADMIN: respect ?branch_id= filter or show ALL branches
+            if request.user.role == 'SUPER_ADMIN':
+                param_branch = request.query_params.get('branch_id')
+                if param_branch:
+                    try:
+                        branch_id = int(param_branch)
+                    except (ValueError, TypeError):
+                        branch_id = request.user.branch_id
+                else:
+                    branch_id = None  # None = all branches for SUPER_ADMIN
+            else:
+                branch_id = request.user.branch_id
 
             def bfilter(qs):
-                if branch_id:
-                    return qs.extra(where=['branch_id = %s'], params=[branch_id])
+                if branch_id is not None:
+                    return qs.filter(branch_id=branch_id)
+                # SUPER_ADMIN viewing all branches — no branch filter
+                if request.user.role == 'SUPER_ADMIN':
+                    return qs
                 return qs.none()
 
             active_trucks  = bfilter(Truck.objects.filter(status=Truck.ACTIVE)).count()
@@ -162,11 +199,17 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
             _fuel_qs = bfilter(FuelLog.objects.filter(date__gte=month_start, date__lte=today))
             fuel_litres        = _fuel_qs.aggregate(t=Sum('litres'))['t'] or Decimal('0')
             fuel_excess_events = _fuel_qs.filter(excess_fuel__gt=0).count()
-            stock_qs = StockLedger.objects.filter(branch_id=branch_id) if branch_id else StockLedger.objects.none()
+            stock_qs = StockLedger.objects.all()
+            if branch_id is not None:
+                stock_qs = stock_qs.filter(branch_id=branch_id)
+            elif request.user.role != 'SUPER_ADMIN':
+                stock_qs = StockLedger.objects.none()
             stock_value = stock_qs.aggregate(total=Sum('final_amount'))['total'] or Decimal('0')
-            stock_items = Item.objects.filter(
-                ledger_entries__branch_id=branch_id
-            ).distinct().count() if branch_id else 0
+            items_qs = Item.objects.filter(ledger_entries__branch_id=branch_id).distinct() if branch_id is not None else (
+                Item.objects.filter(ledger_entries__isnull=False).distinct() if request.user.role == 'SUPER_ADMIN'
+                else Item.objects.none()
+            )
+            stock_items = items_qs.count()
 
             alerts = []
             for truck in bfilter(Truck.objects.filter(status=Truck.ACTIVE)):
@@ -211,8 +254,9 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
     def _truck_breakdown(self, date_from, date_to, branch_id=None):
         rows = []
         qs = Truck.objects.filter(status=Truck.ACTIVE)
-        if branch_id:
+        if branch_id is not None:
             qs = qs.filter(branch_id=branch_id)
+        # if branch_id is None = SUPER_ADMIN viewing all branches, no filter applied
         for truck in qs:
             trips = Trip.objects.filter(
                 truck=truck,
@@ -239,8 +283,8 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
 class RevenueExpenditureReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        revenues     = Revenue.objects.filter(date__gte=date_from, date__lte=date_to)
-        expenditures = Expenditure.objects.filter(date__gte=date_from, date__lte=date_to)
+        revenues     = _apply_branch(Revenue.objects.filter(date__gte=date_from, date__lte=date_to), request)
+        expenditures = _apply_branch(Expenditure.objects.filter(date__gte=date_from, date__lte=date_to), request)
         total_rev = revenues.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         total_exp = expenditures.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         net       = total_rev - total_exp
@@ -266,9 +310,9 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
 class FuelReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        logs = FuelLog.objects.filter(
+        logs = _apply_branch(FuelLog.objects.filter(
             date__gte=date_from, date__lte=date_to
-        ).select_related('truck', 'trip').order_by('date')
+        ), request).select_related('truck', 'trip').order_by('date')
         headers = ['Date', 'Truck', 'Trip / Waybill', 'Litres', 'Limit', 'Excess',
                    'Price/L (GH₵)', 'Total Cost (GH₵)', 'Remark']
         rows = []
@@ -295,10 +339,10 @@ class TripReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
-        qs = Trip.objects.filter(
+        qs = _apply_branch(Trip.objects.filter(
             loading_time__date__gte=date_from,
             loading_time__date__lte=date_to,
-        ).select_related('truck', 'driver')
+        ), request).select_related('truck', 'driver')
         if truck_id:
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
@@ -332,10 +376,10 @@ class TripDetailReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
-        qs = Trip.objects.filter(
+        qs = _apply_branch(Trip.objects.filter(
             loading_time__date__gte=date_from,
             loading_time__date__lte=date_to,
-        ).select_related('truck', 'driver')
+        ), request).select_related('truck', 'driver')
         if truck_id:
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
@@ -362,7 +406,7 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
-        qs = Truck.objects.all()
+        qs = _apply_branch(Truck.objects.all(), request)
         if truck_id:
             qs = qs.filter(id=truck_id)
         headers = [
@@ -417,11 +461,32 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
 
 class StockReportView(BranchFilterMixin, APIView):
     def get(self, request):
-        branch_id = request.user.branch_id
-        branch = request.user.branch if branch_id else None
-        items = Item.objects.filter(
-            ledger_entries__branch_id=branch_id
-        ).distinct().order_by('item_type', 'name') if branch_id else Item.objects.none()
+        user = request.user
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            param = request.query_params.get('branch_id')
+            if param:
+                try:
+                    branch_id = int(param)
+                    from apps.users.models import Branch as BranchModel
+                    branch = BranchModel.objects.filter(pk=branch_id).first()
+                except (ValueError, TypeError):
+                    branch_id = None
+                    branch = None
+            else:
+                branch_id = None
+                branch = None
+        else:
+            branch_id = user.branch_id
+            branch = user.branch if branch_id else None
+
+        if branch_id is not None:
+            items = Item.objects.filter(
+                ledger_entries__branch_id=branch_id
+            ).distinct().order_by('item_type', 'name')
+        elif getattr(user, 'role', None) == 'SUPER_ADMIN':
+            items = Item.objects.filter(ledger_entries__isnull=False).distinct().order_by('item_type', 'name')
+        else:
+            items = Item.objects.none()
         headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH₵)', 'Reorder Level']
         rows = []
         total_value = Decimal('0')
@@ -442,9 +507,9 @@ class StockReportView(BranchFilterMixin, APIView):
 class InvoiceReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        invoices = Invoice.objects.filter(
+        invoices = _apply_branch(Invoice.objects.filter(
             invoice_date__gte=date_from, invoice_date__lte=date_to
-        ).order_by('invoice_date')
+        ), request).order_by('invoice_date')
         headers = ['Invoice #', 'Client', 'Date', 'Status', 'Subtotal (GH₵)',
                    'VAT (GH₵)', 'Total (GH₵)', 'Paid (GH₵)', 'Balance (GH₵)']
         rows = []
@@ -471,12 +536,12 @@ class InvoiceReportView(BranchFilterMixin, APIView):
 class SparePartsReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        branch_id = request.user.branch_id
+        branch_filter = _branch_filter(request)
         ledger = StockLedger.objects.filter(
             item__item_type='SPARE_PART',
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
-            **({'branch_id': branch_id} if branch_id else {'branch_id': -1}),
+            **(branch_filter if branch_filter else {}),
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location', 'Reference']
         rows = []
@@ -496,9 +561,9 @@ class SparePartsReportView(BranchFilterMixin, APIView):
 class MaintenanceReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        logs = MaintenanceLog.objects.filter(
+        logs = _apply_branch(MaintenanceLog.objects.filter(
             service_date__gte=date_from, service_date__lte=date_to
-        ).select_related('truck', 'mechanic').order_by('service_date')
+        ), request).select_related('truck', 'mechanic').order_by('service_date')
         headers = ['Date', 'Truck', 'Type', 'Description', 'Mechanic',
                    'Labour Cost (GH₵)', 'Parts Cost (GH₵)', 'Total (GH₵)', 'Status']
         rows = []
@@ -527,10 +592,10 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
 class VATReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        invoices = Invoice.objects.filter(
+        invoices = _apply_branch(Invoice.objects.filter(
             invoice_date__gte=date_from, invoice_date__lte=date_to,
             vat_applicable=True,
-        ).order_by('invoice_date')
+        ), request).order_by('invoice_date')
         headers = ['Invoice #', 'Client', 'Date', 'Subtotal (GH₵)', 'VAT %', 'VAT Amount (GH₵)', 'Total (GH₵)']
         rows = []
         for inv in invoices:
@@ -546,7 +611,7 @@ class VATReportView(BranchFilterMixin, APIView):
 
 class TyreReportView(BranchFilterMixin, APIView):
     def get(self, request):
-        tyres = Tyre.objects.all().prefetch_related('assignments__truck').order_by('status', 'serial_number')
+        tyres = _apply_branch(Tyre.objects.all(), request).prefetch_related('assignments__truck').order_by('status', 'serial_number')
         headers = ['Serial #', 'Brand', 'Model', 'Size', 'Status',
                    'Unit Cost (GH₵)', 'Truck Fitted', 'Position', 'KM Used']
         rows = []
@@ -571,12 +636,12 @@ class TyreReportView(BranchFilterMixin, APIView):
 class LubricantReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        branch_id = request.user.branch_id
+        branch_filter = _branch_filter(request)
         ledger = StockLedger.objects.filter(
             item__item_type='LUBRICANT',
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
-            **({'branch_id': branch_id} if branch_id else {'branch_id': -1}),
+            **(branch_filter if branch_filter else {}),
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location']
         rows = []
