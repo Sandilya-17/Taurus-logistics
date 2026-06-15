@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import api, { fmtGHS } from '../utils/api';
+import { useBranch } from '../App';
 import { useAuth } from '../App';
 
 const SPARE_PARTS = [
@@ -58,7 +59,9 @@ const TYPE_BADGE = { SPARE_PART: 'b-navy', TYRE: 'b-purple', LUBRICANT: 'b-teal'
 
 export default function StockPage() {
   const { user } = useAuth();
-  const isAdmin  = user?.role === 'ADMIN';
+  const isAdmin   = user?.role === 'ADMIN';
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
 
   const [stock,    setStock]    = useState([]);
   const [allItems, setAllItems] = useState([]);
@@ -113,9 +116,9 @@ export default function StockPage() {
   const loadData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/inventory/closing-stock/'),
-      api.get('/inventory/ledger/?page_size=2000&ordering=created_at'),
-      api.get('/inventory/items/?page_size=2000'),
+      api.get('/inventory/closing-stock/', { params: branchQS }),
+      api.get('/inventory/ledger/', { params: { page_size: 2000, ordering: 'created_at', ...branchQS } }),
+      api.get('/inventory/items/', { params: { page_size: 2000, ...branchQS } }),
     ]).then(([s, l, it]) => {
       setStock(s.data.results || s.data);
       setLedger(l.data.results || l.data);
@@ -123,7 +126,7 @@ export default function StockPage() {
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [branchCtx?.activeBranchId]);
 
   // Build per-item transaction breakdown from ledger
   const buildLedgerSummary = (itemId) => {
