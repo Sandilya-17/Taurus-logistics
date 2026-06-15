@@ -164,6 +164,8 @@ class StockService:
         # ── FIX: branch scope ──
         if branch_id is not None:
             ledger_filter &= Q(ledger_entries__branch_id=branch_id)
+            # Only return items that actually have ledger entries in this branch
+            qs = qs.filter(ledger_entries__branch_id=branch_id).distinct()
 
         result = qs.annotate(
             closing_qty=Coalesce(Sum('ledger_entries__quantity', filter=ledger_filter), Decimal('0')),
