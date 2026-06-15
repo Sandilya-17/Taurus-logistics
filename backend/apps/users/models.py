@@ -54,8 +54,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     phone      = models.CharField(max_length=20, blank=True)
     role       = models.CharField(max_length=15, choices=ROLE_CHOICES, default=EMPLOYEE)
 
-    # ALL roles including SUPER_ADMIN must have a branch.
-    # Super Admin has full CRUD within their assigned branch only.
+    # ADMIN / MANAGER / EMPLOYEE must have a branch.
+    # SUPER_ADMIN: if branch is null → access to ALL branches.
+    #              if branch is set → still has all-branch access (branch field is informational).
     branch     = models.ForeignKey(
         Branch, null=True, blank=True,
         on_delete=models.PROTECT, related_name='users'
