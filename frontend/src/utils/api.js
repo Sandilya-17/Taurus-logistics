@@ -70,21 +70,30 @@ api.interceptors.response.use(
 );
 
 // ── Currency config per branch ───────────────────────────────
-// Branch 2 uses Sierra Leone Leone (Le), all others use Ghana Cedis (GH₵)
-const BRANCH2_CURRENCY = { symbol: 'Le', locale: 'en-SL', code: 'SLL' };
-const DEFAULT_CURRENCY = { symbol: 'GH₵', locale: 'en-GH', code: 'GHS' };
+// Currency is now driven by the branch's `currency` field from the backend.
+// Supported codes: 'GHS' (Ghana Cedis GH₵), 'SLL' (Sierra Leone Leone Le).
+// Pass the branch's currency code string (e.g. 'SLL') OR the branch object.
+const CURRENCY_MAP = {
+  GHS: { symbol: 'GH₵', locale: 'en-GH', code: 'GHS' },
+  SLL: { symbol: 'Le',  locale: 'en-SL', code: 'SLL' },
+};
+const DEFAULT_CURRENCY = CURRENCY_MAP.GHS;
 
-export const getCurrencyConfig = (branchId) => {
-  // branchId can be a number or string; branch 2 = Leone
-  if (branchId && String(branchId) === '2') return BRANCH2_CURRENCY;
-  return DEFAULT_CURRENCY;
+/**
+ * getCurrencyConfig(currencyCode)
+ * currencyCode: string like 'GHS' or 'SLL' (from branch.currency).
+ * Falls back to GHS if unknown.
+ */
+export const getCurrencyConfig = (currencyCode) => {
+  if (!currencyCode) return DEFAULT_CURRENCY;
+  return CURRENCY_MAP[String(currencyCode).toUpperCase()] || DEFAULT_CURRENCY;
 };
 
 // ── Currency formatter (branch-aware) ───────────────────────
-// Pass branchId to get the correct currency symbol
-export const fmtMoney = (val, branchId) => {
+// Pass the branch's currency code (e.g. 'SLL', 'GHS') to get correct symbol.
+export const fmtMoney = (val, currencyCode) => {
   const n = parseFloat(val);
-  const cfg = getCurrencyConfig(branchId);
+  const cfg = getCurrencyConfig(currencyCode);
   if (isNaN(n)) return `${cfg.symbol} 0.00`;
   return `${cfg.symbol} ` + n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
