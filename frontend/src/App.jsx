@@ -65,13 +65,25 @@ function BranchProvider({ user, children }) {
   const branchQS = (isSuperAdmin && activeBranchId) ? { branch_id: activeBranchId } : {};
   const branchParam = (isSuperAdmin && activeBranchId) ? `?branch_id=${activeBranchId}` : '';
 
-  // Determine the "effective branch ID" for currency:
-  // Super Admin viewing a specific branch → use that branch's currency
-  // Super Admin viewing all → no specific currency (use default GH₵)
-  // Branch user → their own branch
-  const effectiveBranchId = isSuperAdmin ? activeBranchId : (user?.branch?.id ?? null);
-  const currencyConfig = getCurrencyConfig(effectiveBranchId);
-  const fmt = (val) => fmtMoney(val, effectiveBranchId);
+  // Determine the currency code for the active branch:
+  // - SUPER_ADMIN viewing a specific branch → use that branch's currency field from API
+  // - SUPER_ADMIN viewing all               → default GHS
+  // - Branch user                           → their own branch's currency (from user object)
+  const getActiveCurrencyCode = () => {
+    if (isSuperAdmin) {
+      if (activeBranchId) {
+        const found = branches.find(b => b.id === activeBranchId || String(b.id) === String(activeBranchId));
+        return found?.currency || 'GHS';
+      }
+      return 'GHS'; // all-branches view defaults to GHS
+    }
+    // Non-super-admin: use their own branch's currency
+    return user?.branch_currency || user?.branch?.currency || 'GHS';
+  };
+
+  const currencyCode = getActiveCurrencyCode();
+  const currencyConfig = getCurrencyConfig(currencyCode);
+  const fmt = (val) => fmtMoney(val, currencyCode);
 
   return (
     <BranchCtx.Provider value={{
@@ -85,7 +97,8 @@ function BranchProvider({ user, children }) {
       <CurrencyCtx.Provider value={{
         fmt,
         symbol: currencyConfig.symbol,
-        branchId: effectiveBranchId,
+        branchId: isSuperAdmin ? activeBranchId : (user?.branch?.id ?? null),
+        currencyCode,
       }}>
         {children}
       </CurrencyCtx.Provider>
