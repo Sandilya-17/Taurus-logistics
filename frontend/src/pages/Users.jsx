@@ -291,8 +291,6 @@ export default function UsersPage() {
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
 
 
-  useEffect(() => { load(); }, []);
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -309,6 +307,8 @@ export default function UsersPage() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const toggleActive = async (u) => {
     if (!isAdmin) return toast.error('Admin access required.');
