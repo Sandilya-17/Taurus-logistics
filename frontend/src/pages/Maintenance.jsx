@@ -1,5 +1,5 @@
 // src/pages/Maintenance.jsx – Professional Maintenance Management | Taurus ERP
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate, todayGH } from '../utils/api';
@@ -43,14 +43,15 @@ export default function MaintenancePage() {
   const watchParts  = parseFloat(watch('parts_cost')  || 0);
   const watchTotal  = watchLabour + watchParts;
 
+
   useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
-  const load = () => {
+  const load = useCallback(() => {
     api.get('/maintenance/logs/', { params: branchQS }).then(r => setRecords(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
     // Try to load mechanics if endpoint exists
     api.get('/maintenance/mechanics/', { params: branchQS }).then(r => setMechanics(r.data.results || r.data)).catch(() => {});
-  };
+  }, [branchCtx?.activeBranchId]);
 
   const startNew = () => {
     setEditing(null);
