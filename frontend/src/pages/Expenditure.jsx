@@ -1,5 +1,5 @@
 // src/pages/Expenditure.jsx – Professional Expenditure Management | Taurus ERP
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate, todayGH } from '../utils/api';
@@ -154,12 +154,13 @@ export default function ExpenditurePage() {
     try { localStorage.setItem('taurus_exp_categories', JSON.stringify(categories)); } catch {}
   }, [categories]);
 
+
   useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
-  const load = () => {
+  const load = useCallback(() => {
     api.get('/finance/expenditure/', { params: branchQS }).then(r => setItems(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
-  };
+  }, [branchCtx?.activeBranchId]);
 
   // Add a new custom category
   const handleAddCategory = (key, icon) => {
