@@ -1,8 +1,8 @@
 // src/pages/Dashboard.jsx – Enterprise Dashboard
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import api, { fmtGHS } from '../utils/api';
-import { useBranch } from '../App';
+import api from '../utils/api';
+import { useBranch, useCurrency } from '../App';
 
 const StatCard = ({ label, value, color, sub, icon, pct }) => (
   <div className="kpi" style={{ color }}>
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [error,   setError]   = useState(null);
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
 
   const fetchDashboard = useCallback(() => {
     setLoading(true);
@@ -82,19 +83,19 @@ export default function Dashboard() {
         <StatCard label="Active Trucks"       value={fleet.active_trucks}  color="var(--blue)"  sub={`🚛 ${fleet.ongoing_trips ?? 0} currently on trip`} pct={80} />
         <StatCard label="Active Drivers"      value={fleet.active_drivers} color="var(--sky)"   pct={75} />
         <StatCard label="Trips This Month"    value={tripsCount}           color="#7c3aed"       pct={60} />
-        <StatCard label="Monthly Revenue"     value={month.revenue  ? fmtGHS(month.revenue)  : null} color="var(--green)" pct={70} />
-        <StatCard label="Monthly Expenditure" value={month.expenditure ? fmtGHS(month.expenditure) : null} color="var(--red)" pct={50} />
+        <StatCard label="Monthly Revenue"     value={month.revenue  ? fmt(month.revenue)  : null} color="var(--green)" pct={70} />
+        <StatCard label="Monthly Expenditure" value={month.expenditure ? fmt(month.expenditure) : null} color="var(--red)" pct={50} />
         <StatCard label="Fuel Usage"          value={month.fuel_litres != null ? `${month.fuel_litres.toLocaleString()} L` : null} color="var(--blue)" sub={`${month.fuel_excess_events ?? 0} excess events`} />
-        <StatCard label="Total Stock Value"   value={kpis?.stock_value != null ? fmtGHS(kpis.stock_value) : null} color="var(--teal)" pct={55} />
+        <StatCard label="Total Stock Value"   value={kpis?.stock_value != null ? fmt(kpis.stock_value) : null} color="var(--teal)" pct={55} />
       </div>
 
       {rev > 0 && (
         <div className="stat-strip mb16">
           {[
-            { label: 'Revenue',     val: fmtGHS(rev),       color: 'var(--green)' },
-            { label: 'Expenditure', val: fmtGHS(exp),       color: 'var(--red)'   },
-            { label: 'Surplus',     val: fmtGHS(rev - exp), color: rev > exp ? 'var(--green)' : 'var(--red)' },
-            { label: 'Margin',      val: `${margin}%`,      color: margin > 20 ? 'var(--green)' : margin > 0 ? 'var(--amber)' : 'var(--red)' },
+            { label: 'Revenue',     val: fmt(rev),       color: 'var(--green)' },
+            { label: 'Expenditure', val: fmt(exp),       color: 'var(--red)'   },
+            { label: 'Surplus',     val: fmt(rev - exp), color: rev > exp ? 'var(--green)' : 'var(--red)' },
+            { label: 'Margin',      val: `${margin}%`,  color: margin > 20 ? 'var(--green)' : margin > 0 ? 'var(--amber)' : 'var(--red)' },
           ].map((s, i) => (
             <div key={i} className="stat-strip-item">
               <div className="stat-strip-label">{s.label}</div>
@@ -137,7 +138,7 @@ export default function Dashboard() {
               <div key={i}>
                 <div className="flex justify-between" style={{ fontSize: 12, marginBottom: 5 }}>
                   <span style={{ color: 'var(--muted)', fontWeight: 600 }}>{r.label}</span>
-                  <span style={{ fontWeight: 700, color: r.color }}>{r.val > 0 ? fmtGHS(r.val) : '—'}</span>
+                  <span style={{ fontWeight: 700, color: r.color }}>{r.val > 0 ? fmt(r.val) : '—'}</span>
                 </div>
                 <div className="prog-bar">
                   <div className="prog-fill" style={{ width: `${r.pct}%`, background: r.color }} />
@@ -170,9 +171,9 @@ export default function Dashboard() {
                   <th>Truck</th>
                   <th>Model</th>
                   <th style={{ textAlign: 'center' }}>Trips</th>
-                  <th style={{ textAlign: 'right' }}>Revenue (GH₵)</th>
-                  <th style={{ textAlign: 'right' }}>Expenditure (GH₵)</th>
-                  <th style={{ textAlign: 'right' }}>Net Profit (GH₵)</th>
+                  <th style={{ textAlign: 'right' }}>Revenue ({symbol})</th>
+                  <th style={{ textAlign: 'right' }}>Expenditure ({symbol})</th>
+                  <th style={{ textAlign: 'right' }}>Net Profit ({symbol})</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,14 +183,14 @@ export default function Dashboard() {
                     <td style={{ color: 'var(--muted)', fontSize: 12 }}>{t.model}</td>
                     <td style={{ textAlign: 'center' }}>{t.trips}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--green)', fontWeight: 600 }}>
-                      {t.revenue > 0 ? fmtGHS(t.revenue) : '—'}
+                      {t.revenue > 0 ? fmt(t.revenue) : '—'}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--red)', fontWeight: 600 }}>
-                      {t.expenditure > 0 ? fmtGHS(t.expenditure) : '—'}
+                      {t.expenditure > 0 ? fmt(t.expenditure) : '—'}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700,
                       color: t.net >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                      {fmtGHS(t.net)}
+                      {fmt(t.net)}
                     </td>
                   </tr>
                 ))}
@@ -199,14 +200,14 @@ export default function Dashboard() {
                     {truckBreakdown.reduce((s, t) => s + t.trips, 0)}
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--green)' }}>
-                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.revenue, 0))}
+                    {fmt(truckBreakdown.reduce((s, t) => s + t.revenue, 0))}
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--red)' }}>
-                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.expenditure, 0))}
+                    {fmt(truckBreakdown.reduce((s, t) => s + t.expenditure, 0))}
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700,
                     color: truckBreakdown.reduce((s, t) => s + t.net, 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                    {fmtGHS(truckBreakdown.reduce((s, t) => s + t.net, 0))}
+                    {fmt(truckBreakdown.reduce((s, t) => s + t.net, 0))}
                   </td>
                 </tr>
               </tbody>
