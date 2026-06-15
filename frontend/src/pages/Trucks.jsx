@@ -1,6 +1,7 @@
 // src/pages/Trucks.jsx
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtDate } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -8,6 +9,8 @@ const STATUS_BADGE = { ACTIVE: 'b-green', INACTIVE: 'b-red' };
 const ALL_MODULES = ['trucks','drivers','trips','fuel','purchase','issue','stock','tyres','spares','invoicing','expenditure','revenue','maintenance','reports'];
 
 export default function TrucksPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [trucks,  setTrucks]  = useState([]);
   const [alerts,  setAlerts]  = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -18,11 +21,11 @@ export default function TrucksPage() {
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm();
   const wStatus = watch('status');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const load = () => {
-    api.get('/trucks/').then(r => setTrucks(r.data.results || r.data)).catch(() => {});
-    api.get('/trucks/alerts/').then(r => setAlerts(r.data)).catch(() => {});
+    api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
+    api.get('/trucks/alerts/', { params: branchQS }).then(r => setAlerts(r.data)).catch(() => {});
   };
 
   const startEdit = (truck) => {
