@@ -15,15 +15,18 @@ class BranchSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     full_name   = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
+    branch_id   = serializers.SerializerMethodField()
 
     class Meta:
         model  = User
         fields = ('id', 'email', 'first_name', 'last_name', 'full_name', 'phone',
-                  'role', 'branch', 'branch_name', 'module_permissions', 'is_active', 'created_at')
+                  'role', 'branch', 'branch_id', 'branch_name', 'module_permissions',
+                  'is_active', 'created_at')
         read_only_fields = ('created_at',)
 
     def get_full_name(self, obj):   return obj.get_full_name()
     def get_branch_name(self, obj): return obj.branch.name if obj.branch else None
+    def get_branch_id(self, obj):   return obj.branch.id if obj.branch else None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -52,6 +55,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
                     )
 
             elif actor.role == User.ADMIN:
+                # ADMIN can only create MANAGER or EMPLOYEE in their OWN branch
                 if role in (User.SUPER_ADMIN, User.ADMIN):
                     raise serializers.ValidationError(
                         'Admins can only create Managers or Employees.'
@@ -60,8 +64,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         'You can only create users in your own branch.'
                     )
-                if not branch:
-                    data['branch'] = actor.branch
+                # Always lock to their own branch
+                data['branch'] = actor.branch
+
+            else:
+                raise serializers.ValidationError('You do not have permission to create users.')
 
         if not data.get('branch'):
             raise serializers.ValidationError('A branch must be assigned for this role.')
@@ -96,13 +103,15 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         branch = data.get('branch', self.instance.branch if self.instance else None)
 
         if actor.role == User.SUPER_ADMIN:
+            # SUPER_ADMIN can update any user in any branch
+            # But cannot promote users to Super Admin role
             if role == User.SUPER_ADMIN and self.instance and self.instance.role != User.SUPER_ADMIN:
                 raise serializers.ValidationError(
                     'Super Admins cannot promote users to Super Admin.'
                 )
-            # SUPER_ADMIN can manage users in ANY branch — no branch restriction
 
         elif actor.role == User.ADMIN:
+            # ADMIN can only update MANAGER / EMPLOYEE in their OWN branch
             if role in (User.SUPER_ADMIN, User.ADMIN):
                 raise serializers.ValidationError(
                     'Admins cannot assign Admin or Super Admin role.'
@@ -115,8 +124,13 @@ class UserUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     'You can only manage users in your own branch.'
                 )
+            # Lock branch to actor's branch
+            data['branch'] = actor.branch
 
-        if not branch:
+        else:
+            raise serializers.ValidationError('You do not have permission to update users.')
+
+        if not branch and not data.get('branch'):
             raise serializers.ValidationError('A branch must be assigned.')
 
         return data
