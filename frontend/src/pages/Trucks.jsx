@@ -22,12 +22,12 @@ export default function TrucksPage() {
   const wStatus = watch('status');
 
 
-  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
-
   const load = useCallback(() => {
     api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/alerts/', { params: branchQS }).then(r => setAlerts(r.data)).catch(() => {});
   }, [branchCtx?.activeBranchId]);
+
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const startEdit = (truck) => {
     setEditing(truck.id);
