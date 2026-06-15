@@ -155,12 +155,12 @@ export default function ExpenditurePage() {
   }, [categories]);
 
 
-  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
-
   const load = useCallback(() => {
     api.get('/finance/expenditure/', { params: branchQS }).then(r => setItems(r.data.results || r.data)).catch(() => {});
     api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
   }, [branchCtx?.activeBranchId]);
+
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   // Add a new custom category
   const handleAddCategory = (key, icon) => {
