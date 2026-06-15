@@ -23,10 +23,22 @@ class TruckDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAPIVi
 class TruckAlerts(APIView):
     def get(self, request):
         qs = Truck.objects.filter(status=Truck.ACTIVE)
-        if request.user.branch_id:
-            qs = qs.filter(branch=request.user.branch_id)
+
+        user = request.user
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            # Super admin: optionally filter by ?branch_id=
+            branch_id = request.query_params.get('branch_id')
+            if branch_id:
+                try:
+                    qs = qs.filter(branch_id=int(branch_id))
+                except (ValueError, TypeError):
+                    pass
+            # else: no filter → alerts from ALL branches
+        elif user.branch_id:
+            qs = qs.filter(branch_id=user.branch_id)
         else:
             qs = qs.none()
+
         all_alerts = []
         for t in qs:
             for a in t.expiry_alerts():
