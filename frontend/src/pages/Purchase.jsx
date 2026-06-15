@@ -1,11 +1,14 @@
 // src/pages/Purchase.jsx – Supplier typed manually; Edit/Delete for Admin only
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { calcPurchase, fmtGHS } from '../utils/api';
 import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
 export default function PurchasePage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const { user }  = useAuth();
   const isAdmin   = user?.role === 'ADMIN';
 
@@ -31,9 +34,9 @@ export default function PurchasePage() {
 
   const loadData = () => {
     Promise.all([
-      api.get('/inventory/items/'),
-      api.get('/inventory/locations/'),
-      api.get('/inventory/purchases/?page_size=200'),
+      api.get('/inventory/items/', { params: branchQS }),
+      api.get('/inventory/locations/', { params: branchQS }),
+      api.get('/inventory/purchases/?page_size=200', { params: branchQS }),
     ]).then(([i, l, h]) => {
       setItems(i.data.results || i.data);
       setLocations(l.data.results || l.data);
@@ -41,7 +44,7 @@ export default function PurchasePage() {
     }).catch(() => {});
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
 
   const onSubmit = async (data) => {
     setSaving(true);
