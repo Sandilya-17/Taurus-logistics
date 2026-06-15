@@ -25,10 +25,13 @@ export default function Dashboard() {
   const branchQS  = branchCtx?.branchQS || {};
   const { fmt, symbol } = useCurrency();
 
+  const activeBranchId = branchCtx?.activeBranchId;
+
   const fetchDashboard = useCallback(() => {
     setLoading(true);
     setError(null);
-    api.get('/reports/dashboard/', { params: branchQS })
+    const params = activeBranchId ? { branch_id: activeBranchId } : {};
+    api.get(`/reports/dashboard/`, { params })
       .then(r => {
         if (r.data?.detail) {
           setError(r.data.detail);
@@ -39,8 +42,7 @@ export default function Dashboard() {
       })
       .catch(e => setError(e.response?.data?.detail || e.message || 'Dashboard data failed to load.'))
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchCtx?.activeBranchId]);
+  }, [activeBranchId]);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
