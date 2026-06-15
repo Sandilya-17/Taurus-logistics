@@ -6,11 +6,26 @@ from apps.core.models import TimeStampedModel
 
 class Branch(TimeStampedModel):
     """Represents a company branch (e.g. Branch 1, Branch 2)."""
-    name    = models.CharField(max_length=200, unique=True)
-    code    = models.CharField(max_length=20, unique=True)
-    address = models.TextField(blank=True)
-    phone   = models.CharField(max_length=20, blank=True)
+
+    # Currency choices – add more as needed
+    GHS = 'GHS'  # Ghana Cedis  (GH₵)
+    SLL = 'SLL'  # Sierra Leone Leone (Le)
+    CURRENCY_CHOICES = [
+        (GHS, 'Ghana Cedis (GH₵)'),
+        (SLL, 'Sierra Leone Leone (Le)'),
+    ]
+
+    name      = models.CharField(max_length=200, unique=True)
+    code      = models.CharField(max_length=20, unique=True)
+    address   = models.TextField(blank=True)
+    phone     = models.CharField(max_length=20, blank=True)
     is_active = models.BooleanField(default=True)
+    currency  = models.CharField(
+        max_length=10,
+        choices=CURRENCY_CHOICES,
+        default=GHS,
+        help_text='Currency used by this branch',
+    )
 
     class Meta:
         db_table = 'branches'
