@@ -1,5 +1,5 @@
 // src/pages/Users.jsx – Multi-branch user management (Super Admin / Admin / Manager / Employee)
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../utils/api';
 import { useAuth } from '../App';
@@ -290,9 +290,10 @@ export default function UsersPage() {
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
 
+
   useEffect(() => { load(); }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       // Both SUPER_ADMIN and ADMIN fetch /users/branches/ — ADMIN gets back only their branch
@@ -307,7 +308,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const toggleActive = async (u) => {
     if (!isAdmin) return toast.error('Admin access required.');
