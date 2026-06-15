@@ -25,10 +25,24 @@ class FuelLogListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
     branch_field     = 'branch'
 
     def perform_create(self, serializer):
+        from apps.users.models import Branch
         user   = self.request.user
         kwargs = {'created_by': user}
-        if user.branch_id:
+
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            branch_id = (
+                self.request.data.get('branch_id')
+                or self.request.query_params.get('branch_id')
+                or user.branch_id
+            )
+            if branch_id:
+                try:
+                    kwargs['branch'] = Branch.objects.get(pk=int(branch_id))
+                except (Branch.DoesNotExist, ValueError, TypeError):
+                    pass
+        elif user.branch_id:
             kwargs['branch'] = user.branch
+
         serializer.save(**kwargs)
 
     def create(self, request, *args, **kwargs):
