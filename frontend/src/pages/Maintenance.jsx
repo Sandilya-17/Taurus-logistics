@@ -1,6 +1,7 @@
 // src/pages/Maintenance.jsx – Professional Maintenance Management | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -11,6 +12,8 @@ const STATUS_BADGE = { PENDING: 'b-amber', IN_PROGRESS: 'b-blue', DONE: 'b-green
 const STATUS_ICON  = { PENDING: '⏳', IN_PROGRESS: '🔄', DONE: '✅' };
 
 export default function MaintenancePage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [records,    setRecords]    = useState([]);
   const [trucks,     setTrucks]     = useState([]);
   const [mechanics,  setMechanics]  = useState([]);
@@ -39,13 +42,13 @@ export default function MaintenancePage() {
   const watchParts  = parseFloat(watch('parts_cost')  || 0);
   const watchTotal  = watchLabour + watchParts;
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const load = () => {
-    api.get('/maintenance/logs/').then(r => setRecords(r.data.results || r.data)).catch(() => {});
-    api.get('/trucks/').then(r => setTrucks(r.data.results || r.data)).catch(() => {});
+    api.get('/maintenance/logs/', { params: branchQS }).then(r => setRecords(r.data.results || r.data)).catch(() => {});
+    api.get('/trucks/', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
     // Try to load mechanics if endpoint exists
-    api.get('/maintenance/mechanics/').then(r => setMechanics(r.data.results || r.data)).catch(() => {});
+    api.get('/maintenance/mechanics/', { params: branchQS }).then(r => setMechanics(r.data.results || r.data)).catch(() => {});
   };
 
   const startNew = () => {
