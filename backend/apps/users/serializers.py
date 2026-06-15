@@ -43,10 +43,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             actor = request.user
 
             if actor.role == User.SUPER_ADMIN:
-                if branch and branch != actor.branch:
-                    raise serializers.ValidationError(
-                        'You can only create users in your own branch.'
-                    )
+                # SUPER_ADMIN can create users in ANY branch
                 if not branch:
                     data['branch'] = actor.branch
                 if role == User.SUPER_ADMIN:
@@ -103,14 +100,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     'Super Admins cannot promote users to Super Admin.'
                 )
-            if branch and branch != actor.branch:
-                raise serializers.ValidationError(
-                    'You can only manage users in your own branch.'
-                )
-            if self.instance and self.instance.branch != actor.branch:
-                raise serializers.ValidationError(
-                    'You can only manage users in your own branch.'
-                )
+            # SUPER_ADMIN can manage users in ANY branch — no branch restriction
 
         elif actor.role == User.ADMIN:
             if role in (User.SUPER_ADMIN, User.ADMIN):
