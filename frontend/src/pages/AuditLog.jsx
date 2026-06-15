@@ -1,5 +1,6 @@
 // src/pages/AuditLog.jsx – Admin Audit Trail Viewer
 import { useState, useEffect, useCallback } from 'react';
+import { useBranch } from '../App';
 import api from '../utils/api';
 import { fmtDate } from '../utils/api';
 
@@ -13,6 +14,8 @@ const ACTION_COLORS = {
 };
 
 export default function AuditLogPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [logs,    setLogs]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
@@ -37,7 +40,7 @@ export default function AuditLogPage() {
     } finally { setLoading(false); }
   }, [page, search, action]);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  useEffect(() => { fetchLogs(); }, [fetchLogs, branchCtx?.activeBranchId]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
