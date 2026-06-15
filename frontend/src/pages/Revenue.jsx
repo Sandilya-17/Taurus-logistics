@@ -1,6 +1,7 @@
 // src/pages/Revenue.jsx – Auto-pulls from Trips, Trucks, Purchase, Issue | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -63,6 +64,8 @@ function InfoPill({ label, value, color = 'var(--muted)' }) {
 }
 
 export default function RevenuePage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [items,        setItems]        = useState([]);
   const [saving,       setSaving]       = useState(false);
   const [search,       setSearch]       = useState('');
@@ -94,7 +97,7 @@ export default function RevenuePage() {
   const watchAmount = watch('amount');
 
   // ── Load revenue records ────────────────────────────────────────────────
-  useEffect(() => { loadRevenue(); }, []);
+  useEffect(() => { loadRevenue(); }, [loadRevenue, branchCtx?.activeBranchId]);
 
   const loadRevenue = async () => {
     try {
@@ -118,8 +121,8 @@ export default function RevenuePage() {
     if (watchSource !== 'HAULAGE') { setInvoices([]); setSelectedInvoice(null); return; }
     setInvoicesLoading(true);
     Promise.all([
-      api.get('/invoicing/invoices/?status=SENT').catch(() => ({ data: [] })),
-      api.get('/invoicing/invoices/?status=PAID').catch(() => ({ data: [] })),
+      api.get('/invoicing/invoices/?status=SENT', { params: branchQS }).catch(() => ({ data: [] })),
+      api.get('/invoicing/invoices/?status=PAID', { params: branchQS }).catch(() => ({ data: [] })),
     ]).then(([sent, paid]) => {
       const all    = [...(sent.data.results||sent.data||[]), ...(paid.data.results||paid.data||[])];
       const unique = Array.from(new Map(all.map(i => [i.id, i])).values());
@@ -135,7 +138,7 @@ export default function RevenuePage() {
   useEffect(() => {
     if (watchSource !== 'TRIP_REVENUE') { setTrips([]); setSelectedTrip(null); return; }
     setTripsLoading(true);
-    api.get('/trips/?status=COMPLETED')
+    api.get('/trips/?status=COMPLETED', { params: branchQS })
       .then(r => setTrips(r.data.results || r.data))
       .catch(() => toast.error('Could not load trips.'))
       .finally(() => setTripsLoading(false));
@@ -145,7 +148,7 @@ export default function RevenuePage() {
   useEffect(() => {
     if (watchSource !== 'SPARE_SALE') { setPurchases([]); setSelectedPurchase(null); return; }
     setPurchasesLoading(true);
-    api.get('/inventory/purchases/?page_size=100')
+    api.get('/inventory/purchases/?page_size=100', { params: branchQS })
       .then(r => setPurchases(r.data.results || r.data))
       .catch(() => {})
       .finally(() => setPurchasesLoading(false));
