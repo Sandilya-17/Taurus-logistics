@@ -58,8 +58,6 @@ export default function IssuePage() {
   const watchType  = watch('issue_type');
   const watchTruck = watch('truck_id');
 
-  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
-
   const loadData = useCallback(() => {
     api.get('/inventory/items/?page_size=500', { params: branchQS }).then(r  => setItems(r.data.results    || r.data));
     api.get('/inventory/locations/').then(r            => setLocations(r.data.results || r.data));
@@ -67,6 +65,8 @@ export default function IssuePage() {
     api.get('/trips/?status=EN_ROUTE', { params: branchQS }).then(r          => setTrips(r.data.results    || r.data));
     api.get('/inventory/issues/?page_size=200', { params: branchQS }).then(r => setHistory(r.data.results  || r.data));
   }, [branchCtx?.activeBranchId]);
+
+  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
 
 
   const truckTrips = watchTruck
