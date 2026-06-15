@@ -1,8 +1,8 @@
 // src/pages/Invoicing.jsx – Enhanced with Quantity in Units, Auto-Revenue Push, Trip/Truck Data
 import { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 // ── Unit options for invoice lines ───────────────────────────────────────────
@@ -33,6 +33,7 @@ const fmtQty = (qty, unit) => {
 export default function InvoicingPage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [trips,      setTrips]      = useState([]);
   const [trucks,     setTrucks]     = useState([]);
   const [invoices,   setInvoices]   = useState([]);
@@ -136,7 +137,7 @@ export default function InvoicingPage() {
 
   // ── Mark invoice as PAID (triggers auto Revenue in backend) ──────────────
   const markPaid = async (inv) => {
-    if (!window.confirm(`Mark ${inv.invoice_number} as PAID? This will auto-record revenue of ${fmtGHS(inv.total_amount)}.`)) return;
+    if (!window.confirm(`Mark ${inv.invoice_number} as PAID? This will auto-record revenue of ${fmt(inv.total_amount)}.`)) return;
     try {
       await api.patch(`/invoicing/${inv.id}/`, { status: 'PAID' });
       toast.success(`✅ ${inv.invoice_number} marked PAID — revenue auto-recorded.`);
@@ -197,8 +198,8 @@ export default function InvoicingPage() {
       {/* ── KPI Summary ─────────────────────────────────────────────────── */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', marginBottom: 20 }}>
         {[
-          { label: 'Total Invoiced',  val: fmtGHS(totalValue),         color: 'var(--primary)', sub: `${invoices.length} invoices` },
-          { label: 'Revenue Received',val: fmtGHS(paidValue),           color: 'var(--green)',   sub: `${invoices.filter(i=>i.status==='PAID').length} paid` },
+          { label: 'Total Invoiced',  val: fmt(totalValue),         color: 'var(--primary)', sub: `${invoices.length} invoices` },
+          { label: 'Revenue Received',val: fmt(paidValue),           color: 'var(--green)',   sub: `${invoices.filter(i=>i.status==='PAID').length} paid` },
           { label: 'Draft / Pending', val: draftCount,                  color: 'var(--amber)',   sub: 'awaiting send' },
           { label: 'Overdue',         val: overdueCount,                color: 'var(--red)',     sub: 'action needed' },
         ].map((k, i) => (
@@ -281,7 +282,7 @@ export default function InvoicingPage() {
                 gridTemplateColumns: '3fr 80px 100px 1.1fr 1.1fr auto',
                 gap: 6, padding: '0 4px', marginBottom: 4,
               }}>
-                {['Description', 'Qty', 'Unit', 'Rate (GH₵)', 'Amount (GH₵)', ''].map((h, i) => (
+                {['Description', 'Qty', 'Unit', 'Rate (GH₵)', 'Amount ({symbol})', ''].map((h, i) => (
                   <div key={i} style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
                     {h}
                   </div>
@@ -339,7 +340,7 @@ export default function InvoicingPage() {
                     {/* Auto-calculated amount */}
                     <div className="fg" style={{ margin: 0 }}>
                       <div className="calc-box" style={{ fontSize: 12, background: 'var(--green-bg)', color: 'var(--green)', fontWeight: 700 }}>
-                        {fmtGHS(lineAmt)}
+                        {fmt(lineAmt)}
                       </div>
                     </div>
 
@@ -384,17 +385,17 @@ export default function InvoicingPage() {
               <div className="vat-breakdown" style={{ marginTop: 12 }}>
                 <div className="vb-row">
                   <span style={{ color: 'var(--muted)' }}>Subtotal</span>
-                  <strong>{fmtGHS(totals.subtotal)}</strong>
+                  <strong>{fmt(totals.subtotal)}</strong>
                 </div>
                 <div className="vb-row">
                   <span style={{ color: 'var(--muted)' }}>
                     VAT {watchedVAT ? `(${watchedVATPct}%)` : '(N/A)'}
                   </span>
-                  <strong>{fmtGHS(totals.vat_amount)}</strong>
+                  <strong>{fmt(totals.vat_amount)}</strong>
                 </div>
                 <div className="vb-row total">
                   <span>Total Payable</span>
-                  <span style={{ fontSize: 17 }}>{fmtGHS(totals.total_amount)}</span>
+                  <span style={{ fontSize: 17 }}>{fmt(totals.total_amount)}</span>
                 </div>
               </div>
 
@@ -412,7 +413,7 @@ export default function InvoicingPage() {
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                       <span style={{ color: 'var(--muted)' }}>{l.description || `Line ${i + 1}`}</span>
                       <strong style={{ color: 'var(--primary)' }}>
-                        {fmtQty(l.quantity, l.unit)} @ {fmtGHS(l.unit_price)}/{UNIT_OPTIONS.find(o => o.value === l.unit)?.label?.split(' ')[0] || l.unit}
+                        {fmtQty(l.quantity, l.unit)} @ {fmt(l.unit_price)}/{UNIT_OPTIONS.find(o => o.value === l.unit)?.label?.split(' ')[0] || l.unit}
                       </strong>
                     </div>
                   ))}
@@ -478,9 +479,9 @@ export default function InvoicingPage() {
                           <td style={{ fontSize: 10, color: 'var(--muted)' }}>
                             {UNIT_OPTIONS.find(o => o.value === l.unit)?.label?.split(' ')[0] || l.unit || '—'}
                           </td>
-                          <td style={{ fontSize: 11 }}>{fmtGHS(l.unit_price || 0)}</td>
+                          <td style={{ fontSize: 11 }}>{fmt(l.unit_price || 0)}</td>
                           <td className="ced" style={{ fontWeight: 700 }}>
-                            {fmtGHS(parseFloat(l.quantity || 0) * parseFloat(l.unit_price || 0))}
+                            {fmt(parseFloat(l.quantity || 0) * parseFloat(l.unit_price || 0))}
                           </td>
                         </tr>
                       ))}
@@ -490,17 +491,17 @@ export default function InvoicingPage() {
                 <div className="vat-breakdown">
                   <div className="vb-row">
                     <span style={{ color: 'var(--muted)', fontSize: 12 }}>Subtotal</span>
-                    <span className="ced">{fmtGHS(totals.subtotal)}</span>
+                    <span className="ced">{fmt(totals.subtotal)}</span>
                   </div>
                   <div className="vb-row">
                     <span style={{ color: 'var(--muted)', fontSize: 12 }}>
                       VAT {watchedVAT ? `(${watchedVATPct}%)` : ''}
                     </span>
-                    <span className="ced">{fmtGHS(totals.vat_amount)}</span>
+                    <span className="ced">{fmt(totals.vat_amount)}</span>
                   </div>
                   <div className="vb-row total">
                     <span>TOTAL DUE</span>
-                    <span>{fmtGHS(totals.total_amount)}</span>
+                    <span>{fmt(totals.total_amount)}</span>
                   </div>
                 </div>
                 {watch('notes') && (
@@ -591,13 +592,13 @@ export default function InvoicingPage() {
                           : <span style={{ color: 'var(--muted)' }}>—</span>
                         }
                       </td>
-                      <td className="ced">{fmtGHS(inv.subtotal)}</td>
+                      <td className="ced">{fmt(inv.subtotal)}</td>
                       <td>
                         {inv.vat_applicable
                           ? <span className="badge b-blue">{inv.vat_percentage}%</span>
                           : <span className="badge b-gray">N/A</span>}
                       </td>
-                      <td className="ced" style={{ fontWeight: 700 }}>{fmtGHS(inv.total_amount)}</td>
+                      <td className="ced" style={{ fontWeight: 700 }}>{fmt(inv.total_amount)}</td>
                       <td>
                         <span className={`badge ${STATUS_BADGE[inv.status]}`}>{inv.status}</span>
                       </td>
@@ -632,17 +633,17 @@ export default function InvoicingPage() {
             }}>
               <span style={{ color: 'var(--muted)' }}>
                 Total Invoiced: <strong style={{ color: 'var(--primary)' }}>
-                  {fmtGHS(filteredInvoices.reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
+                  {fmt(filteredInvoices.reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
                 </strong>
               </span>
               <span style={{ color: 'var(--muted)' }}>
                 Revenue Received: <strong style={{ color: 'var(--green)' }}>
-                  {fmtGHS(filteredInvoices.filter(i => i.status === 'PAID').reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
+                  {fmt(filteredInvoices.filter(i => i.status === 'PAID').reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
                 </strong>
               </span>
               <span style={{ color: 'var(--muted)' }}>
                 Outstanding: <strong style={{ color: 'var(--red)' }}>
-                  {fmtGHS(filteredInvoices.filter(i => i.status !== 'PAID').reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
+                  {fmt(filteredInvoices.filter(i => i.status !== 'PAID').reduce((s, i) => s + parseFloat(i.total_amount || 0), 0))}
                 </strong>
               </span>
             </div>
