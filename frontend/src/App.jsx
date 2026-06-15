@@ -1,9 +1,9 @@
-// src/App.jsx — Taurus ERP — Fresh Enterprise UI
+// src/App.jsx — Taurus ERP — Enterprise UI
 import { useState, createContext, useContext, useEffect, useCallback, useRef, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link, NavLink } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/main.css';
-import api from './utils/api';
+import api, { fmtMoney, getCurrencyConfig } from './utils/api';
 
 // Pages
 import Dashboard   from './pages/Dashboard';
@@ -25,25 +25,32 @@ import Profile     from './pages/Profile';
 import AuditLog    from './pages/AuditLog';
 
 /* ── Contexts ──────────────────────────────────────────────── */
-const AuthCtx   = createContext(null);
+const AuthCtx  = createContext(null);
 export const useAuth  = () => useContext(AuthCtx);
-const ThemeCtx  = createContext(null);
+const ThemeCtx = createContext(null);
 export const useTheme = () => useContext(ThemeCtx);
 
 /* ── Branch Context (Super Admin multi-branch control) ─────── */
 const BranchCtx = createContext(null);
 export const useBranch = () => useContext(BranchCtx);
 
+/* ── Currency Context (branch-aware) ───────────────────────── */
+// useCurrency() returns: { fmt(val) => string, symbol, branchId }
+// Branch 2 → Leone (Le), everything else → GH₵
+const CurrencyCtx = createContext(null);
+export const useCurrency = () => useContext(CurrencyCtx);
+
 function BranchProvider({ user, children }) {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  // null = all branches (super admin default), or a numeric branch id
+  // For SUPER_ADMIN: null = "All Branches" view; numeric = specific branch selected
+  // For branch admins/managers/employees: locked to their own branch ID
   const [activeBranchId, setActiveBranchId] = useState(
     isSuperAdmin ? null : (user?.branch?.id ?? null)
   );
   const [branches, setBranches] = useState([]);
 
-  // Load all branches once for SUPER_ADMIN (for the dropdown)
+  // Load all branches for SUPER_ADMIN dropdown
   useEffect(() => {
     if (!isSuperAdmin) return;
     api.get('/users/branches/')
@@ -51,21 +58,37 @@ function BranchProvider({ user, children }) {
       .catch(() => {});
   }, [isSuperAdmin]);
 
-  // branchQS: object to spread into axios `params` on every API call
-  const branchQS = activeBranchId ? { branch_id: activeBranchId } : {};
-  // branchParam: ready-to-append query string e.g. "?branch_id=2"
-  const branchParam = activeBranchId ? `?branch_id=${activeBranchId}` : '';
+  // branchQS: params to spread into every API call
+  // - Super Admin with no filter selected → {} (backend returns all branches)
+  // - Super Admin with a branch selected  → { branch_id: N }
+  // - Non-super-admin                     → {} (backend enforces their branch via JWT user)
+  const branchQS = (isSuperAdmin && activeBranchId) ? { branch_id: activeBranchId } : {};
+  const branchParam = (isSuperAdmin && activeBranchId) ? `?branch_id=${activeBranchId}` : '';
+
+  // Determine the "effective branch ID" for currency:
+  // Super Admin viewing a specific branch → use that branch's currency
+  // Super Admin viewing all → no specific currency (use default GH₵)
+  // Branch user → their own branch
+  const effectiveBranchId = isSuperAdmin ? activeBranchId : (user?.branch?.id ?? null);
+  const currencyConfig = getCurrencyConfig(effectiveBranchId);
+  const fmt = (val) => fmtMoney(val, effectiveBranchId);
 
   return (
     <BranchCtx.Provider value={{
       isSuperAdmin,
       activeBranchId,
-      setActiveBranchId,
+      setActiveBranchId: isSuperAdmin ? setActiveBranchId : () => {}, // non-super-admin cannot change branch
       branches,
       branchQS,
       branchParam,
     }}>
-      {children}
+      <CurrencyCtx.Provider value={{
+        fmt,
+        symbol: currencyConfig.symbol,
+        branchId: effectiveBranchId,
+      }}>
+        {children}
+      </CurrencyCtx.Provider>
     </BranchCtx.Provider>
   );
 }
@@ -257,6 +280,7 @@ function Sidebar({ open, onClose }) {
 /* ── Branch Selector (Super Admin only) ──────────────────────── */
 function BranchSelector() {
   const branchCtx = useBranch();
+  // Only SUPER_ADMIN sees the branch selector
   if (!branchCtx || !branchCtx.isSuperAdmin) return null;
   const { activeBranchId, setActiveBranchId, branches } = branchCtx;
 
@@ -320,7 +344,7 @@ function Topbar({ onMenu }) {
       </div>
 
       <div className="topbar-right">
-        {/* Branch selector — only visible for SUPER_ADMIN */}
+        {/* Branch selector — SUPER_ADMIN only */}
         <BranchSelector />
 
         <button className="icon-btn" onClick={toggle} title={dark ? 'Light mode' : 'Dark mode'}>
@@ -452,13 +476,11 @@ function LoginPage() {
         padding: '48px 40px',
         position: 'relative', overflow: 'hidden',
       }}>
-        {/* decorative circles */}
         <div style={{ position:'absolute', width:400, height:400, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.06)', top:-100, left:-100 }} />
         <div style={{ position:'absolute', width:600, height:600, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.04)', bottom:-200, right:-200 }} />
         <div style={{ position:'absolute', width:200, height:200, borderRadius:'50%', background:'rgba(249,115,22,0.08)', top:'30%', right:-60 }} />
 
         <div style={{ position:'relative', zIndex:1, textAlign:'center', maxWidth:480 }}>
-          {/* Logo on dark bg — use white text variant */}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="360" height="auto" style={{ marginBottom: 40 }}>
             <defs>
               <linearGradient id="tlPrimaryW" x1="0%" y1="100%" x2="100%" y2="0%">
@@ -495,7 +517,6 @@ function LoginPage() {
             Manage your fleet, trips, fuel, inventory and financials — all in one place.
           </div>
 
-          {/* Feature pills */}
           <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:36 }}>
             {['🚛 Fleet Management','⛽ Fuel Control','📦 Inventory','💰 Financials','📊 Reports'].map(f => (
               <div key={f} style={{
@@ -522,7 +543,6 @@ function LoginPage() {
         boxShadow: '-4px 0 40px rgba(0,0,0,0.08)',
       }}>
         <div style={{ width:'100%', maxWidth:360 }}>
-          {/* Logo for right panel */}
           <div style={{ marginBottom:36 }}>
             <TaurusLogo width={260} />
           </div>
@@ -651,7 +671,7 @@ function RequireAuth({ children }) {
   return children;
 }
 
-/* ── Branch Provider Wrapper (reads user from auth context) ──── */
+/* ── Branch Provider Wrapper ─────────────────────────────────── */
 function BranchProviderWrapper({ children }) {
   const { user } = useAuth();
   return <BranchProvider user={user}>{children}</BranchProvider>;
