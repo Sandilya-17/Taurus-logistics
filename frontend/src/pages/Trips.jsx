@@ -3,8 +3,8 @@
 // Phase 2: Edit trip → fill delivered qty + unloading time → auto-COMPLETED
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { calcTrip, fmtGHS } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { calcTrip } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_BADGE = {
@@ -215,13 +215,13 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
           <div className="sec-div">Revenue</div>
           <div className="fgrid">
             <div className="fg">
-              <label>Rate per Ton (GH₵)</label>
+              <label>Rate per Ton ({symbol})</label>
               <input type="number" step="0.01" min="0" {...register('rate_per_ton')} />
             </div>
             <div className="fg">
               <label>Trip Revenue — Auto</label>
               <div className="calc-box" style={{ fontSize: 15, color: 'var(--green)', fontWeight: 700 }}>
-                {fmtGHS(computed.trip_revenue)}
+                {fmt(computed.trip_revenue)}
               </div>
             </div>
             <div className="fg">
@@ -246,6 +246,7 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
 export default function TripsPage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [trucks,   setTrucks]   = useState([]);
   const [drivers,  setDrivers]  = useState([]);
   const [trips,    setTrips]    = useState([]);
@@ -327,8 +328,8 @@ export default function TripsPage() {
         {[
           { label: 'Active Trips',  val: activeTrips.length,    color: 'var(--blue)'  },
           { label: 'Completed',     val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue', val: fmtGHS(totalRevenue),  color: 'var(--amber)' },
-          { label: 'Net Profit',    val: fmtGHS(totalNet),      color: totalNet >= 0 ? 'var(--green)' : 'var(--red)' },
+          { label: 'Total Revenue', val: fmt(totalRevenue),  color: 'var(--amber)' },
+          { label: 'Net Profit',    val: fmt(totalNet),      color: totalNet >= 0 ? 'var(--green)' : 'var(--red)' },
         ].map((k,i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
@@ -413,7 +414,7 @@ export default function TripsPage() {
                 <input type="datetime-local" {...register('loading_time', { required: true })} />
               </div>
               <div className="fg">
-                <label>Rate per Ton (GH₵)</label>
+                <label>Rate per Ton ({symbol})</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" {...register('rate_per_ton')} />
               </div>
               <div className="fg">
@@ -476,11 +477,11 @@ export default function TripsPage() {
                       }}>
                         {t.delivered_qty ? `${t.delivered_qty}T` : 'Pending'}
                       </td>
-                      <td className="ced">{fmtGHS(t.trip_revenue)}</td>
-                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmtGHS(t.fuel_cost)}</td>
-                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmtGHS(t.spare_parts_cost)}</td>
+                      <td className="ced">{fmt(t.trip_revenue)}</td>
+                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmt(t.fuel_cost)}</td>
+                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmt(t.spare_parts_cost)}</td>
                       <td className="ced" style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-                        {fmtGHS(net)}
+                        {fmt(net)}
                       </td>
                       <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
                       <td>
@@ -522,10 +523,10 @@ export default function TripsPage() {
               display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8,
             }}>
               {[
-                { label: 'Total Revenue',     val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0),0)),     color: 'var(--green)' },
-                { label: 'Total Fuel Cost',   val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.fuel_cost||0),0)),        color: 'var(--amber)' },
-                { label: 'Total Spare Parts', val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.spare_parts_cost||0),0)), color: 'var(--amber)' },
-                { label: 'Total Net Profit',  val: fmtGHS(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0)-parseFloat(t.fuel_cost||0)-parseFloat(t.spare_parts_cost||0),0)), color: 'var(--blue)' },
+                { label: 'Total Revenue',     val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0),0)),     color: 'var(--green)' },
+                { label: 'Total Fuel Cost',   val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.fuel_cost||0),0)),        color: 'var(--amber)' },
+                { label: 'Total Spare Parts', val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.spare_parts_cost||0),0)), color: 'var(--amber)' },
+                { label: 'Total Net Profit',  val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0)-parseFloat(t.fuel_cost||0)-parseFloat(t.spare_parts_cost||0),0)), color: 'var(--blue)' },
               ].map((k,i) => (
                 <div key={i} style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' }}>{k.label}</div>
