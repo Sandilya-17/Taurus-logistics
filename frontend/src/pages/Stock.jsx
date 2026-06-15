@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import api, { fmtGHS } from '../utils/api';
-import { useBranch } from '../App';
+import api from '../utils/api';
+import { useBranch, useCurrency } from '../App';
 import { useAuth } from '../App';
 
 const SPARE_PARTS = [
@@ -62,6 +62,7 @@ export default function StockPage() {
   const isAdmin   = user?.role === 'ADMIN';
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
 
   const [stock,    setStock]    = useState([]);
   const [allItems, setAllItems] = useState([]);
@@ -318,7 +319,7 @@ export default function StockPage() {
           { label: 'Total Items',  val: totalItems,         color: 'var(--blue)',  icon: '📦' },
           { label: 'Low Stock',    val: lowStock,           color: 'var(--amber)', icon: '⚠️' },
           { label: 'Out of Stock', val: outOfStock,         color: 'var(--red)',   icon: '🚨' },
-          { label: 'Total Value',  val: fmtGHS(totalValue), color: 'var(--green)', icon: '💰' },
+          { label: 'Total Value',  val: fmt(totalValue), color: 'var(--green)', icon: '💰' },
         ].map((k, i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.icon} {k.label}</div>
@@ -468,7 +469,7 @@ export default function StockPage() {
                 <th>Item Name</th>
                 <th>Type</th>
                 <th style={{ textAlign: 'right' }}>Op. Qty</th>
-                <th style={{ textAlign: 'right' }}>Op. Value (GH₵)</th>
+                <th style={{ textAlign: 'right' }}>Op. Value ({symbol})</th>
                 <th style={{ textAlign: 'right', color: 'var(--green)' }}>+ Purchased Qty</th>
                 <th style={{ textAlign: 'right', color: 'var(--green)' }}>Purchased Value</th>
                 <th style={{ textAlign: 'right', color: 'var(--red)' }}>− Issued Qty</th>
@@ -531,7 +532,7 @@ export default function StockPage() {
                       {ld.openQty > 0 ? ld.openQty.toLocaleString('en-GH', { maximumFractionDigits: 3 }) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', color: 'var(--muted)' }}>
-                      {ld.openVal > 0 ? fmtGHS(ld.openVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {ld.openVal > 0 ? fmt(ld.openVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
                     {/* Purchased */}
@@ -539,7 +540,7 @@ export default function StockPage() {
                       {ld.purchQty > 0 ? `+${ld.purchQty.toLocaleString('en-GH', { maximumFractionDigits: 3 })}` : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', color: 'var(--green)' }}>
-                      {ld.purchVal > 0 ? fmtGHS(ld.purchVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {ld.purchVal > 0 ? fmt(ld.purchVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
                     {/* Issued */}
@@ -555,7 +556,7 @@ export default function StockPage() {
                       {closingQty.toLocaleString('en-GH', { maximumFractionDigits: 3 })}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', fontWeight: 700 }}>
-                      {closingVal > 0 ? fmtGHS(closingVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {closingVal > 0 ? fmt(closingVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
                     <td style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
@@ -608,14 +609,14 @@ export default function StockPage() {
                   <td colSpan={4} style={{ padding: '10px 12px', fontSize: 12, color: 'var(--muted)' }}>
                     Showing {filtered.length} of {totalItems} items
                   </td>
-                  <td style={{ textAlign: 'right', padding: '10px 12px' }}>{fmtGHS(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).openVal), 0))}</td>
-                  <td colSpan={2} style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>{fmtGHS(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).purchVal), 0))}</td>
+                  <td style={{ textAlign: 'right', padding: '10px 12px' }}>{fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).openVal), 0))}</td>
+                  <td colSpan={2} style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>{fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).purchVal), 0))}</td>
                   <td></td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', fontSize: 14 }}>
                     {filtered.reduce((s, x) => s + parseFloat(x.closing_qty || 0), 0).toLocaleString('en-GH', { maximumFractionDigits: 3 })}
                   </td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>
-                    {fmtGHS(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
+                    {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
                   </td>
                   <td colSpan={3}></td>
                 </tr>
@@ -653,7 +654,7 @@ export default function StockPage() {
                 />
               </div>
               <div className="fg">
-                <label>Unit Cost (GH₵) *</label>
+                <label>Unit Cost ({symbol}) *</label>
                 <input
                   type="number" step="0.01" min="0.01"
                   placeholder="e.g. 250.00"
