@@ -1,12 +1,15 @@
 // src/pages/Drivers.jsx
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtDate } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_BADGE = { ACTIVE: 'b-green', SUSPENDED: 'b-amber', RESIGNED: 'b-red' };
 
 export default function DriversPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [drivers, setDrivers] = useState([]);
   const [trucks,  setTrucks]  = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -16,11 +19,11 @@ export default function DriversPage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const load = () => {
-    api.get('/drivers/').then(r => setDrivers(r.data.results || r.data)).catch(() => {});
-    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data)).catch(() => {});
+    api.get('/drivers/', { params: branchQS }).then(r => setDrivers(r.data.results || r.data)).catch(() => {});
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
   };
 
   const startEdit = (d) => { setEditing(d.id); reset({ ...d, assigned_truck: d.assigned_truck || '' }); setTab('form'); };
