@@ -1,10 +1,13 @@
 // src/pages/Fuel.jsx – Fuel log with live excess detection + excess cost
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { calcFuel, fmtGHS } from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function FuelPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [trucks,   setTrucks]   = useState([]);
   const [trips,    setTrips]    = useState([]);
   const [limits,   setLimits]   = useState({});
@@ -45,18 +48,18 @@ export default function FuelPage() {
   const watchedPrice  = watch('price_per_litre');
 
   useEffect(() => {
-    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data));
-    api.get('/fuel/limits/').then(r => {
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data));
+    api.get('/fuel/limits/', { params: branchQS }).then(r => {
       const lmap = {};
       (r.data.results || r.data).forEach(l => { lmap[l.truck] = l.fuel_limit; });
       setLimits(lmap);
     });
-    api.get('/trips/?status=EN_ROUTE').then(r => setTrips(r.data.results || r.data));
+    api.get('/trips/?status=EN_ROUTE', { params: branchQS }).then(r => setTrips(r.data.results || r.data));
     loadHistory();
   }, []);
 
   const loadHistory = () => {
-    api.get('/fuel/logs/').then(r => setHistory(r.data.results || r.data));
+    api.get('/fuel/logs/', { params: branchQS }).then(r => setHistory(r.data.results || r.data));
   };
 
   const startEdit = (f) => {
