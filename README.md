@@ -24,12 +24,13 @@
 
 </div>
 
----
-👨‍💻 Built By
+
+## 👨‍💻 Built By
 
 <div align="center">
-Show Image
-Show Image
+
+[![Sandilya-17](https://img.shields.io/badge/GitHub-Sandilya--17-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Sandilya-17)
+[![gousekareem](https://img.shields.io/badge/GitHub-gousekareem-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/gousekareem)
 
 </div>
 
