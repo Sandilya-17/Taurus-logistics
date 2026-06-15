@@ -1,8 +1,8 @@
 // src/pages/Revenue.jsx – Auto-pulls from Trips, Trucks, Purchase, Issue | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
 // ── Expanded revenue sources (covers all data origins in system) ──────────────
@@ -66,6 +66,7 @@ function InfoPill({ label, value, color = 'var(--muted)' }) {
 export default function RevenuePage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [items,        setItems]        = useState([]);
   const [saving,       setSaving]       = useState(false);
   const [search,       setSearch]       = useState('');
@@ -366,8 +367,8 @@ export default function RevenuePage() {
       {/* Row 1: Summary */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', marginBottom: 10 }}>
         {[
-          { label: 'Total Revenue',   val: fmtGHS(total),        color: 'var(--green)',   sub: `${items.length} records`, spark: monthlyData, sparkColor: '#0e9f6e' },
-          { label: 'This Month',      val: fmtGHS(thisMonthRev), color: 'var(--primary)', sub: momChange !== null ? `${momChange > 0 ? '▲' : '▼'} ${Math.abs(momChange)}% vs last month` : 'No prior month data', sparkColor: '#1a56db' },
+          { label: 'Total Revenue',   val: fmt(total),        color: 'var(--green)',   sub: `${items.length} records`, spark: monthlyData, sparkColor: '#0e9f6e' },
+          { label: 'This Month',      val: fmt(thisMonthRev), color: 'var(--primary)', sub: momChange !== null ? `${momChange > 0 ? '▲' : '▼'} ${Math.abs(momChange)}% vs last month` : 'No prior month data', sparkColor: '#1a56db' },
         ].map((k, i) => (
           <div key={i} className="kpi" style={{ color: k.color }}>
             <div className="kpi-label">{k.label}</div>
@@ -384,21 +385,21 @@ export default function RevenuePage() {
         {[
           {
             label: 'Haulage Revenue',
-            val: fmtGHS(haulage),
+            val: fmt(haulage),
             color: 'var(--teal)',
             sub: `${(total > 0 ? haulage / total * 100 : 0).toFixed(1)}% of total · ${items.filter(i => i.source === 'HAULAGE').length} records`,
             sparkColor: '#0694a2',
           },
           {
             label: 'Trip Revenue',
-            val: fmtGHS(tripRev),
+            val: fmt(tripRev),
             color: 'var(--amber)',
             sub: `${(total > 0 ? tripRev / total * 100 : 0).toFixed(1)}% of total · ${items.filter(i => i.source === 'TRIP_REVENUE').length} trips`,
             sparkColor: '#d97706',
           },
           {
             label: 'Others',
-            val: fmtGHS(other),
+            val: fmt(other),
             color: '#7c3aed',
             sub: `Rental · Spares · Rebate · Commission · Insurance · Other · ${otherCount} records`,
             sparkColor: '#7c3aed',
@@ -470,7 +471,7 @@ export default function RevenuePage() {
                         <option value="" disabled>— Select invoice —</option>
                         {invoices.map(inv => (
                           <option key={inv.id} value={inv.id}>
-                            {inv.invoice_number} · {inv.client_name} · {fmtGHS(inv.total_amount)} {inv.status === 'PAID' ? '✓ PAID' : '· SENT'}
+                            {inv.invoice_number} · {inv.client_name} · {fmt(inv.total_amount)} {inv.status === 'PAID' ? '✓ PAID' : '· SENT'}
                           </option>
                         ))}
                       </select>
@@ -483,13 +484,13 @@ export default function RevenuePage() {
                   {selectedInvoice && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                       <InfoPill label="Client"        value={selectedInvoice.client_name} />
-                      <InfoPill label="Invoice Total"  value={fmtGHS(selectedInvoice.total_amount)} color="var(--green)" />
+                      <InfoPill label="Invoice Total"  value={fmt(selectedInvoice.total_amount)} color="var(--green)" />
                       <InfoPill label="Waybill"        value={selectedInvoice.trip_waybill || '—'} />
                     </div>
                   )}
                   <div className="fgrid mb14">
                     <div className="fg">
-                      <label>Amount (GH₵)</label>
+                      <label>Amount ({symbol})</label>
                       <input type="number" step="0.01"
                         readOnly={!!selectedInvoice}
                         placeholder={selectedInvoice ? 'Auto-filled from invoice' : '0.00'}
@@ -524,7 +525,7 @@ export default function RevenuePage() {
                       <option value="" disabled>— Select completed trip —</option>
                       {trips.map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.waybill_no} · {t.truck_number} · {t.origin} → {t.destination} · {t.delivered_qty || t.loaded_qty}T · {fmtGHS(t.trip_revenue || 0)}
+                          {t.waybill_no} · {t.truck_number} · {t.origin} → {t.destination} · {t.delivered_qty || t.loaded_qty}T · {fmt(t.trip_revenue || 0)}
                         </option>
                       ))}
                     </select>
@@ -534,12 +535,12 @@ export default function RevenuePage() {
                       <InfoPill label="Truck"     value={selectedTrip.truck_number} />
                       <InfoPill label="Driver"    value={selectedTrip.driver_name} />
                       <InfoPill label="Delivered" value={`${selectedTrip.delivered_qty || selectedTrip.loaded_qty}T`} />
-                      <InfoPill label="Revenue"   value={fmtGHS(selectedTrip.trip_revenue || 0)} color="var(--green)" />
+                      <InfoPill label="Revenue"   value={fmt(selectedTrip.trip_revenue || 0)} color="var(--green)" />
                     </div>
                   )}
                   <div className="fgrid mb14">
                     <div className="fg">
-                      <label>Amount (GH₵) *</label>
+                      <label>Amount ({symbol}) *</label>
                       <input type="number" step="0.01"
                         style={{ color: selectedTrip ? 'var(--green)' : undefined, fontWeight: selectedTrip ? 700 : 400 }}
                         placeholder="Auto-filled from trip" {...register('amount', { required: true })} />
@@ -568,14 +569,14 @@ export default function RevenuePage() {
                       <option value="">— Select purchase (optional) —</option>
                       {purchases.map(p => (
                         <option key={p.id} value={p.id}>
-                          {p.item_name || 'Item'} · {p.quantity} units · {p.supplier_name} · {fmtGHS(p.final_amount || 0)}
+                          {p.item_name || 'Item'} · {p.quantity} units · {p.supplier_name} · {fmt(p.final_amount || 0)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="fgrid mb14">
                     <div className="fg">
-                      <label>Sale Amount (GH₵) *</label>
+                      <label>Sale Amount ({symbol}) *</label>
                       <input type="number" step="0.01" min="0" placeholder="Enter sale price" {...register('amount', { required: true })} />
                     </div>
                     <div className="fg">
@@ -595,7 +596,7 @@ export default function RevenuePage() {
                 <>
                   <div className="fgrid mb14">
                     <div className="fg">
-                      <label>Amount (GH₵) *</label>
+                      <label>Amount ({symbol}) *</label>
                       <input type="number" step="0.01" min="0" placeholder="0.00" {...register('amount', { required: true })} />
                     </div>
                     <div className="fg">
@@ -625,7 +626,7 @@ export default function RevenuePage() {
                   padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
                 }}>
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>Recording:</span>
-                  <span style={{ fontWeight: 800, color: 'var(--green)', fontSize: 16 }}>{fmtGHS(watchAmount)}</span>
+                  <span style={{ fontWeight: 800, color: 'var(--green)', fontSize: 16 }}>{fmt(watchAmount)}</span>
                   <span className={`badge ${srcInfo.badge}`} style={{ marginLeft: 'auto' }}>{watchSource}</span>
                 </div>
               )}
@@ -652,7 +653,7 @@ export default function RevenuePage() {
                       <span style={{ color: 'var(--muted)', fontSize: 10.5 }}>
                         {total > 0 ? `${(val / total * 100).toFixed(1)}%` : '—'}
                       </span>
-                      <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtGHS(val)}</span>
+                      <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(val)}</span>
                     </div>
                   </div>
                   <div className="prog-bar">
@@ -674,7 +675,7 @@ export default function RevenuePage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
                   <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>{s.label}</span>
                   <span style={{ color: s.color, fontWeight: 700 }}>
-                    {fmtGHS(s.total)}{' '}
+                    {fmt(s.total)}{' '}
                     <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 10.5 }}>
                       ({total > 0 ? (s.total / total * 100).toFixed(1) : 0}%)
                     </span>
@@ -742,7 +743,7 @@ export default function RevenuePage() {
                       </td>
                       <td className="mono" style={{ fontSize: 11 }}>{i.reference || '—'}</td>
                       <td className="ced" style={{ color: 'var(--green)', fontWeight: 700, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        + {fmtGHS(i.amount)}
+                        + {fmt(i.amount)}
                       </td>
                       <td>
                         <div className="flex gap4">
@@ -777,7 +778,7 @@ export default function RevenuePage() {
                 Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
                 &nbsp;|&nbsp;
                 <strong style={{ color: 'var(--green)' }}>
-                  Total: {fmtGHS(filtered.reduce((s, i) => s + parseFloat(i.amount || 0), 0))}
+                  Total: {fmt(filtered.reduce((s, i) => s + parseFloat(i.amount || 0), 0))}
                 </strong>
               </span>
               {totalPages > 1 && (
