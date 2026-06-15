@@ -1,4 +1,22 @@
-"""apps/users/views.py – Branch-isolated, role-based user management."""
+"""apps/users/views.py – Branch-isolated, role-based user management.
+
+ACCESS RULES:
+  SUPER_ADMIN:
+    - Can see users from ALL branches (or filter to one with ?branch_id=)
+    - Can create users in any branch
+    - Can update/delete any user (except other super admins)
+    - Can manage branches (create/update/delete)
+
+  ADMIN (branch-scoped):
+    - Can ONLY see users in their own branch
+    - Can create MANAGER or EMPLOYEE users in their own branch only
+    - Cannot create or promote to ADMIN / SUPER_ADMIN
+    - Cannot view, edit, or delete users from other branches
+
+  MANAGER / EMPLOYEE:
+    - Read-only access to their own profile (via /me/)
+    - Cannot access the Users management page
+"""
 import logging
 from rest_framework import generics, status, permissions, filters
 from rest_framework.response import Response
@@ -20,12 +38,14 @@ class LoginThrottle(AnonRateThrottle):
 
 
 class IsSuperAdmin(permissions.BasePermission):
+    """Only SUPER_ADMIN may pass."""
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and request.user.role == User.SUPER_ADMIN)
 
 
 class IsAdminOrAbove(permissions.BasePermission):
+    """ADMIN or SUPER_ADMIN may pass."""
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated
                     and request.user.role in (User.ADMIN, User.SUPER_ADMIN))
@@ -36,21 +56,29 @@ class IsManagerOrAbove(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_manager)
 
 
-class BranchScopedMixin:
+class BranchScopedUserMixin:
     """
-    SUPER_ADMIN sees ALL branches (optionally filtered by ?branch_id=).
-    All other roles see only their assigned branch.
+    Scopes user querysets:
+    - SUPER_ADMIN: all users, optionally filtered by ?branch_id=
+    - ADMIN: only users in their own branch
+    - Others: only themselves
     """
     def get_branch_queryset(self, qs):
         user = self.request.user
         if getattr(user, 'role', None) == User.SUPER_ADMIN:
             branch_id = self.request.query_params.get('branch_id')
             if branch_id:
-                return qs.filter(branch_id=branch_id)
-            return qs  # all branches
-        if user.branch_id:
-            return qs.filter(branch=user.branch)
-        return qs.none()
+                try:
+                    return qs.filter(branch_id=int(branch_id))
+                except (ValueError, TypeError):
+                    pass
+            return qs  # all branches for super admin
+        if user.role == User.ADMIN:
+            if user.branch_id:
+                return qs.filter(branch=user.branch)
+            return qs.none()
+        # Managers/Employees: only see themselves
+        return qs.filter(pk=user.pk)
 
 
 class LoginView(APIView):
@@ -81,7 +109,7 @@ class LogoutView(APIView):
         return Response({'detail': 'Logged out.'})
 
 
-class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
+class UserListCreateView(BranchScopedUserMixin, generics.ListCreateAPIView):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields   = ['email', 'first_name', 'last_name']
     ordering_fields = ['role', 'first_name', 'created_at']
@@ -96,7 +124,7 @@ class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsAdminOrAbove()]
-        return [permissions.IsAuthenticated()]
+        return [IsAdminOrAbove()]  # Only admins+ can list all users
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
@@ -104,7 +132,7 @@ class UserListCreateView(BranchScopedMixin, generics.ListCreateAPIView):
         return ctx
 
 
-class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
+class UserDetailView(BranchScopedUserMixin, generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         qs = User.objects.all()
         return self.get_branch_queryset(qs)
@@ -116,7 +144,7 @@ class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method == 'GET':
-            return [permissions.IsAuthenticated()]
+            return [IsAdminOrAbove()]
         return [IsAdminOrAbove()]
 
     def get_serializer_context(self):
@@ -130,26 +158,34 @@ class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+
+        # Cannot delete yourself
         if instance == request.user:
             return Response(
                 {'error': True, 'message': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # ADMIN cannot delete other admins or super admins
         if request.user.role == User.ADMIN and instance.role in (User.ADMIN, User.SUPER_ADMIN):
             return Response(
                 {'error': True, 'message': 'You do not have permission to delete this user.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        if request.user.role != User.SUPER_ADMIN and instance.branch != request.user.branch:
+
+        # ADMIN can only delete users in their own branch
+        if request.user.role == User.ADMIN and instance.branch != request.user.branch:
             return Response(
                 {'error': True, 'message': 'You can only manage users in your own branch.'},
                 status=status.HTTP_403_FORBIDDEN
             )
+
         logger.warning('User deleted: %s by %s', instance.email, request.user.email)
         return super().destroy(request, *args, **kwargs)
 
 
 class MeView(APIView):
+    """Current user profile — accessible to all authenticated users."""
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
@@ -192,6 +228,7 @@ class BranchListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         if getattr(user, 'role', None) == User.SUPER_ADMIN:
             return Branch.objects.all().order_by('name')
+        # ADMIN: only their own branch (for dropdowns etc.)
         if user.branch_id:
             return Branch.objects.filter(id=user.branch_id)
         return Branch.objects.none()
@@ -207,12 +244,7 @@ class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsSuperAdmin]
 
     def get_queryset(self):
-        user = self.request.user
-        if getattr(user, 'role', None) == User.SUPER_ADMIN:
-            return Branch.objects.all()
-        if user.branch_id:
-            return Branch.objects.filter(id=user.branch_id)
-        return Branch.objects.none()
+        return Branch.objects.all()
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
