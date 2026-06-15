@@ -1,12 +1,15 @@
 // src/pages/Tyres.jsx
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtGHS, fmtDate } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const STATUS_BADGE = { STORE: 'b-blue', FITTED: 'b-green', WORKSHOP: 'b-amber', CONDEMNED: 'b-red' };
 
 export default function TyresPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [tyres,   setTyres]   = useState([]);
   const [trucks,  setTrucks]  = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -17,11 +20,11 @@ export default function TyresPage() {
 
   const { register, handleSubmit, reset } = useForm({ defaultValues: { status: 'STORE' } });
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const load = () => {
-    api.get('/tyres/').then(r => setTyres(r.data.results || r.data)).catch(() => {});
-    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data)).catch(() => {});
+    api.get('/tyres/', { params: branchQS }).then(r => setTyres(r.data.results || r.data)).catch(() => {});
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
   };
 
   const startEdit = (t) => { setEditing(t.id); reset({ ...t }); setTab('form'); };
