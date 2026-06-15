@@ -1,5 +1,6 @@
 // src/pages/Reports.jsx – Professional Reports Center | Taurus ERP
 import { useState, useEffect } from 'react';
+import { useBranch } from '../App';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -25,6 +26,8 @@ const fmtCurrency = (v) => {
 };
 
 export default function ReportsPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
   const [dateFrom, setDateFrom] = useState(new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
   const [dateTo,   setDateTo]   = useState(todayStr);
@@ -36,7 +39,7 @@ export default function ReportsPage() {
   const [truckFilter, setTruckFilter] = useState('');
 
   useEffect(() => {
-    api.get('/trucks/?status=ACTIVE').then(r => {
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => {
       const data = r.data;
       setTrucks(Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []);
     }).catch(() => setTrucks([]));
