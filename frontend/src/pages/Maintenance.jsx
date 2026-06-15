@@ -1,8 +1,8 @@
 // src/pages/Maintenance.jsx – Professional Maintenance Management | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const TYPE_BADGE   = { PREVENTIVE: 'b-blue', CORRECTIVE: 'b-amber', BREAKDOWN: 'b-red' };
@@ -14,6 +14,7 @@ const STATUS_ICON  = { PENDING: '⏳', IN_PROGRESS: '🔄', DONE: '✅' };
 export default function MaintenancePage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [records,    setRecords]    = useState([]);
   const [trucks,     setTrucks]     = useState([]);
   const [mechanics,  setMechanics]  = useState([]);
@@ -191,7 +192,7 @@ export default function MaintenancePage() {
           { label: 'In Progress',   val: inProgress,         color: 'var(--primary)', sub: 'Currently active' },
           { label: 'Breakdowns',    val: breakdowns,         color: 'var(--red)',     sub: `${done} completed` },
           { label: 'Overdue',       val: overdue,            color: overdue > 0 ? 'var(--red)' : 'var(--green)', sub: 'Past service date' },
-          { label: 'This Month',    val: fmtGHS(monthCost),  color: 'var(--red)',     sub: `Total: ${fmtGHS(totalCost)}`, isAmount: true },
+          { label: 'This Month',    val: fmt(monthCost),  color: 'var(--red)',     sub: `Total: ${fmt(totalCost)}`, isAmount: true },
         ].map((k, i) => (
           <div key={i} className="kpi" style={{ color: k.color }}>
             <div className="kpi-label">{k.label}</div>
@@ -304,16 +305,16 @@ export default function MaintenancePage() {
                 <div className="sec-div" style={{ marginBottom: 14 }}>💰 Cost Breakdown</div>
                 <div className="fgrid">
                   <div className="fg">
-                    <label>Labour Cost (GH₵)</label>
+                    <label>Labour Cost ({symbol})</label>
                     <input type="number" step="0.01" min="0" placeholder="0.00" {...register('labour_cost')} />
                   </div>
                   <div className="fg">
-                    <label>Parts Cost (GH₵)</label>
+                    <label>Parts Cost ({symbol})</label>
                     <input type="number" step="0.01" min="0" placeholder="0.00" {...register('parts_cost')} />
                   </div>
                   <div className="fg">
                     <label>Total Cost</label>
-                    <div className="calc-box">{fmtGHS(watchTotal)}</div>
+                    <div className="calc-box">{fmt(watchTotal)}</div>
                   </div>
                 </div>
               </div>
@@ -424,7 +425,7 @@ export default function MaintenancePage() {
                           {r.odometer_at_service ? `${parseFloat(r.odometer_at_service).toLocaleString()} km` : '—'}
                         </td>
                         <td className="ced" style={{ textAlign: 'right', fontWeight: 700 }}>
-                          {r.total_cost ? fmtGHS(r.total_cost) : '—'}
+                          {r.total_cost ? fmt(r.total_cost) : '—'}
                         </td>
                         <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
                           {r.next_service_date ? (
@@ -472,7 +473,7 @@ export default function MaintenancePage() {
               }}>
                 <span style={{ color: 'var(--muted)' }}>
                   Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} &nbsp;|&nbsp;
-                  <strong style={{ color: 'var(--red)' }}>Total: {fmtGHS(filtered.reduce((s, r) => s + parseFloat(r.total_cost || 0), 0))}</strong>
+                  <strong style={{ color: 'var(--red)' }}>Total: {fmt(filtered.reduce((s, r) => s + parseFloat(r.total_cost || 0), 0))}</strong>
                 </span>
                 {totalPages > 1 && (
                   <div style={{ display: 'flex', gap: 4 }}>
