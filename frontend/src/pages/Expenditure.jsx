@@ -1,6 +1,7 @@
 // src/pages/Expenditure.jsx – Professional Expenditure Management | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -119,6 +120,8 @@ function AddCategoryModal({ onAdd, onClose }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ExpenditurePage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [items,     setItems]     = useState([]);
   const [trucks,    setTrucks]    = useState([]);
   const [saving,    setSaving]    = useState(false);
@@ -150,11 +153,11 @@ export default function ExpenditurePage() {
     try { localStorage.setItem('taurus_exp_categories', JSON.stringify(categories)); } catch {}
   }, [categories]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load, branchCtx?.activeBranchId]);
 
   const load = () => {
-    api.get('/finance/expenditure/').then(r => setItems(r.data.results || r.data)).catch(() => {});
-    api.get('/trucks/?status=ACTIVE').then(r => setTrucks(r.data.results || r.data)).catch(() => {});
+    api.get('/finance/expenditure/', { params: branchQS }).then(r => setItems(r.data.results || r.data)).catch(() => {});
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => setTrucks(r.data.results || r.data)).catch(() => {});
   };
 
   // Add a new custom category
