@@ -3,6 +3,7 @@
 // Phase 2: Edit trip → fill delivered qty + unloading time → auto-COMPLETED
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
+import { useBranch } from '../App';
 import api, { calcTrip, fmtGHS } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -243,6 +244,8 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function TripsPage() {
+  const branchCtx = useBranch();
+  const branchQS  = branchCtx?.branchQS || {};
   const [trucks,   setTrucks]   = useState([]);
   const [drivers,  setDrivers]  = useState([]);
   const [trips,    setTrips]    = useState([]);
@@ -257,12 +260,12 @@ export default function TripsPage() {
   const wTruck = watch('truck');
 
   const loadData = useCallback(() => {
-    api.get('/trucks/?status=ACTIVE').then(r  => setTrucks(r.data.results  || r.data));
-    api.get('/drivers/?status=ACTIVE').then(r => setDrivers(r.data.results || r.data));
-    api.get('/trips/').then(r => setTrips(r.data.results || r.data));
+    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r  => setTrucks(r.data.results  || r.data));
+    api.get('/drivers/?status=ACTIVE', { params: branchQS }).then(r => setDrivers(r.data.results || r.data));
+    api.get('/trips/', { params: branchQS }).then(r => setTrips(r.data.results || r.data));
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
 
   const onSubmit = async (data) => {
     setSaving(true);
