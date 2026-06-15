@@ -46,7 +46,7 @@ function BranchProvider({ user, children }) {
   // Load all branches once for SUPER_ADMIN (for the dropdown)
   useEffect(() => {
     if (!isSuperAdmin) return;
-    api.get('/auth/branches/')
+    api.get('/users/branches/')
       .then(r => setBranches(r.data?.results ?? r.data ?? []))
       .catch(() => {});
   }, [isSuperAdmin]);
