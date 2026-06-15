@@ -27,11 +27,13 @@ class IsManagerOrAdmin(permissions.BasePermission):
 
 
 class SupplierListCreateView(generics.ListCreateAPIView):
-    queryset         = Supplier.objects.all().order_by('name')
     serializer_class = SupplierSerializer
     filter_backends  = [filters.SearchFilter, filters.OrderingFilter]
     search_fields    = ['name', 'contact', 'email', 'tin']
     ordering_fields  = ['name', 'created_at']
+
+    def get_queryset(self):
+        return Supplier.objects.all().order_by('name')
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -50,10 +52,12 @@ class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class VendorListCreateView(generics.ListCreateAPIView):
-    queryset         = Vendor.objects.all().order_by('name')
     serializer_class = VendorSerializer
     filter_backends  = [filters.SearchFilter]
     search_fields    = ['name', 'contact', 'email']
+
+    def get_queryset(self):
+        return Vendor.objects.all().order_by('name')
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -97,6 +101,12 @@ class SystemAlertMarkReadView(APIView):
 
 
 class AuditLogListView(generics.ListAPIView):
+    """
+    Audit Log access rules:
+    - SUPER_ADMIN: sees audit logs for ALL branches (optionally filtered by ?branch_id=)
+    - ADMIN: sees audit logs for their own branch only
+    - Others: not permitted (IsAdminUser permission class blocks them)
+    """
     serializer_class   = AuditLogSerializer
     permission_classes = [IsAdminUser]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -108,11 +118,23 @@ class AuditLogListView(generics.ListAPIView):
     def get_queryset(self):
         qs       = AuditLog.objects.select_related('user').order_by('-created_at')
         req_user = self.request.user
-        # ALL roles (including Super Admin) see only their branch's audit logs
-        if req_user.branch_id:
-            qs = qs.filter(user__branch=req_user.branch)
+
+        if req_user.role == User.SUPER_ADMIN:
+            # SUPER_ADMIN sees all branches, with optional ?branch_id= filter
+            branch_id = self.request.query_params.get('branch_id')
+            if branch_id:
+                try:
+                    qs = qs.filter(user__branch_id=int(branch_id))
+                except (ValueError, TypeError):
+                    pass
+            # else: return all audit logs across all branches
         else:
-            qs = qs.none()
+            # ADMIN: strictly scoped to their own branch
+            if req_user.branch_id:
+                qs = qs.filter(user__branch=req_user.branch)
+            else:
+                qs = qs.none()
+
         user_id = self.request.query_params.get('user')
         if user_id:
             qs = qs.filter(user_id=user_id)
