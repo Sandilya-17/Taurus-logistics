@@ -38,18 +38,16 @@ class IsManagerOrAbove(permissions.BasePermission):
 
 class BranchScopedMixin:
     """
-    FIX: SUPER_ADMIN sees ALL branches (optionally filtered by ?branch_id=).
+    SUPER_ADMIN sees ALL branches (optionally filtered by ?branch_id=).
     All other roles see only their assigned branch.
     """
     def get_branch_queryset(self, qs):
         user = self.request.user
-        # SUPER_ADMIN: all branches, optionally narrowed by ?branch_id=
         if getattr(user, 'role', None) == User.SUPER_ADMIN:
             branch_id = self.request.query_params.get('branch_id')
             if branch_id:
                 return qs.filter(branch_id=branch_id)
             return qs  # all branches
-        # All other roles: strictly their own branch
         if user.branch_id:
             return qs.filter(branch=user.branch)
         return qs.none()
@@ -142,7 +140,6 @@ class UserDetailView(BranchScopedMixin, generics.RetrieveUpdateDestroyAPIView):
                 {'error': True, 'message': 'You do not have permission to delete this user.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        # SUPER_ADMIN can delete users across branches; ADMIN only within their branch
         if request.user.role != User.SUPER_ADMIN and instance.branch != request.user.branch:
             return Response(
                 {'error': True, 'message': 'You can only manage users in your own branch.'},
@@ -193,10 +190,8 @@ class BranchListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        # FIX: SUPER_ADMIN sees ALL branches so the frontend dropdown is populated
         if getattr(user, 'role', None) == User.SUPER_ADMIN:
             return Branch.objects.all().order_by('name')
-        # All other roles: only their own branch
         if user.branch_id:
             return Branch.objects.filter(id=user.branch_id)
         return Branch.objects.none()
@@ -213,10 +208,8 @@ class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        # FIX: SUPER_ADMIN can access any branch detail/edit/delete
         if getattr(user, 'role', None) == User.SUPER_ADMIN:
             return Branch.objects.all()
-        # Safety fallback (IsSuperAdmin permission class blocks non-super-admins anyway)
         if user.branch_id:
             return Branch.objects.filter(id=user.branch_id)
         return Branch.objects.none()
