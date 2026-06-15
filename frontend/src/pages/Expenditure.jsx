@@ -1,8 +1,8 @@
 // src/pages/Expenditure.jsx – Professional Expenditure Management | Taurus ERP
 import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { fmtGHS, fmtDate, todayGH } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const DEFAULT_CATEGORIES = ['FUEL', 'MAINTENANCE', 'TYRE', 'SPARE_PART', 'DRIVER_WAGE', 'TOLL', 'ADMIN', 'OTHER'];
@@ -122,6 +122,7 @@ function AddCategoryModal({ onAdd, onClose }) {
 export default function ExpenditurePage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [items,     setItems]     = useState([]);
   const [trucks,    setTrucks]    = useState([]);
   const [saving,    setSaving]    = useState(false);
@@ -303,8 +304,8 @@ export default function ExpenditurePage() {
       {/* KPI Cards */}
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', marginBottom: 10 }}>
         {[
-          { label: 'Total Expenditure', val: fmtGHS(total),        color: 'var(--red)',     sub: `${items.length} records` },
-          { label: 'This Month',        val: fmtGHS(thisMonthExp), color: 'var(--primary)', sub: momChange !== null ? `${momChange > 0 ? '▲' : '▼'} ${Math.abs(momChange)}% vs last month` : 'No prior data' },
+          { label: 'Total Expenditure', val: fmt(total),        color: 'var(--red)',     sub: `${items.length} records` },
+          { label: 'This Month',        val: fmt(thisMonthExp), color: 'var(--primary)', sub: momChange !== null ? `${momChange > 0 ? '▲' : '▼'} ${Math.abs(momChange)}% vs last month` : 'No prior data' },
         ].map((k, i) => (
           <div key={i} className="kpi" style={{ color: k.color }}>
             <div className="kpi-label">{k.label}</div>
@@ -332,7 +333,7 @@ export default function ExpenditurePage() {
           return (
             <div key={c.key} className="kpi" style={{ color }}>
               <div className="kpi-label">{c.icon} {label}</div>
-              <div className="kpi-val" style={{ fontSize: 15 }}>{fmtGHS(amt)}</div>
+              <div className="kpi-val" style={{ fontSize: 15 }}>{fmt(amt)}</div>
               <div className="kpi-sub">{pct}% of total</div>
             </div>
           );
@@ -396,7 +397,7 @@ export default function ExpenditurePage() {
                 </div>
 
                 <div className="fg">
-                  <label>Amount (GH₵) *</label>
+                  <label>Amount ({symbol}) *</label>
                   <input type="number" step="0.01" min="0" placeholder="0.00"
                     {...register('amount', { required: true })} />
                 </div>
@@ -430,7 +431,7 @@ export default function ExpenditurePage() {
                 }}>
                   <span style={{ fontSize: 14 }}>{getIcon(watchCategory)}</span>
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>{watchCategory.replace(/_/g, ' ')}:</span>
-                  <span style={{ fontWeight: 800, color: 'var(--red)', fontSize: 16 }}>{fmtGHS(watchAmount)}</span>
+                  <span style={{ fontWeight: 800, color: 'var(--red)', fontSize: 16 }}>{fmt(watchAmount)}</span>
                 </div>
               )}
 
@@ -459,7 +460,7 @@ export default function ExpenditurePage() {
                       <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>{key.replace(/_/g, ' ')}</span>
                     </span>
                     <span>
-                      <span style={{ color: getColor(key), fontWeight: 700 }}>{fmtGHS(val)}</span>
+                      <span style={{ color: getColor(key), fontWeight: 700 }}>{fmt(val)}</span>
                       <span style={{ color: 'var(--muted)', fontSize: 10.5, marginLeft: 5 }}>
                         ({total > 0 ? (val / total * 100).toFixed(1) : 0}%)
                       </span>
@@ -486,7 +487,7 @@ export default function ExpenditurePage() {
                 <div key={month} style={{ marginBottom: 10 }}>
                   <div className="flex justify-between" style={{ fontSize: 11.5, marginBottom: 4 }}>
                     <span style={{ color: 'var(--gray-700)', fontWeight: 600 }}>{formatMonth(month)}</span>
-                    <span style={{ color: 'var(--red)', fontWeight: 700 }}>{fmtGHS(val)}</span>
+                    <span style={{ color: 'var(--red)', fontWeight: 700 }}>{fmt(val)}</span>
                   </div>
                   <div className="prog-bar">
                     <div className="prog-fill" style={{ width: `${(val / maxMonth) * 100}%`, background: 'var(--red)' }} />
@@ -551,7 +552,7 @@ export default function ExpenditurePage() {
                     </td>
                     <td className="mono" style={{ fontSize: 11 }}>{i.reference || '—'}</td>
                     <td className="ced" style={{ color: 'var(--red)', fontWeight: 700, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      – {fmtGHS(i.amount)}
+                      – {fmt(i.amount)}
                     </td>
                     <td>
                       <div className="flex gap4">
@@ -584,7 +585,7 @@ export default function ExpenditurePage() {
               <span style={{ color: 'var(--muted)' }}>
                 Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
                 &nbsp;|&nbsp;
-                <strong style={{ color: 'var(--red)' }}>Total: {fmtGHS(filtered.reduce((s, i) => s + parseFloat(i.amount || 0), 0))}</strong>
+                <strong style={{ color: 'var(--red)' }}>Total: {fmt(filtered.reduce((s, i) => s + parseFloat(i.amount || 0), 0))}</strong>
               </span>
               {totalPages > 1 && (
                 <div style={{ display: 'flex', gap: 4 }}>
