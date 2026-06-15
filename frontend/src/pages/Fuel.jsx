@@ -1,13 +1,14 @@
 // src/pages/Fuel.jsx – Fuel log with live excess detection + excess cost
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { calcFuel, fmtGHS } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { calcFuel } from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function FuelPage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const [trucks,   setTrucks]   = useState([]);
   const [trips,    setTrips]    = useState([]);
   const [limits,   setLimits]   = useState({});
@@ -194,7 +195,7 @@ export default function FuelPage() {
                        style={{ borderColor: excess > 0 ? 'var(--red)' : undefined }} />
               </div>
               <div className="fg">
-                <label>Price per Litre (GH₵) *</label>
+                <label>Price per Litre ({symbol}) *</label>
                 <input type="number" step="0.01" min="0" placeholder="14.50"
                        {...register('price_per_litre', { required: true })} />
               </div>
@@ -213,11 +214,11 @@ export default function FuelPage() {
                 </div>
               </div>
               <div className="fg">
-                <label>Total Fuel Cost (GH₵) — Auto</label>
-                <div className="calc-box" style={{ fontSize: 14, fontWeight: 700 }}>{fmtGHS(computed.total_cost)}</div>
+                <label>Total Fuel Cost ({symbol}) — Auto</label>
+                <div className="calc-box" style={{ fontSize: 14, fontWeight: 700 }}>{fmt(computed.total_cost)}</div>
               </div>
               <div className="fg">
-                <label>Excess Fuel Cost (GH₵) — Auto</label>
+                <label>Excess Fuel Cost ({symbol}) — Auto</label>
                 <div className="calc-box" style={{
                   fontSize: 14,
                   fontWeight: 700,
@@ -225,14 +226,14 @@ export default function FuelPage() {
                   borderColor: computed.excess_cost > 0 ? '#fecdd3'    : undefined,
                   background:  computed.excess_cost > 0 ? '#fff1f2'    : undefined,
                 }}>
-                  {computed.excess_cost > 0 ? fmtGHS(computed.excess_cost) : 'GH₵ 0.00'}
+                  {computed.excess_cost > 0 ? fmt(computed.excess_cost) : `${symbol} 0.00`}
                 </div>
               </div>
             </div>
 
             {excess > 0 && (
               <div className="excess-warn mt8">
-                ⚠️ Fuel issued exceeds the truck limit by <strong>{excess.toFixed(2)} L</strong> costing an extra <strong>{fmtGHS(computed.excess_cost)}</strong>. Remark below is MANDATORY.
+                ⚠️ Fuel issued exceeds the truck limit by <strong>{excess.toFixed(2)} L</strong> costing an extra <strong>{fmt(computed.excess_cost)}</strong>. Remark below is MANDATORY.
               </div>
             )}
 
@@ -289,7 +290,7 @@ export default function FuelPage() {
                       <td>{fl.fuel_limit} L</td>
                       <td>{fl.litres} L</td>
                       <td><span className="badge b-red">+{fl.excess_fuel} L</span></td>
-                      <td className="ced" style={{ color: 'var(--red)', fontWeight: 600 }}>{fmtGHS(rowExcessCost(fl))}</td>
+                      <td className="ced" style={{ color: 'var(--red)', fontWeight: 600 }}>{fmt(rowExcessCost(fl))}</td>
                       <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{fl.remark}</td>
                       <td>
                         <div className="flex gap4">
@@ -327,9 +328,9 @@ export default function FuelPage() {
                         <td className="mono" style={{ fontSize: 11 }}>{fl.trip ? (fl.trip_waybill || fl.trip) : '—'}</td>
                         <td>{fl.litres} L</td>
                         <td>GH₵ {fl.price_per_litre}</td>
-                        <td className="ced" style={{ fontWeight: 600 }}>{fmtGHS(fl.total_cost)}</td>
+                        <td className="ced" style={{ fontWeight: 600 }}>{fmt(fl.total_cost)}</td>
                         <td className="ced" style={{ color: exCost > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                          {exCost > 0 ? fmtGHS(exCost) : '—'}
+                          {exCost > 0 ? fmt(exCost) : '—'}
                         </td>
                         <td>
                           {parseFloat(fl.excess_fuel) > 0
