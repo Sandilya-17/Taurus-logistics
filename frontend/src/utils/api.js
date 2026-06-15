@@ -7,7 +7,7 @@ const BASE = process.env.REACT_APP_API_URL || '/api';
 const api = axios.create({
   baseURL: BASE,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000, // 30-second timeout (enterprise: avoids hanging requests)
+  timeout: 30000,
 });
 
 // ── Request: attach access token ────────────────────────────
@@ -25,7 +25,6 @@ api.interceptors.response.use(
   async err => {
     const original = err.config;
 
-    // ── 401: Try refresh token ──────────────────────────────
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
       if (!refreshing) {
@@ -52,19 +51,16 @@ api.interceptors.response.use(
       }
     }
 
-    // ── 429: Rate limited ────────────────────────────────────
     if (err.response?.status === 429) {
       toast.error('⏱ Too many requests. Please slow down.');
       return Promise.reject(err);
     }
 
-    // ── 500+: Server errors ──────────────────────────────────
     if (err.response?.status >= 500) {
       toast.error('🔴 Server error. Please try again or contact support.');
       return Promise.reject(err);
     }
 
-    // ── Network / timeout errors ─────────────────────────────
     if (!err.response) {
       toast.error('🌐 Network error. Check your connection.');
     }
@@ -73,7 +69,27 @@ api.interceptors.response.use(
   }
 );
 
-// ── Currency formatter ───────────────────────────────────────
+// ── Currency config per branch ───────────────────────────────
+// Branch 2 uses Sierra Leone Leone (Le), all others use Ghana Cedis (GH₵)
+const BRANCH2_CURRENCY = { symbol: 'Le', locale: 'en-SL', code: 'SLL' };
+const DEFAULT_CURRENCY = { symbol: 'GH₵', locale: 'en-GH', code: 'GHS' };
+
+export const getCurrencyConfig = (branchId) => {
+  // branchId can be a number or string; branch 2 = Leone
+  if (branchId && String(branchId) === '2') return BRANCH2_CURRENCY;
+  return DEFAULT_CURRENCY;
+};
+
+// ── Currency formatter (branch-aware) ───────────────────────
+// Pass branchId to get the correct currency symbol
+export const fmtMoney = (val, branchId) => {
+  const n = parseFloat(val);
+  const cfg = getCurrencyConfig(branchId);
+  if (isNaN(n)) return `${cfg.symbol} 0.00`;
+  return `${cfg.symbol} ` + n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// ── Legacy GHS formatter (kept for backwards compat, use fmtMoney when possible) ──
 export const fmtGHS = (val) => {
   const n = parseFloat(val);
   if (isNaN(n)) return 'GH₵ 0.00';
