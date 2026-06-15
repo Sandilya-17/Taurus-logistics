@@ -1,5 +1,5 @@
 // src/pages/Issue.jsx – Multi-item issue with FIFO costing & truck/trip linkage
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api from '../utils/api';
@@ -58,15 +58,16 @@ export default function IssuePage() {
   const watchType  = watch('issue_type');
   const watchTruck = watch('truck_id');
 
-  const loadData = () => {
+  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
+
+  const loadData = useCallback(() => {
     api.get('/inventory/items/?page_size=500', { params: branchQS }).then(r  => setItems(r.data.results    || r.data));
     api.get('/inventory/locations/').then(r            => setLocations(r.data.results || r.data));
     api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r           => setTrucks(r.data.results   || r.data));
     api.get('/trips/?status=EN_ROUTE', { params: branchQS }).then(r          => setTrips(r.data.results    || r.data));
     api.get('/inventory/issues/?page_size=200', { params: branchQS }).then(r => setHistory(r.data.results  || r.data));
-  };
+  }, [branchCtx?.activeBranchId]);
 
-  useEffect(() => { loadData(); }, [loadData, branchCtx?.activeBranchId]);
 
   const truckTrips = watchTruck
     ? trips.filter(t => String(t.truck) === String(watchTruck))
