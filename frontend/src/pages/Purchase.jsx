@@ -1,14 +1,15 @@
 // src/pages/Purchase.jsx – Supplier typed manually; Edit/Delete for Admin only
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useBranch } from '../App';
-import api, { calcPurchase, fmtGHS } from '../utils/api';
+import { useBranch, useCurrency } from '../App';
+import api, { calcPurchase } from '../utils/api';
 import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
 export default function PurchasePage() {
   const branchCtx = useBranch();
   const branchQS  = branchCtx?.branchQS || {};
+  const { fmt, symbol } = useCurrency();
   const { user }  = useAuth();
   const isAdmin   = user?.role === 'ADMIN';
 
@@ -165,7 +166,7 @@ export default function PurchasePage() {
                            {...register('quantity', { required: true, min: 0.001 })} />
                   </div>
                   <div className="fg">
-                    <label>Unit Price (GH₵) *</label>
+                    <label>Unit Price ({symbol}) *</label>
                     <input type="number" step="0.01" min="0" placeholder="0.00"
                            {...register('unit_price', { required: true, min: 0 })} />
                   </div>
@@ -174,7 +175,7 @@ export default function PurchasePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                   <div className="fg">
                     <label>Base Amount (Qty × Price)</label>
-                    <div className="calc-box">{fmtGHS(computed.base_amount)}</div>
+                    <div className="calc-box">{fmt(computed.base_amount)}</div>
                   </div>
                   <div className="fg">
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -186,15 +187,15 @@ export default function PurchasePage() {
                       <span style={{ fontSize: 12 }}>%</span>
                     </label>
                     <div className="calc-box" style={{ color: watch('vat_applicable') ? 'var(--blue)' : 'var(--muted)' }}>
-                      {fmtGHS(computed.vat_amount)}
+                      {fmt(computed.vat_amount)}
                     </div>
                   </div>
                 </div>
 
                 <div className="vat-breakdown">
-                  <div className="vb-row"><span style={{ color: 'var(--muted)' }}>Base Amount</span><strong>{fmtGHS(computed.base_amount)}</strong></div>
-                  <div className="vb-row"><span style={{ color: 'var(--muted)' }}>VAT {watch('vat_applicable') ? `(${watch('vat_percentage')}%)` : '(N/A)'}</span><strong>{fmtGHS(computed.vat_amount)}</strong></div>
-                  <div className="vb-row total"><span>Total Payable</span><span style={{ fontSize: 16 }}>{fmtGHS(computed.final_amount)}</span></div>
+                  <div className="vb-row"><span style={{ color: 'var(--muted)' }}>Base Amount</span><strong>{fmt(computed.base_amount)}</strong></div>
+                  <div className="vb-row"><span style={{ color: 'var(--muted)' }}>VAT {watch('vat_applicable') ? `(${watch('vat_percentage')}%)` : '(N/A)'}</span><strong>{fmt(computed.vat_amount)}</strong></div>
+                  <div className="vb-row total"><span>Total Payable</span><span style={{ fontSize: 16 }}>{fmt(computed.final_amount)}</span></div>
                 </div>
               </>
             )}
@@ -230,7 +231,7 @@ export default function PurchasePage() {
               <thead>
                 <tr>
                   <th>Date</th><th>Supplier</th><th>Item</th><th>Qty</th>
-                  <th>Unit (GH₵)</th><th>VAT</th><th>Final (GH₵)</th>
+                  <th>Unit ({symbol})</th><th>VAT</th><th>Final ({symbol})</th>
                   {isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
