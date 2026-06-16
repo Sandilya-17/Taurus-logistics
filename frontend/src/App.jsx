@@ -608,31 +608,15 @@ function LoginPage() {
     <div style={{
       minHeight: '100vh',
       display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       fontFamily: "'Inter', -apple-system, sans-serif",
       background: '#F1F5F9',
     }}>
-      {/* ── LEFT PANEL — brand identity ── */}
+      {/* ── LEFT PANEL — brand identity (hidden) ── */}
       <div style={{
-        flex: '1 1 0',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '48px 56px',
-        background: '#0B1F4D',
-        minHeight: '100vh',
-        position: 'relative',
-        overflow: 'hidden',
+        display: 'none',
       }}>
-        {/* Subtle geometric background decoration */}
-        <svg
-          style={{ position: 'absolute', bottom: -60, right: -60, opacity: 0.06, pointerEvents: 'none' }}
-          width="480" height="480" viewBox="0 0 480 480" fill="none"
-        >
-          <polygon points="240,0 480,420 0,420" fill="white" />
-          <polygon points="240,60 420,400 60,400" fill="white" />
-          <polygon points="240,120 360,380 120,380" fill="white" />
-        </svg>
-
         {/* Logo */}
         <div>
           <TaurusLogo size="lg" />
@@ -683,16 +667,18 @@ function LoginPage() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL — login form ── */}
+      {/* ── CENTER CARD — login form ── */}
       <div style={{
-        flex: '0 0 420px',
+        width: '100%',
+        maxWidth: 420,
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'center',
         padding: '48px 48px',
         background: '#FFFFFF',
-        minHeight: '100vh',
+        borderRadius: 16,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
         boxSizing: 'border-box',
+        margin: '24px',
       }}>
         {/* Top logo (mobile / fallback visibility) */}
         <div style={{ marginBottom: 40 }}>
@@ -770,7 +756,7 @@ function LoginPage() {
           </div>
 
           {/* Password field */}
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ marginBottom: 24 }}>
             <label style={{
               display: 'block',
               fontSize: 13,
@@ -826,18 +812,6 @@ function LoginPage() {
             </div>
           </div>
 
-          {/* Forgot password */}
-          <div style={{ textAlign: 'right', marginBottom: 24 }}>
-            <span style={{
-              fontSize: 13,
-              color: '#1a6fb5',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}>
-              Forgot password?
-            </span>
-          </div>
-
           {/* Submit */}
           <button
             type="submit"
@@ -880,7 +854,7 @@ function LoginPage() {
           paddingTop: 32,
           textAlign: 'center',
           fontSize: 11.5,
-          color: '#CBD5E1',
+          color: '#94A3B8',
         }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
         </p>
