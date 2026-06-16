@@ -593,16 +593,16 @@ function LoginPage() {
     width: '100%',
     height: 48,
     padding: field === 'password' ? '0 52px 0 16px' : '0 16px',
-    border: `1.5px solid ${focusedField === field ? 'rgba(255,255,255,0.60)' : 'rgba(255,255,255,0.20)'}`,
+    border: `1.5px solid ${focusedField === field ? '#1a6fb5' : 'rgba(255,255,255,0.75)'}`,
     borderRadius: 8,
     fontSize: 14,
-    color: '#FFFFFF',
-    background: focusedField === field ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
+    color: '#0F172A',
+    background: focusedField === field ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.82)',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Inter', -apple-system, sans-serif",
     transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    boxShadow: focusedField === field ? '0 0 0 3px rgba(255,255,255,0.08)' : 'none',
+    boxShadow: focusedField === field ? '0 0 0 3px rgba(26,111,181,0.18)' : 'none',
   });
 
   return (
@@ -884,7 +884,7 @@ function LoginPage() {
           .taurus-login-left { display: none !important; }
           .taurus-login-right { flex: 1 1 100% !important; }
         }
-        input::placeholder { color: rgba(255,255,255,0.45) !important; }
+        input::placeholder { color: rgba(100,116,139,0.75) !important; }
       `}</style>
     </div>
   )
