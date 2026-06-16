@@ -448,6 +448,39 @@ function TaurusLogo({ width = 320 }) {
 }
 
 /* ── Login ───────────────────────────────────────────────────── */
+const QUICK_LOGINS = [
+  {
+    label: 'Super Admin',
+    sub: 'Full access · All branches',
+    email: 'superadmin@taurus.com',
+    password: 'superadmin1234',
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    border: '#DDD6FE',
+    initials: 'SA',
+  },
+  {
+    label: 'Admin 1',
+    sub: 'Branch 1 admin',
+    email: 'admin1@taurus.com',
+    password: 'admin1234',
+    color: '#0066FF',
+    bg: '#EFF6FF',
+    border: '#BFDBFE',
+    initials: 'A1',
+  },
+  {
+    label: 'Admin 2',
+    sub: 'Branch 2 admin',
+    email: 'admin2@taurus.com',
+    password: 'admin1234',
+    color: '#0F766E',
+    bg: '#F0FDFA',
+    border: '#99F6E4',
+    initials: 'A2',
+  },
+];
+
 function LoginPage() {
   const { login } = useAuth();
   const navigate  = useNavigate();
@@ -455,13 +488,13 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
+  const [quickLoading, setQuickLoading] = useState(null);
   const [error, setError]       = useState('');
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
+  const doLogin = async (loginEmail, loginPassword) => {
+    setError('');
     try {
-      const { data } = await api.post('/auth/login/', { email, password });
+      const { data } = await api.post('/auth/login/', { email: loginEmail, password: loginPassword });
       login(data.user, data.access, data.refresh);
       navigate('/');
     } catch (err) {
@@ -473,28 +506,41 @@ function LoginPage() {
         || (Array.isArray(d) ? d[0] : null)
         || 'Invalid email or password.';
       setError(typeof msg === 'string' ? msg : 'Invalid email or password.');
-    } finally { setLoading(false); }
+    }
+  };
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    await doLogin(email, password);
+    setLoading(false);
+  };
+
+  const onQuickLogin = async (q) => {
+    setQuickLoading(q.email);
+    await doLogin(q.email, q.password);
+    setQuickLoading(null);
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex',
-      background: '#F1F5F9',
-    }}>
+    <div style={{ minHeight:'100vh', display:'flex', background:'#F1F5F9' }}>
+
       {/* ── Left Panel ── */}
       <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
-        padding: '48px 40px',
-        position: 'relative', overflow: 'hidden',
+        flex:1, display:'flex', flexDirection:'column',
+        alignItems:'center', justifyContent:'center',
+        background:'linear-gradient(160deg, #0B1120 0%, #0F2456 60%, #1a3a7a 100%)',
+        padding:'48px 40px', position:'relative', overflow:'hidden',
       }}>
-        <div style={{ position:'absolute', width:400, height:400, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.06)', top:-100, left:-100 }} />
-        <div style={{ position:'absolute', width:600, height:600, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.04)', bottom:-200, right:-200 }} />
-        <div style={{ position:'absolute', width:200, height:200, borderRadius:'50%', background:'rgba(249,115,22,0.08)', top:'30%', right:-60 }} />
+        {/* decorative rings */}
+        <div style={{ position:'absolute', width:500, height:500, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.05)', top:-150, left:-150 }} />
+        <div style={{ position:'absolute', width:700, height:700, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.03)', bottom:-250, right:-250 }} />
+        <div style={{ position:'absolute', width:240, height:240, borderRadius:'50%', background:'rgba(249,115,22,0.07)', top:'28%', right:-80 }} />
+        <div style={{ position:'absolute', width:120, height:120, borderRadius:'50%', background:'rgba(99,102,241,0.10)', bottom:'20%', left:40 }} />
 
-        <div style={{ position:'relative', zIndex:1, textAlign:'center', maxWidth:480 }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="360" height="auto" style={{ marginBottom: 40 }}>
+        <div style={{ position:'relative', zIndex:1, textAlign:'center', maxWidth:460 }}>
+          {/* Logo */}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="340" height="auto" style={{ marginBottom:36 }}>
             <defs>
               <linearGradient id="tlPrimaryW" x1="0%" y1="100%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#93C5FD" />
@@ -511,119 +557,198 @@ function LoginPage() {
               <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccentW)" />
               <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccentW)" />
             </g>
-            <text x="125" y="68"
-              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-              fontSize="52" fontWeight="900" fill="#FFFFFF" letterSpacing="1">
-              TAURUS
-            </text>
-            <text x="127" y="94"
-              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-              fontSize="14" fontWeight="700" fill="#F97316" letterSpacing="5">
-              TRADING &amp; LOGISTICS
-            </text>
+            <text x="125" y="68" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontSize="52" fontWeight="900" fill="#FFFFFF" letterSpacing="1">TAURUS</text>
+            <text x="127" y="94" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontSize="14" fontWeight="700" fill="#F97316" letterSpacing="5">TRADING &amp; LOGISTICS</text>
           </svg>
 
-          <div style={{ color:'rgba(255,255,255,0.9)', fontSize:18, fontWeight:700, marginBottom:12, letterSpacing:'-0.02em' }}>
+          <div style={{ color:'rgba(255,255,255,0.92)', fontSize:20, fontWeight:700, marginBottom:10, letterSpacing:'-0.02em' }}>
             Enterprise Resource Planning
           </div>
-          <div style={{ color:'rgba(255,255,255,0.5)', fontSize:13.5, lineHeight:1.7, maxWidth:340, margin:'0 auto' }}>
-            Manage your fleet, trips, fuel, inventory and financials — all in one place.
+          <div style={{ color:'rgba(255,255,255,0.45)', fontSize:13.5, lineHeight:1.75, maxWidth:320, margin:'0 auto 36px' }}>
+            Fleet, fuel, inventory and financials — unified in one platform.
           </div>
 
-          <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginTop:36 }}>
-            {['🚛 Fleet Management','⛽ Fuel Control','📦 Inventory','💰 Financials','📊 Reports'].map(f => (
-              <div key={f} style={{
-                background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.12)',
-                borderRadius:20, padding:'6px 14px', fontSize:12, color:'rgba(255,255,255,0.7)',
-                fontWeight:500,
-              }}>{f}</div>
+          {/* Feature pills */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
+            {[['🚛','Fleet'],['⛽','Fuel'],['📦','Inventory'],['💰','Finance'],['📊','Reports']].map(([ic, label]) => (
+              <div key={label} style={{
+                display:'flex', alignItems:'center', gap:5,
+                background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.11)',
+                borderRadius:20, padding:'5px 13px', fontSize:12, color:'rgba(255,255,255,0.65)', fontWeight:500,
+              }}>
+                <span style={{ fontSize:13 }}>{ic}</span>{label}
+              </div>
+            ))}
+          </div>
+
+          {/* Stats strip */}
+          <div style={{ display:'flex', gap:0, marginTop:44, borderRadius:12, overflow:'hidden', border:'1px solid rgba(255,255,255,0.09)' }}>
+            {[['99.9%','Uptime'],['2','Branches'],['15+','Modules']].map(([val, lbl], i) => (
+              <div key={lbl} style={{
+                flex:1, padding:'14px 0', textAlign:'center',
+                borderRight: i < 2 ? '1px solid rgba(255,255,255,0.09)' : 'none',
+                background:'rgba(255,255,255,0.04)',
+              }}>
+                <div style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>{val}</div>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', marginTop:2, fontWeight:500 }}>{lbl}</div>
+              </div>
             ))}
           </div>
         </div>
 
-        <div style={{ position:'absolute', bottom:24, color:'rgba(255,255,255,0.25)', fontSize:12 }}>
+        <div style={{ position:'absolute', bottom:24, color:'rgba(255,255,255,0.2)', fontSize:11.5, letterSpacing:'0.02em' }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics
         </div>
       </div>
 
-      {/* ── Right Panel (Form) ── */}
+      {/* ── Right Panel ── */}
       <div style={{
-        width: '100%', maxWidth: 480,
-        display:'flex', flexDirection:'column',
+        width:'100%', maxWidth:500, display:'flex', flexDirection:'column',
         alignItems:'center', justifyContent:'center',
-        padding:'48px 40px',
-        background:'#FFFFFF',
-        boxShadow: '-4px 0 40px rgba(0,0,0,0.08)',
+        padding:'48px 44px', background:'#FFFFFF',
+        boxShadow:'-4px 0 48px rgba(0,0,0,0.07)',
+        overflowY:'auto',
       }}>
-        <div style={{ width:'100%', maxWidth:360 }}>
-          <div style={{ marginBottom:36 }}>
-            <TaurusLogo width={260} />
+        <div style={{ width:'100%', maxWidth:380 }}>
+
+          {/* Logo on right panel (mobile friendly) */}
+          <div style={{ marginBottom:32 }}>
+            <TaurusLogo width={240} />
           </div>
 
-          <div style={{ fontSize:24, fontWeight:800, color:'#0F172A', letterSpacing:'-0.02em', marginBottom:6 }}>
+          <div style={{ fontSize:26, fontWeight:800, color:'#0B1120', letterSpacing:'-0.03em', marginBottom:4 }}>
             Welcome back
           </div>
-          <div style={{ fontSize:13.5, color:'#64748B', marginBottom:32 }}>
+          <div style={{ fontSize:13.5, color:'#64748B', marginBottom:28, lineHeight:1.5 }}>
             Sign in to your ERP account to continue
           </div>
 
+          {/* ── Quick Login Section ── */}
+          <div style={{
+            background:'#F8FAFF', border:'1px solid #E8EEFF',
+            borderRadius:12, padding:'14px 16px', marginBottom:24,
+          }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>
+              Quick Access
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {QUICK_LOGINS.map((q) => {
+                const isActive = quickLoading === q.email;
+                return (
+                  <button
+                    key={q.email}
+                    onClick={() => onQuickLogin(q)}
+                    disabled={!!quickLoading || loading}
+                    style={{
+                      display:'flex', alignItems:'center', gap:12,
+                      padding:'10px 14px', borderRadius:9,
+                      border:`1.5px solid ${isActive ? q.color : q.border}`,
+                      background: isActive ? q.color : q.bg,
+                      cursor: (quickLoading || loading) ? 'not-allowed' : 'pointer',
+                      transition:'all 0.18s ease', textAlign:'left', width:'100%',
+                      opacity: (quickLoading && !isActive) ? 0.5 : 1,
+                    }}
+                    onMouseEnter={e => { if (!quickLoading && !loading) { e.currentTarget.style.borderColor = q.color; e.currentTarget.style.background = isActive ? q.color : q.bg; e.currentTarget.style.transform = 'translateX(2px)'; }}}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = isActive ? q.color : q.border; e.currentTarget.style.transform = 'none'; }}
+                  >
+                    {/* Avatar */}
+                    <div style={{
+                      width:34, height:34, borderRadius:8, flexShrink:0,
+                      background: isActive ? 'rgba(255,255,255,0.25)' : q.color,
+                      display:'grid', placeItems:'center',
+                      fontSize:12, fontWeight:800, color:'#fff', letterSpacing:'0.02em',
+                    }}>
+                      {isActive ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                      ) : q.initials}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{
+                        fontSize:13.5, fontWeight:700,
+                        color: isActive ? '#fff' : '#0B1120', lineHeight:1.2,
+                      }}>
+                        {isActive ? 'Signing in…' : q.label}
+                      </div>
+                      <div style={{
+                        fontSize:11.5, marginTop:2,
+                        color: isActive ? 'rgba(255,255,255,0.75)' : '#64748B',
+                      }}>
+                        {q.email}
+                      </div>
+                    </div>
+                    {/* Arrow */}
+                    {!isActive && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={q.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:22 }}>
+            <div style={{ flex:1, height:1, background:'#E8EDF4' }} />
+            <span style={{ fontSize:11.5, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap' }}>or sign in manually</span>
+            <div style={{ flex:1, height:1, background:'#E8EDF4' }} />
+          </div>
+
+          {/* Error */}
           {error && (
             <div style={{
               background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8,
-              padding:'10px 14px', marginBottom:20, fontSize:13,
-              color:'#DC2626', fontWeight:500,
+              padding:'10px 14px', marginBottom:18, fontSize:13, color:'#DC2626', fontWeight:500,
+              display:'flex', alignItems:'flex-start', gap:8,
             }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" style={{ flexShrink:0, marginTop:1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               {error}
             </div>
           )}
 
-          <form onSubmit={onSubmit} autoComplete="on" style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          {/* Manual form */}
+          <form onSubmit={onSubmit} autoComplete="on" style={{ display:'flex', flexDirection:'column', gap:14 }}>
             <div>
-              <label style={{ display:'block', fontSize:13, fontWeight:600, color:'#374151', marginBottom:6 }}>
+              <label style={{ display:'block', fontSize:12.5, fontWeight:600, color:'#374151', marginBottom:6 }}>
                 Email address
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required autoFocus autoComplete="email"
-                placeholder="you@company.com"
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                required autoComplete="email" placeholder="you@company.com"
                 style={{
-                  width:'100%', height:44, padding:'0 14px',
+                  width:'100%', height:42, padding:'0 13px',
                   border:'1.5px solid #E2E8F0', borderRadius:8,
-                  fontSize:14, color:'#0F172A', background:'#F8FAFC',
-                  outline:'none', boxSizing:'border-box',
-                  transition:'border-color 0.2s',
+                  fontSize:13.5, color:'#0B1120', background:'#F8FAFC',
+                  outline:'none', boxSizing:'border-box', transition:'border-color 0.18s, box-shadow 0.18s',
                 }}
-                onFocus={e => e.target.style.borderColor='#1E3A8A'}
-                onBlur={e => e.target.style.borderColor='#E2E8F0'}
+                onFocus={e => { e.target.style.borderColor='#1E3A8A'; e.target.style.boxShadow='0 0 0 3px rgba(30,58,138,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor='#E2E8F0'; e.target.style.boxShadow='none'; }}
               />
             </div>
             <div>
-              <label style={{ display:'block', fontSize:13, fontWeight:600, color:'#374151', marginBottom:6 }}>
+              <label style={{ display:'block', fontSize:12.5, fontWeight:600, color:'#374151', marginBottom:6 }}>
                 Password
               </label>
               <div style={{ position:'relative' }}>
                 <input
-                  type={showPw ? 'text' : 'password'}
-                  value={password}
+                  type={showPw ? 'text' : 'password'} value={password}
                   onChange={e => setPassword(e.target.value)}
-                  required autoComplete="current-password"
-                  placeholder="••••••••"
+                  required autoComplete="current-password" placeholder="••••••••"
                   style={{
-                    width:'100%', height:44, padding:'0 50px 0 14px',
+                    width:'100%', height:42, padding:'0 48px 0 13px',
                     border:'1.5px solid #E2E8F0', borderRadius:8,
-                    fontSize:14, color:'#0F172A', background:'#F8FAFC',
-                    outline:'none', boxSizing:'border-box',
-                    transition:'border-color 0.2s',
+                    fontSize:13.5, color:'#0B1120', background:'#F8FAFC',
+                    outline:'none', boxSizing:'border-box', transition:'border-color 0.18s, box-shadow 0.18s',
                   }}
-                  onFocus={e => e.target.style.borderColor='#1E3A8A'}
-                  onBlur={e => e.target.style.borderColor='#E2E8F0'}
+                  onFocus={e => { e.target.style.borderColor='#1E3A8A'; e.target.style.boxShadow='0 0 0 3px rgba(30,58,138,0.1)'; }}
+                  onBlur={e => { e.target.style.borderColor='#E2E8F0'; e.target.style.boxShadow='none'; }}
                 />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{
-                  position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+                  position:'absolute', right:11, top:'50%', transform:'translateY(-50%)',
                   background:'none', border:'none', cursor:'pointer',
-                  fontSize:12, fontWeight:700, color:'#1E3A8A', padding:'2px 4px',
+                  fontSize:11.5, fontWeight:700, color:'#1E3A8A', padding:'2px 4px',
                 }}>
                   {showPw ? 'Hide' : 'Show'}
                 </button>
@@ -632,20 +757,22 @@ function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !!quickLoading}
               style={{
-                height:46, borderRadius:8, border:'none', cursor:'pointer',
-                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
-                color:'#fff', fontSize:15, fontWeight:700, letterSpacing:'0.01em',
-                marginTop:4, transition:'opacity 0.2s',
-                boxShadow: loading ? 'none' : '0 4px 14px rgba(30,58,138,0.35)',
+                height:44, borderRadius:8, border:'none', cursor: (loading || quickLoading) ? 'not-allowed' : 'pointer',
+                background: (loading || quickLoading) ? '#94A3B8' : 'linear-gradient(135deg, #0B1120 0%, #1E3A8A 100%)',
+                color:'#fff', fontSize:14.5, fontWeight:700, letterSpacing:'0.01em',
+                marginTop:2, transition:'opacity 0.18s, transform 0.1s',
+                boxShadow: (loading || quickLoading) ? 'none' : '0 4px 16px rgba(30,58,138,0.3)',
               }}
+              onMouseEnter={e => { if (!loading && !quickLoading) e.currentTarget.style.transform='translateY(-1px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='none'; }}
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 
-          <div style={{ textAlign:'center', marginTop:28, fontSize:12, color:'#94A3B8' }}>
+          <div style={{ textAlign:'center', marginTop:28, fontSize:11.5, color:'#94A3B8', lineHeight:1.6 }}>
             © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
           </div>
         </div>
