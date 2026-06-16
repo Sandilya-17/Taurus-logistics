@@ -1199,26 +1199,7 @@ select option { color: var(--text); background: var(--bg-card); }
 }
 
 /* ── Quick Access Cards (Login) ────────────────────────────── */
-.qa-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  cursor: pointer;
-  transition: background var(--t), border-color var(--t), box-shadow var(--t), transform var(--t);
-  text-align: left;
-  width: 100%;
-  font-family: inherit;
-}
-.qa-card:hover {
-  background: #F8FAFF;
-  border-color: #BFDBFE;
-  box-shadow: 0 0 0 3px rgba(37,99,235,.08);
-  transform: translateX(2px);
-}
+
 .qa-avatar {
   width: 36px; height: 36px;
   border-radius: 9px;
