@@ -448,39 +448,6 @@ function TaurusLogo({ width = 320 }) {
 }
 
 /* ── Login ───────────────────────────────────────────────────── */
-const QUICK_LOGINS = [
-  {
-    label: 'Super Admin',
-    sub: 'Full access · All branches',
-    email: 'superadmin@taurus.com',
-    password: 'superadmin1234',
-    color: '#7C3AED',
-    bg: '#F5F3FF',
-    border: '#DDD6FE',
-    initials: 'SA',
-  },
-  {
-    label: 'Admin 1',
-    sub: 'Branch 1 admin',
-    email: 'admin1@taurus.com',
-    password: 'admin1234',
-    color: '#0066FF',
-    bg: '#EFF6FF',
-    border: '#BFDBFE',
-    initials: 'A1',
-  },
-  {
-    label: 'Admin 2',
-    sub: 'Branch 2 admin',
-    email: 'admin2@taurus.com',
-    password: 'admin1234',
-    color: '#0F766E',
-    bg: '#F0FDFA',
-    border: '#99F6E4',
-    initials: 'A2',
-  },
-];
-
 function LoginPage() {
   const { login } = useAuth();
   const navigate  = useNavigate();
@@ -488,7 +455,6 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
-  const [quickLoading, setQuickLoading] = useState(null);
   const [error, setError]       = useState('');
 
   const doLogin = async (loginEmail, loginPassword) => {
@@ -516,184 +482,84 @@ function LoginPage() {
     setLoading(false);
   };
 
-  const onQuickLogin = async (q) => {
-    setQuickLoading(q.email);
-    await doLogin(q.email, q.password);
-    setQuickLoading(null);
-  };
-
   return (
     <div style={{ minHeight:'100vh', display:'flex', background:'#F1F5F9' }}>
 
-      {/* ── Left Panel ── */}
+      {/* ── Left Panel — Hero Image ── */}
       <div style={{
-        flex:1, display:'flex', flexDirection:'column',
-        alignItems:'center', justifyContent:'center',
-        background:'linear-gradient(160deg, #0B1120 0%, #0F2456 60%, #1a3a7a 100%)',
-        padding:'48px 40px', position:'relative', overflow:'hidden',
+        flex:1, position:'relative', overflow:'hidden',
+        display:'flex', flexDirection:'column',
+        alignItems:'center', justifyContent:'flex-end',
+        minHeight:'100vh',
       }}>
-        {/* decorative rings */}
-        <div style={{ position:'absolute', width:500, height:500, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.05)', top:-150, left:-150 }} />
-        <div style={{ position:'absolute', width:700, height:700, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.03)', bottom:-250, right:-250 }} />
-        <div style={{ position:'absolute', width:240, height:240, borderRadius:'50%', background:'rgba(249,115,22,0.07)', top:'28%', right:-80 }} />
-        <div style={{ position:'absolute', width:120, height:120, borderRadius:'50%', background:'rgba(99,102,241,0.10)', bottom:'20%', left:40 }} />
+        {/* Full-cover background image */}
+        <img
+          src="/login-hero.png"
+          alt="Taurus Logistics ERP"
+          style={{
+            position:'absolute', inset:0, width:'100%', height:'100%',
+            objectFit:'cover', objectPosition:'center',
+          }}
+        />
 
-        <div style={{ position:'relative', zIndex:1, textAlign:'center', maxWidth:460 }}>
-          {/* Logo */}
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="340" height="auto" style={{ marginBottom:36 }}>
-            <defs>
-              <linearGradient id="tlPrimaryW" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#93C5FD" />
-                <stop offset="100%" stopColor="#BFDBFE" />
-              </linearGradient>
-              <linearGradient id="tlAccentW" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#F97316" />
-                <stop offset="100%" stopColor="#EA580C" />
-              </linearGradient>
-            </defs>
-            <g transform="translate(15, 12)">
-              <path d="M15 20 L50 45 L15 70 L30 45 Z" fill="url(#tlPrimaryW)" opacity="0.4" />
-              <path d="M35 20 L80 45 L35 70 L50 45 Z" fill="url(#tlPrimaryW)" />
-              <path d="M60 30 L85 45 L60 60 L72 45 Z" fill="url(#tlAccentW)" />
-              <rect x="15" y="78" width="65" height="4" rx="2" fill="url(#tlAccentW)" />
-            </g>
-            <text x="125" y="68" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontSize="52" fontWeight="900" fill="#FFFFFF" letterSpacing="1">TAURUS</text>
-            <text x="127" y="94" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontSize="14" fontWeight="700" fill="#F97316" letterSpacing="5">TRADING &amp; LOGISTICS</text>
-          </svg>
+        {/* Dark gradient overlay — bottom to top — for text legibility */}
+        <div style={{
+          position:'absolute', inset:0,
+          background:'linear-gradient(to top, rgba(5,14,38,0.85) 0%, rgba(5,14,38,0.25) 55%, rgba(5,14,38,0.05) 100%)',
+        }} />
 
-          <div style={{ color:'rgba(255,255,255,0.92)', fontSize:20, fontWeight:700, marginBottom:10, letterSpacing:'-0.02em' }}>
+        {/* Bottom content over image */}
+        <div style={{ position:'relative', zIndex:1, padding:'0 48px 48px', width:'100%', maxWidth:640 }}>
+          <div style={{ color:'rgba(255,255,255,0.95)', fontSize:22, fontWeight:700, marginBottom:8, letterSpacing:'-0.02em' }}>
             Enterprise Resource Planning
           </div>
-          <div style={{ color:'rgba(255,255,255,0.45)', fontSize:13.5, lineHeight:1.75, maxWidth:320, margin:'0 auto 36px' }}>
+          <div style={{ color:'rgba(255,255,255,0.55)', fontSize:13.5, lineHeight:1.75, maxWidth:380, marginBottom:28 }}>
             Fleet, fuel, inventory and financials — unified in one platform.
           </div>
 
           {/* Feature pills */}
-          <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
             {[['🚛','Fleet'],['⛽','Fuel'],['📦','Inventory'],['💰','Finance'],['📊','Reports']].map(([ic, label]) => (
               <div key={label} style={{
                 display:'flex', alignItems:'center', gap:5,
-                background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.11)',
-                borderRadius:20, padding:'5px 13px', fontSize:12, color:'rgba(255,255,255,0.65)', fontWeight:500,
+                background:'rgba(255,255,255,0.10)',
+                backdropFilter:'blur(8px)',
+                border:'1px solid rgba(255,255,255,0.18)',
+                borderRadius:20, padding:'5px 13px',
+                fontSize:12, color:'rgba(255,255,255,0.80)', fontWeight:500,
               }}>
                 <span style={{ fontSize:13 }}>{ic}</span>{label}
               </div>
             ))}
           </div>
-
-          {/* Stats strip */}
-          <div style={{ display:'flex', gap:0, marginTop:44, borderRadius:12, overflow:'hidden', border:'1px solid rgba(255,255,255,0.09)' }}>
-            {[['99.9%','Uptime'],['2','Branches'],['15+','Modules']].map(([val, lbl], i) => (
-              <div key={lbl} style={{
-                flex:1, padding:'14px 0', textAlign:'center',
-                borderRight: i < 2 ? '1px solid rgba(255,255,255,0.09)' : 'none',
-                background:'rgba(255,255,255,0.04)',
-              }}>
-                <div style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>{val}</div>
-                <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', marginTop:2, fontWeight:500 }}>{lbl}</div>
-              </div>
-            ))}
-          </div>
         </div>
 
-        <div style={{ position:'absolute', bottom:24, color:'rgba(255,255,255,0.2)', fontSize:11.5, letterSpacing:'0.02em' }}>
+        {/* Bottom-left copyright */}
+        <div style={{ position:'absolute', bottom:20, left:28, color:'rgba(255,255,255,0.22)', fontSize:11, letterSpacing:'0.02em', zIndex:1 }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics
         </div>
       </div>
 
-      {/* ── Right Panel ── */}
+      {/* ── Right Panel — Login Form ── */}
       <div style={{
-        width:'100%', maxWidth:500, display:'flex', flexDirection:'column',
+        width:'100%', maxWidth:480, display:'flex', flexDirection:'column',
         alignItems:'center', justifyContent:'center',
         padding:'48px 44px', background:'#FFFFFF',
         boxShadow:'-4px 0 48px rgba(0,0,0,0.07)',
         overflowY:'auto',
       }}>
-        <div style={{ width:'100%', maxWidth:380 }}>
+        <div style={{ width:'100%', maxWidth:360 }}>
 
-          {/* Logo on right panel (mobile friendly) */}
-          <div style={{ marginBottom:32 }}>
-            <TaurusLogo width={240} />
+          {/* Logo */}
+          <div style={{ marginBottom:36 }}>
+            <TaurusLogo width={230} />
           </div>
 
           <div style={{ fontSize:26, fontWeight:800, color:'#0B1120', letterSpacing:'-0.03em', marginBottom:4 }}>
             Welcome back
           </div>
-          <div style={{ fontSize:13.5, color:'#64748B', marginBottom:28, lineHeight:1.5 }}>
+          <div style={{ fontSize:13.5, color:'#64748B', marginBottom:32, lineHeight:1.5 }}>
             Sign in to your ERP account to continue
-          </div>
-
-          {/* ── Quick Login Section ── */}
-          <div style={{
-            background:'#F8FAFF', border:'1px solid #E8EEFF',
-            borderRadius:12, padding:'14px 16px', marginBottom:24,
-          }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>
-              Quick Access
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {QUICK_LOGINS.map((q) => {
-                const isActive = quickLoading === q.email;
-                return (
-                  <button
-                    key={q.email}
-                    onClick={() => onQuickLogin(q)}
-                    disabled={!!quickLoading || loading}
-                    style={{
-                      display:'flex', alignItems:'center', gap:12,
-                      padding:'10px 14px', borderRadius:9,
-                      border:`1.5px solid ${isActive ? q.color : q.border}`,
-                      background: isActive ? q.color : q.bg,
-                      cursor: (quickLoading || loading) ? 'not-allowed' : 'pointer',
-                      transition:'all 0.18s ease', textAlign:'left', width:'100%',
-                      opacity: (quickLoading && !isActive) ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => { if (!quickLoading && !loading) { e.currentTarget.style.borderColor = q.color; e.currentTarget.style.background = isActive ? q.color : q.bg; e.currentTarget.style.transform = 'translateX(2px)'; }}}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = isActive ? q.color : q.border; e.currentTarget.style.transform = 'none'; }}
-                  >
-                    {/* Avatar */}
-                    <div style={{
-                      width:34, height:34, borderRadius:8, flexShrink:0,
-                      background: isActive ? 'rgba(255,255,255,0.25)' : q.color,
-                      display:'grid', placeItems:'center',
-                      fontSize:12, fontWeight:800, color:'#fff', letterSpacing:'0.02em',
-                    }}>
-                      {isActive ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                      ) : q.initials}
-                    </div>
-                    {/* Info */}
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{
-                        fontSize:13.5, fontWeight:700,
-                        color: isActive ? '#fff' : '#0B1120', lineHeight:1.2,
-                      }}>
-                        {isActive ? 'Signing in…' : q.label}
-                      </div>
-                      <div style={{
-                        fontSize:11.5, marginTop:2,
-                        color: isActive ? 'rgba(255,255,255,0.75)' : '#64748B',
-                      }}>
-                        {q.email}
-                      </div>
-                    </div>
-                    {/* Arrow */}
-                    {!isActive && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={q.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M12 5l7 7-7 7"/>
-                      </svg>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:22 }}>
-            <div style={{ flex:1, height:1, background:'#E8EDF4' }} />
-            <span style={{ fontSize:11.5, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap' }}>or sign in manually</span>
-            <div style={{ flex:1, height:1, background:'#E8EDF4' }} />
           </div>
 
           {/* Error */}
@@ -708,8 +574,8 @@ function LoginPage() {
             </div>
           )}
 
-          {/* Manual form */}
-          <form onSubmit={onSubmit} autoComplete="on" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {/* Login form */}
+          <form onSubmit={onSubmit} autoComplete="on" style={{ display:'flex', flexDirection:'column', gap:16 }}>
             <div>
               <label style={{ display:'block', fontSize:12.5, fontWeight:600, color:'#374151', marginBottom:6 }}>
                 Email address
@@ -718,8 +584,8 @@ function LoginPage() {
                 type="email" value={email} onChange={e => setEmail(e.target.value)}
                 required autoComplete="email" placeholder="you@company.com"
                 style={{
-                  width:'100%', height:42, padding:'0 13px',
-                  border:'1.5px solid #E2E8F0', borderRadius:8,
+                  width:'100%', height:44, padding:'0 14px',
+                  border:'1.5px solid #E2E8F0', borderRadius:9,
                   fontSize:13.5, color:'#0B1120', background:'#F8FAFC',
                   outline:'none', boxSizing:'border-box', transition:'border-color 0.18s, box-shadow 0.18s',
                 }}
@@ -737,8 +603,8 @@ function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   required autoComplete="current-password" placeholder="••••••••"
                   style={{
-                    width:'100%', height:42, padding:'0 48px 0 13px',
-                    border:'1.5px solid #E2E8F0', borderRadius:8,
+                    width:'100%', height:44, padding:'0 52px 0 14px',
+                    border:'1.5px solid #E2E8F0', borderRadius:9,
                     fontSize:13.5, color:'#0B1120', background:'#F8FAFC',
                     outline:'none', boxSizing:'border-box', transition:'border-color 0.18s, box-shadow 0.18s',
                   }}
@@ -746,7 +612,7 @@ function LoginPage() {
                   onBlur={e => { e.target.style.borderColor='#E2E8F0'; e.target.style.boxShadow='none'; }}
                 />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{
-                  position:'absolute', right:11, top:'50%', transform:'translateY(-50%)',
+                  position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
                   background:'none', border:'none', cursor:'pointer',
                   fontSize:11.5, fontWeight:700, color:'#1E3A8A', padding:'2px 4px',
                 }}>
@@ -757,22 +623,23 @@ function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !!quickLoading}
+              disabled={loading}
               style={{
-                height:44, borderRadius:8, border:'none', cursor: (loading || quickLoading) ? 'not-allowed' : 'pointer',
-                background: (loading || quickLoading) ? '#94A3B8' : 'linear-gradient(135deg, #0B1120 0%, #1E3A8A 100%)',
+                height:46, borderRadius:9, border:'none',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0B1120 0%, #1E3A8A 100%)',
                 color:'#fff', fontSize:14.5, fontWeight:700, letterSpacing:'0.01em',
-                marginTop:2, transition:'opacity 0.18s, transform 0.1s',
-                boxShadow: (loading || quickLoading) ? 'none' : '0 4px 16px rgba(30,58,138,0.3)',
+                marginTop:4, transition:'opacity 0.18s, transform 0.1s',
+                boxShadow: loading ? 'none' : '0 4px 20px rgba(30,58,138,0.35)',
               }}
-              onMouseEnter={e => { if (!loading && !quickLoading) e.currentTarget.style.transform='translateY(-1px)'; }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.transform='translateY(-1px)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform='none'; }}
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 
-          <div style={{ textAlign:'center', marginTop:28, fontSize:11.5, color:'#94A3B8', lineHeight:1.6 }}>
+          <div style={{ textAlign:'center', marginTop:36, fontSize:11.5, color:'#94A3B8', lineHeight:1.6 }}>
             © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
           </div>
         </div>
