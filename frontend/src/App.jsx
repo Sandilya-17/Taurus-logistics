@@ -593,16 +593,16 @@ function LoginPage() {
     width: '100%',
     height: 48,
     padding: field === 'password' ? '0 52px 0 16px' : '0 16px',
-    border: `1.5px solid ${focusedField === field ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.30)'}`,
+    border: `1.5px solid ${focusedField === field ? 'rgba(255,255,255,0.60)' : 'rgba(255,255,255,0.20)'}`,
     borderRadius: 8,
     fontSize: 14,
     color: '#FFFFFF',
-    background: focusedField === field ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
+    background: focusedField === field ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Inter', -apple-system, sans-serif",
     transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    boxShadow: focusedField === field ? '0 0 0 3px rgba(255,255,255,0.15)' : 'none',
+    boxShadow: focusedField === field ? '0 0 0 3px rgba(255,255,255,0.08)' : 'none',
   });
 
   return (
@@ -622,7 +622,7 @@ function LoginPage() {
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: 'rgba(10, 20, 50, 0.25)',
+        background: 'rgba(10, 20, 50, 0.10)',
         zIndex: 0,
       }} />
       {/* ── LEFT PANEL — brand identity (hidden) ── */}
@@ -686,12 +686,12 @@ function LoginPage() {
         display: 'flex',
         flexDirection: 'column',
         padding: '48px 48px',
-        background: 'rgba(255, 255, 255, 0.12)',
-        backdropFilter: 'blur(24px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        background: 'rgba(255, 255, 255, 0.05)',
+        backdropFilter: 'blur(12px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(140%)',
         borderRadius: 20,
-        border: '1px solid rgba(255, 255, 255, 0.30)',
-        boxShadow: '0 8px 48px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.25)',
+        border: '1px solid rgba(255, 255, 255, 0.15)',
+        boxShadow: '0 8px 48px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12)',
         boxSizing: 'border-box',
         margin: '24px',
         position: 'relative',
