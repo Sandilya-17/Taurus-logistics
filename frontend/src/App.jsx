@@ -3,6 +3,7 @@ import { useState, createContext, useContext, useEffect, useCallback, useRef, Co
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link, NavLink } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './styles/main.css';
+import loginBg from './bg.png';
 import api, { fmtMoney, getCurrencyConfig } from './utils/api';
 
 // Pages
@@ -611,8 +612,19 @@ function LoginPage() {
       alignItems: 'center',
       justifyContent: 'center',
       fontFamily: "'Inter', -apple-system, sans-serif",
-      background: '#F1F5F9',
+      position: 'relative',
+      backgroundImage: `url(${loginBg})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
     }}>
+      {/* Dark overlay to reduce image brightness */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(10, 20, 50, 0.55)',
+        zIndex: 0,
+      }} />
       {/* ── LEFT PANEL — brand identity (hidden) ── */}
       <div style={{
         display: 'none',
@@ -676,9 +688,11 @@ function LoginPage() {
         padding: '48px 48px',
         background: '#FFFFFF',
         borderRadius: 16,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.30)',
         boxSizing: 'border-box',
         margin: '24px',
+        position: 'relative',
+        zIndex: 1,
       }}>
         {/* Top logo (mobile / fallback visibility) */}
         <div style={{ marginBottom: 40 }}>
