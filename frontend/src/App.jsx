@@ -593,16 +593,16 @@ function LoginPage() {
     width: '100%',
     height: 48,
     padding: field === 'password' ? '0 52px 0 16px' : '0 16px',
-    border: `1.5px solid ${focusedField === field ? '#5FA8E8' : 'rgba(255,255,255,0.30)'}`,
+    border: `1.5px solid ${focusedField === field ? '#1a6fb5' : '#E2E8F0'}`,
     borderRadius: 8,
     fontSize: 14,
-    color: '#FFFFFF',
-    background: focusedField === field ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)',
+    color: '#0F172A',
+    background: focusedField === field ? '#F8FAFF' : '#FAFBFC',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Inter', -apple-system, sans-serif",
     transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    boxShadow: focusedField === field ? '0 0 0 3px rgba(95,168,232,0.25)' : 'none',
+    boxShadow: focusedField === field ? '0 0 0 3px rgba(26,111,181,0.10)' : 'none',
   });
 
   return (
@@ -622,7 +622,7 @@ function LoginPage() {
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: 'rgba(10, 20, 50, 0.55)',
+        background: 'rgba(10, 20, 50, 0.25)',
         zIndex: 0,
       }} />
       {/* ── LEFT PANEL — brand identity (hidden) ── */}
@@ -686,7 +686,7 @@ function LoginPage() {
         display: 'flex',
         flexDirection: 'column',
         padding: '48px 48px',
-        background: 'rgba(255, 255, 255, 0.12)',
+        background: 'rgba(255, 255, 255, 0.85)',
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
         borderRadius: 16,
@@ -708,7 +708,7 @@ function LoginPage() {
             margin: 0,
             fontSize: 24,
             fontWeight: 700,
-            color: '#FFFFFF',
+            color: '#0F172A',
             letterSpacing: '-0.01em',
           }}>
             Sign in
@@ -716,7 +716,7 @@ function LoginPage() {
           <p style={{
             margin: '6px 0 0',
             fontSize: 14,
-            color: 'rgba(255,255,255,0.75)',
+            color: '#64748B',
           }}>
             Enter your credentials to access the dashboard.
           </p>
@@ -754,7 +754,7 @@ function LoginPage() {
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
-              color: 'rgba(255,255,255,0.85)',
+              color: '#374151',
               marginBottom: 6,
             }}>
               Email address
@@ -778,7 +778,7 @@ function LoginPage() {
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
-              color: 'rgba(255,255,255,0.85)',
+              color: '#374151',
               marginBottom: 6,
             }}>
               Password
@@ -806,7 +806,7 @@ function LoginPage() {
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  color: 'rgba(255,255,255,0.6)',
+                  color: '#94A3B8',
                   padding: 4,
                   display: 'flex',
                   alignItems: 'center',
@@ -871,7 +871,7 @@ function LoginPage() {
           paddingTop: 32,
           textAlign: 'center',
           fontSize: 11.5,
-          color: 'rgba(255,255,255,0.45)',
+          color: '#94A3B8',
         }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
         </p>
