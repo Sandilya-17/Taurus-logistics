@@ -538,13 +538,6 @@ function TaurusLogo({ width = 280 }) {
   );
 }
 
-/* ── Login Quick-Access accounts ─────────────────────────────── */
-const QUICK_ACCOUNTS = [
-  { initials: 'SA', name: 'Super Admin', email: 'superssmin@taurus.com', password: 'admin', color: 'linear-gradient(135deg,#0B1F4D,#2563EB)' },
-  { initials: 'A1', name: 'Admin 1',     email: 'admin1@taurus.com',     password: 'admin', color: 'linear-gradient(135deg,#1D4ED8,#60A5FA)' },
-  { initials: 'A2', name: 'Admin 2',     email: 'admin2@taurus.com',     password: 'admin', color: 'linear-gradient(135deg,#059669,#34D399)' },
-];
-
 /* ── Login Page ──────────────────────────────────────────────── */
 function LoginPage() {
   const { login } = useAuth();
@@ -554,8 +547,6 @@ function LoginPage() {
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
-  const [showManual, setShowManual] = useState(false);
-
   const doLogin = async (loginEmail, loginPassword) => {
     setError('');
     try {
@@ -572,12 +563,6 @@ function LoginPage() {
         || 'Invalid email or password.';
       setError(typeof msg === 'string' ? msg : 'Invalid email or password.');
     }
-  };
-
-  const onQuickAccess = async (acc) => {
-    setLoading(true);
-    await doLogin(acc.email, acc.password);
-    setLoading(false);
   };
 
   const onSubmit = async (e) => {
@@ -1007,57 +992,8 @@ function LoginPage() {
             </div>
           )}
 
-          {/* Quick access */}
-          <div style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.10em', textTransform: 'uppercase', marginBottom: 10 }}>
-              Quick Access
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {QUICK_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  className="qa-card"
-                  onClick={() => onQuickAccess(acc)}
-                  disabled={loading}
-                >
-                  <div className="qa-avatar" style={{ background: acc.color }}>
-                    {acc.initials}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="qa-name">{acc.name}</div>
-                    <div className="qa-email">{acc.email}</div>
-                  </div>
-                  <div className="qa-arrow">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M9 18l6-6-6-6"/>
-                    </svg>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Manual sign-in toggle */}
-          <button
-            onClick={() => setShowManual(s => !s)}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-              width: '100%', padding: '10px 0',
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 12.5, color: '#64748B', fontWeight: 500, fontFamily: 'inherit',
-              margin: '12px 0 4px',
-            }}
-          >
-            <span>or sign in manually</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-              style={{ transform: showManual ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>
-              <path d="M6 9l6 6 6-6"/>
-            </svg>
-          </button>
-
-          {/* Manual form */}
-          {showManual && (
-            <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          {/* Sign-in form */}
+          <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
                   Email address
@@ -1123,7 +1059,6 @@ function LoginPage() {
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
             </form>
-          )}
         </div>
       </div>
     </div>
