@@ -573,496 +573,176 @@ function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: '#F8FAFC', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* ── Left Panel ── */}
+      {/* ── Left Panel — Full bleed background image ── */}
       <div style={{
         flex: 1,
         position: 'relative',
         overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
         minHeight: '100vh',
-        background: '#060D1F',
+        backgroundImage: `url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=85&w=2000&auto=format&fit=crop')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
       }}>
-        {/* Inline SVG Hero Illustration */}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 900 700"
-          preserveAspectRatio="xMidYMid slice"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-        >
-          <defs>
-            {/* Background gradient */}
-            <radialGradient id="bgGrad" cx="50%" cy="40%" r="65%">
-              <stop offset="0%" stopColor="#0D2359" />
-              <stop offset="100%" stopColor="#040A16" />
-            </radialGradient>
-            {/* Globe glow */}
-            <radialGradient id="globeGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#1E40AF" stopOpacity="0.6" />
-              <stop offset="60%" stopColor="#1E3A8A" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#0B1F4D" stopOpacity="0" />
-            </radialGradient>
-            {/* Orange glow */}
-            <radialGradient id="orangeGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#F97316" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
-            </radialGradient>
-            {/* Grid line gradient */}
-            <linearGradient id="gridFade" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
-            </linearGradient>
-            {/* Truck body gradient */}
-            <linearGradient id="truckBody" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1E3A8A" />
-              <stop offset="100%" stopColor="#0B1F4D" />
-            </linearGradient>
-            {/* Road gradient */}
-            <linearGradient id="road" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#0F1E3D" stopOpacity="0" />
-              <stop offset="20%" stopColor="#0F1E3D" />
-              <stop offset="80%" stopColor="#0F1E3D" />
-              <stop offset="100%" stopColor="#0F1E3D" stopOpacity="0" />
-            </linearGradient>
-            {/* Arrow trail gradient */}
-            <linearGradient id="trailGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#F97316" stopOpacity="0" />
-              <stop offset="100%" stopColor="#F97316" stopOpacity="0.9" />
-            </linearGradient>
-            <linearGradient id="trailGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#2563EB" stopOpacity="0" />
-              <stop offset="100%" stopColor="#2563EB" stopOpacity="0.7" />
-            </linearGradient>
-            {/* Card gradient */}
-            <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0D1F4A" />
-              <stop offset="100%" stopColor="#071030" />
-            </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-            <filter id="softglow">
-              <feGaussianBlur stdDeviation="8" result="blur" />
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          </defs>
+        {/* Dark overlay for depth */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(135deg, rgba(4,10,22,0.72) 0%, rgba(4,10,22,0.45) 60%, rgba(4,10,22,0.65) 100%)',
+        }} />
 
-          {/* Background */}
-          <rect width="900" height="700" fill="url(#bgGrad)" />
-
-          {/* Grid lines — perspective floor */}
-          {[0,1,2,3,4,5,6,7,8].map(i => (
-            <line key={`vg${i}`} x1={100 + i*90} y1="340" x2={450} y2="520" stroke="#2563EB" strokeOpacity="0.07" strokeWidth="1" />
-          ))}
-          {[0,1,2,3,4].map(i => (
-            <line key={`hg${i}`} x1="100" y1={360 + i*40} x2="800" y2={360 + i*40} stroke="#2563EB" strokeOpacity="0.05" strokeWidth="1" />
-          ))}
-
-          {/* Globe — large ambient circle */}
-          <circle cx="430" cy="270" r="195" fill="url(#globeGlow)" />
-          <circle cx="430" cy="270" r="175" fill="none" stroke="#1E40AF" strokeOpacity="0.18" strokeWidth="1.5" />
-          <circle cx="430" cy="270" r="175" fill="none" stroke="#2563EB" strokeOpacity="0.08" strokeWidth="40" />
-
-          {/* Globe latitude lines */}
-          {[-3,-2,-1,0,1,2,3].map(i => {
-            const y = 270 + i * 48;
-            const halfW = Math.sqrt(Math.max(0, 175*175 - (y-270)*(y-270)));
-            return halfW > 5 ? (
-              <ellipse key={`lat${i}`} cx="430" cy={y} rx={halfW} ry={halfW * 0.32}
-                fill="none" stroke="#3B82F6" strokeOpacity="0.12" strokeWidth="1" />
-            ) : null;
-          })}
-          {/* Globe longitude lines */}
-          {[0,1,2,3].map(i => (
-            <ellipse key={`lon${i}`} cx="430" cy="270" rx={175 * Math.cos(i * Math.PI/4)} ry="175"
-              fill="none" stroke="#3B82F6" strokeOpacity="0.10" strokeWidth="1" />
-          ))}
-
-          {/* Globe continent dots — stylised */}
-          {[
-            [370,210],[390,200],[420,205],[450,215],[470,210],[490,200],[380,230],[400,225],
-            [320,260],[340,255],[355,250],[310,275],[330,270],[300,290],[340,285],
-            [460,235],[480,240],[500,235],[510,250],[490,260],[470,255],
-            [380,290],[400,295],[420,285],[440,290],[460,280],
-            [350,310],[370,315],[390,310],[410,320],[430,310],
-          ].map(([x,y],i) => (
-            <circle key={`dot${i}`} cx={x} cy={y} r="2.5" fill="#60A5FA" opacity="0.35" />
-          ))}
-
-          {/* Route lines on globe */}
-          <path d="M340 250 Q430 190 510 245" fill="none" stroke="#F97316" strokeWidth="1.5" strokeOpacity="0.6" strokeDasharray="4 3" />
-          <path d="M310 280 Q430 320 520 265" fill="none" stroke="#2563EB" strokeWidth="1.5" strokeOpacity="0.5" strokeDasharray="4 3" />
-          <path d="M360 220 Q450 270 490 310" fill="none" stroke="#10B981" strokeWidth="1.2" strokeOpacity="0.45" strokeDasharray="3 4" />
-
-          {/* Glowing nodes on globe */}
-          {[[340,250,'#F97316'],[510,245,'#F97316'],[310,280,'#2563EB'],[520,265,'#2563EB'],[430,240,'#10B981']].map(([x,y,c],i) => (
-            <g key={`node${i}`}>
-              <circle cx={x} cy={y} r="6" fill={c} opacity="0.18" />
-              <circle cx={x} cy={y} r="3" fill={c} opacity="0.7" />
-              <circle cx={x} cy={y} r="1.5" fill="#fff" opacity="0.9" />
-            </g>
-          ))}
-
-          {/* Satellite */}
-          <g transform="translate(600, 110) rotate(-15)">
-            <rect x="-18" y="-5" width="36" height="10" rx="3" fill="#1E3A8A" stroke="#3B82F6" strokeWidth="1" opacity="0.9" />
-            <rect x="-38" y="-3" width="18" height="6" rx="1.5" fill="#2563EB" opacity="0.7" />
-            <rect x="20" y="-3" width="18" height="6" rx="1.5" fill="#2563EB" opacity="0.7" />
-            <circle cx="0" cy="0" r="3" fill="#60A5FA" />
-            {/* Signal arcs */}
-            <path d="M-8 8 Q0 14 8 8" fill="none" stroke="#F97316" strokeWidth="1" strokeOpacity="0.6" />
-            <path d="M-13 13 Q0 22 13 13" fill="none" stroke="#F97316" strokeWidth="0.8" strokeOpacity="0.35" />
-          </g>
-          {/* Satellite signal line */}
-          <line x1="600" y1="118" x2="480" y2="230" stroke="#F97316" strokeWidth="1" strokeOpacity="0.25" strokeDasharray="3 4" />
-
-          {/* ── Road ── */}
-          <rect x="0" y="480" width="900" height="60" fill="url(#road)" rx="0" />
-          {/* Road markings */}
-          {[1,2,3,4,5,6,7,8].map(i => (
-            <rect key={`rm${i}`} x={i * 110 - 30} y="507" width="60" height="5" rx="2.5" fill="#1E3A8A" opacity="0.5" />
-          ))}
-          {/* Road edge lines */}
-          <line x1="0" y1="482" x2="900" y2="482" stroke="#2563EB" strokeOpacity="0.2" strokeWidth="1.5" />
-          <line x1="0" y1="538" x2="900" y2="538" stroke="#2563EB" strokeOpacity="0.15" strokeWidth="1" />
-
-          {/* ── Main Truck ── */}
-          <g transform="translate(160, 400)">
-            {/* Trailer */}
-            <rect x="-140" y="0" width="200" height="68" rx="4" fill="url(#truckBody)" stroke="#2563EB" strokeWidth="1.5" opacity="0.95" />
-            {/* Trailer panel lines */}
-            <line x1="-140" y1="0" x2="-140" y2="68" stroke="#2563EB" strokeOpacity="0.3" strokeWidth="1" />
-            {[-100,-60,-20,20,60].map(x => (
-              <line key={x} x1={x} y1="2" x2={x} y2="66" stroke="#1E40AF" strokeOpacity="0.4" strokeWidth="0.8" />
-            ))}
-            {/* TAURUS text on trailer */}
-            <text x="-45" y="40" fontFamily="Inter,sans-serif" fontSize="14" fontWeight="800"
-              fill="#fff" opacity="0.9" letterSpacing="3" textAnchor="middle">TAURUS</text>
-            {/* Orange arrow chevrons */}
-            <path d="M30 20 L55 34 L30 48" fill="none" stroke="#F97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-            <path d="M40 20 L65 34 L40 48" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
-
-            {/* Cab */}
-            <rect x="60" y="-12" width="90" height="80" rx="5" fill="#0D2359" stroke="#2563EB" strokeWidth="1.5" />
-            {/* Windshield */}
-            <rect x="68" y="-6" width="55" height="36" rx="3" fill="#1E3A8A" opacity="0.9" />
-            <line x1="95" y1="-6" x2="95" y2="30" stroke="#2563EB" strokeOpacity="0.5" strokeWidth="1" />
-            {/* Headlight */}
-            <rect x="144" y="20" width="8" height="16" rx="2" fill="#F97316" opacity="0.9" filter="url(#glow)" />
-            {/* Headlight beam */}
-            <path d="M152 24 L185 18 M152 30 L185 34" stroke="#F97316" strokeOpacity="0.25" strokeWidth="1.5" />
-            {/* Exhaust pipe */}
-            <rect x="118" y="-22" width="6" height="16" rx="3" fill="#0D2359" stroke="#2563EB" strokeWidth="1" />
-            {/* Smoke puffs */}
-            <circle cx="121" cy="-28" r="5" fill="#1E3A8A" opacity="0.25" />
-            <circle cx="118" cy="-36" r="4" fill="#1E3A8A" opacity="0.15" />
-
-            {/* Wheels */}
-            {[-110, -60, 70, 108].map((x,i) => (
-              <g key={i}>
-                <circle cx={x} cy="72" r="18" fill="#060D1F" stroke="#2563EB" strokeWidth="2" />
-                <circle cx={x} cy="72" r="10" fill="#0D1E40" stroke="#3B82F6" strokeWidth="1.5" />
-                <circle cx={x} cy="72" r="4" fill="#2563EB" />
-                {[0,60,120,180,240,300].map(a => (
-                  <line key={a}
-                    x1={x + 5*Math.cos(a*Math.PI/180)} y1={72 + 5*Math.sin(a*Math.PI/180)}
-                    x2={x + 9*Math.cos(a*Math.PI/180)} y2={72 + 9*Math.sin(a*Math.PI/180)}
-                    stroke="#3B82F6" strokeWidth="1.5" />
-                ))}
-              </g>
-            ))}
-
-            {/* Motion trail */}
-            <rect x="-220" y="20" width="80" height="3" rx="1.5" fill="url(#trailGrad2)" />
-            <rect x="-200" y="28" width="60" height="2" rx="1" fill="url(#trailGrad2)" opacity="0.5" />
-            <rect x="-210" y="40" width="70" height="2" rx="1" fill="url(#trailGrad2)" opacity="0.3" />
-          </g>
-
-          {/* ── Second smaller truck (background) ── */}
-          <g transform="translate(680, 432) scale(0.65)" opacity="0.5">
-            <rect x="-100" y="0" width="150" height="55" rx="3" fill="#0D1A3A" stroke="#1E3A8A" strokeWidth="1.5" />
-            <text x="-25" y="33" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill="#fff" opacity="0.6" textAnchor="middle">TAURUS</text>
-            <rect x="50" y="-10" width="70" height="65" rx="4" fill="#071030" stroke="#1E3A8A" strokeWidth="1.5" />
-            <rect x="56" y="-5" width="42" height="28" rx="2" fill="#132048" opacity="0.9" />
-            <rect x="114" y="18" width="7" height="12" rx="2" fill="#F97316" opacity="0.7" />
-            {[-70,-30,55,82].map((x,i) => (
-              <g key={i}>
-                <circle cx={x} cy="58" r="14" fill="#040A16" stroke="#1E3A8A" strokeWidth="1.5" />
-                <circle cx={x} cy="58" r="7" fill="#071030" stroke="#2563EB" strokeWidth="1" />
-                <circle cx={x} cy="58" r="3" fill="#2563EB" />
-              </g>
-            ))}
-          </g>
-
-          {/* ── Warehouse / Storage building (right) ── */}
-          <g transform="translate(700, 310)" opacity="0.6">
-            <rect x="0" y="0" width="130" height="140" rx="3" fill="#07112A" stroke="#1E3A8A" strokeWidth="1.5" />
-            {/* Roof accent */}
-            <path d="M-10 0 L65 -25 L140 0" fill="#0D1E40" stroke="#2563EB" strokeWidth="1.5" />
-            {/* Door */}
-            <rect x="45" y="80" width="40" height="60" rx="2" fill="#0D1A3A" stroke="#1E3A8A" strokeWidth="1" />
-            <line x1="65" y1="80" x2="65" y2="140" stroke="#1E3A8A" strokeWidth="0.8" />
-            {/* Windows */}
-            {[0,1,2].map(i => (
-              <rect key={i} x={10 + i*40} y="20" width="25" height="20" rx="2" fill="#1E3A8A" opacity="0.5" stroke="#2563EB" strokeWidth="0.8" />
-            ))}
-            {[0,1,2].map(i => (
-              <rect key={i} x={10 + i*40} y="50" width="25" height="20" rx="2" fill="#1E3A8A" opacity="0.3" stroke="#2563EB" strokeWidth="0.8" />
-            ))}
-            {/* Loading dock light */}
-            <circle cx="115" cy="100" r="4" fill="#F97316" opacity="0.7" />
-          </g>
-
-          {/* ── Shipping containers (right side) ── */}
-          {[[750,430,'#0A1E45'],[768,418,'#0C1F3D'],[752,408,'#071535']].map(([x,y,c],i) => (
-            <g key={i} opacity={0.5 + i*0.1}>
-              <rect x={x} y={y} width="70" height="40" rx="2" fill={c} stroke="#1E3A8A" strokeWidth="1.2" />
-              {[1,2,3].map(j => <line key={j} x1={x + j*17} y1={y} x2={x + j*17} y2={y+40} stroke="#1E3A8A" strokeOpacity="0.5" strokeWidth="0.8" />)}
-            </g>
-          ))}
-
-          {/* ── Floating Data Cards ── */}
-          {/* Card 1 — Fleet Status */}
-          <g transform="translate(48, 130)">
-            <rect x="0" y="0" width="155" height="72" rx="10" fill="url(#cardGrad)" stroke="#1E40AF" strokeWidth="1.2" opacity="0.92" />
-            <rect x="0" y="0" width="155" height="3" rx="10" fill="#2563EB" opacity="0.6" />
-            <text x="12" y="20" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="700" fill="#60A5FA" opacity="0.8" letterSpacing="1.5">FLEET STATUS</text>
-            <text x="12" y="42" fontFamily="Inter,sans-serif" fontSize="22" fontWeight="800" fill="#fff">24</text>
-            <text x="46" y="42" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="500" fill="#60A5FA" opacity="0.6"> active trucks</text>
-            <circle cx="136" cy="18" r="6" fill="#10B981" opacity="0.85" />
-            <circle cx="136" cy="18" r="3" fill="#fff" opacity="0.9" />
-            {/* Mini bar chart */}
-            {[28,42,35,50,44,38,52].map((h,i) => (
-              <rect key={i} x={12 + i*16} y={68-h*0.35} width="10" height={h*0.35} rx="2" fill="#2563EB" opacity={0.3+i*0.08} />
-            ))}
-          </g>
-
-          {/* Card 2 — Revenue */}
-          <g transform="translate(48, 220)">
-            <rect x="0" y="0" width="155" height="72" rx="10" fill="url(#cardGrad)" stroke="#1E40AF" strokeWidth="1.2" opacity="0.88" />
-            <rect x="0" y="0" width="155" height="3" rx="10" fill="#10B981" opacity="0.7" />
-            <text x="12" y="20" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="700" fill="#34D399" opacity="0.8" letterSpacing="1.5">MONTHLY REVENUE</text>
-            <text x="12" y="44" fontFamily="Inter,sans-serif" fontSize="18" fontWeight="800" fill="#fff">GH₵ 284K</text>
-            <text x="12" y="60" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="500" fill="#34D399" opacity="0.7">↑ 12.4% vs last month</text>
-            <path d="M90 62 Q105 48 120 52 Q135 56 150 38" fill="none" stroke="#10B981" strokeWidth="1.5" opacity="0.6" />
-          </g>
-
-          {/* Card 3 — Fuel (top right) */}
-          <g transform="translate(680, 140)">
-            <rect x="0" y="0" width="160" height="72" rx="10" fill="url(#cardGrad)" stroke="#1E40AF" strokeWidth="1.2" opacity="0.88" />
-            <rect x="0" y="0" width="160" height="3" rx="10" fill="#F97316" opacity="0.7" />
-            <text x="12" y="20" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="700" fill="#FB923C" opacity="0.8" letterSpacing="1.5">FUEL CONSUMPTION</text>
-            <text x="12" y="44" fontFamily="Inter,sans-serif" fontSize="18" fontWeight="800" fill="#fff">8,420 L</text>
-            <text x="12" y="60" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="500" fill="#FB923C" opacity="0.7">↓ 3.1% vs last month</text>
-            {/* Fuel gauge arc */}
-            <path d="M110 58 A22 22 0 0 1 152 58" fill="none" stroke="#1E3A8A" strokeWidth="5" />
-            <path d="M110 58 A22 22 0 0 1 140 38" fill="none" stroke="#F97316" strokeWidth="5" strokeLinecap="round" />
-          </g>
-
-          {/* Card 4 — Trips */}
-          <g transform="translate(680, 225)">
-            <rect x="0" y="0" width="160" height="65" rx="10" fill="url(#cardGrad)" stroke="#1E40AF" strokeWidth="1.2" opacity="0.85" />
-            <rect x="0" y="0" width="160" height="3" rx="10" fill="#8B5CF6" opacity="0.7" />
-            <text x="12" y="20" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="700" fill="#A78BFA" opacity="0.8" letterSpacing="1.5">ACTIVE TRIPS</text>
-            <text x="12" y="44" fontFamily="Inter,sans-serif" fontSize="22" fontWeight="800" fill="#fff">17</text>
-            <text x="50" y="44" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="500" fill="#A78BFA" opacity="0.6"> in progress</text>
-            <circle cx="140" cy="32" r="14" fill="#8B5CF6" opacity="0.15" />
-            <text x="140" y="37" fontFamily="Inter,sans-serif" fontSize="14" fontWeight="800" fill="#A78BFA" textAnchor="middle">→</text>
-          </g>
-
-          {/* ── Connecting lines between cards and globe ── */}
-          <line x1="203" y1="166" x2="280" y2="240" stroke="#2563EB" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="4 4" />
-          <line x1="203" y1="256" x2="280" y2="290" stroke="#10B981" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="4 4" />
-          <line x1="680" y1="176" x2="600" y2="235" stroke="#F97316" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="4 4" />
-
-          {/* ── Orange arrow chevrons (speed marks) ── */}
-          <g opacity="0.55">
-            <path d="M82 450 L96 462 L82 474" fill="none" stroke="#F97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M96 450 L110 462 L96 474" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
-            <path d="M110 450 L124 462 L110 474" fill="none" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3" />
-          </g>
-
-          {/* ── Stars / particles ── */}
-          {[
-            [80,60],[200,40],[550,50],[750,75],[820,100],[100,350],[820,300],
-            [650,380],[480,100],[350,60],[640,60],[760,180],[500,420],[200,390],
-          ].map(([x,y],i) => (
-            <circle key={`star${i}`} cx={x} cy={y} r={i % 3 === 0 ? 1.5 : 1} fill="#fff" opacity={0.15 + (i%5)*0.07} />
-          ))}
-
-          {/* ── Bottom gradient overlay for text legibility ── */}
-          <defs>
-            <linearGradient id="textFade" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#040A16" stopOpacity="0" />
-              <stop offset="60%" stopColor="#040A16" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#040A16" stopOpacity="0.95" />
-            </linearGradient>
-          </defs>
-          <rect x="0" y="380" width="900" height="320" fill="url(#textFade)" />
-        </svg>
-
-        {/* Subtle top-left brand */}
-        <div style={{ position: 'absolute', top: 32, left: 36, zIndex: 2 }}>
-          <TaurusLogo width={220} />
+        {/* Top-left brand */}
+        <div style={{ position: 'absolute', top: 36, left: 40, zIndex: 2 }}>
+          <TaurusLogo width={210} />
         </div>
 
-        {/* Bottom content */}
-        <div style={{ position: 'relative', zIndex: 1, padding: '0 48px 52px', width: '100%', maxWidth: 660 }}>
-          <div style={{ color: '#fff', fontSize: 26, fontWeight: 800, marginBottom: 10, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
-            Enterprise Resource Planning<br />
-            <span style={{ color: 'rgba(255,255,255,.55)', fontSize: 15, fontWeight: 400, letterSpacing: 'normal' }}>
-              Fleet · Fuel · Inventory · Financials — unified.
-            </span>
+        {/* Bottom tagline */}
+        <div style={{
+          position: 'absolute', bottom: 44, left: 40, right: 40, zIndex: 2,
+        }}>
+          <div style={{ color: 'rgba(255,255,255,0.92)', fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 8, lineHeight: 1.3 }}>
+            Enterprise Resource Planning
           </div>
-
+          <div style={{ color: 'rgba(255,255,255,0.50)', fontSize: 13.5, fontWeight: 400, lineHeight: 1.6 }}>
+            Fleet · Fuel · Inventory · Financials — unified.
+          </div>
           {/* Feature pills */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
-            {[['🚛','Fleet Management'],['⛽','Fuel Control'],['📦','Inventory'],['💰','Finance'],['📊','Reports']].map(([ic, label]) => (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
+            {[['🚛','Fleet'],['⛽','Fuel'],['📦','Inventory'],['💰','Finance'],['📊','Reports']].map(([ic, label]) => (
               <div key={label} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'rgba(255,255,255,.09)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,.15)',
-                borderRadius: 24, padding: '6px 14px',
-                fontSize: 12.5, color: 'rgba(255,255,255,.78)', fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: 'rgba(255,255,255,0.10)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 20, padding: '5px 12px',
+                fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 500,
               }}>
-                <span style={{ fontSize: 14 }}>{ic}</span>{label}
+                <span style={{ fontSize: 13 }}>{ic}</span>{label}
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ position: 'absolute', bottom: 22, left: 36, color: 'rgba(255,255,255,.2)', fontSize: 11, zIndex: 1 }}>
+        <div style={{ position: 'absolute', bottom: 16, left: 40, color: 'rgba(255,255,255,0.22)', fontSize: 11, zIndex: 1 }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
         </div>
       </div>
 
-      {/* ── Right Panel ── */}
+      {/* ── Right Panel — Clean white login card ── */}
       <div style={{
-        width: '100%', maxWidth: 488,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        padding: '48px 44px',
+        width: 420,
+        minWidth: 380,
         background: '#FFFFFF',
-        boxShadow: '-2px 0 60px rgba(11,31,77,.10)',
-        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        justifyContent: 'center',
+        padding: '48px 44px',
+        boxShadow: '-4px 0 40px rgba(0,0,0,0.18)',
+        position: 'relative',
       }}>
-        <div style={{ width: '100%', maxWidth: 370 }}>
+        {/* Top logos like KL style */}
+        <div style={{ position: 'absolute', top: 28, left: 44, right: 44, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TaurusLogo width={140} />
+        </div>
 
-          {/* Logo mark */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: 'linear-gradient(135deg, #0B1F4D 0%, #2563EB 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: 20,
-              boxShadow: '0 4px 20px rgba(37,99,235,.35)',
-            }}>
-              <span style={{ color: '#fff', fontSize: 20, fontWeight: 900 }}>T</span>
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: '#0B1F4D', letterSpacing: '-0.03em', marginBottom: 4 }}>
-              Welcome back
-            </div>
-            <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.5 }}>
-              Sign in to your ERP account to continue
-            </div>
+        <div style={{ marginTop: 40 }}>
+          {/* Heading */}
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#0B1F4D', letterSpacing: '-0.03em', marginBottom: 6 }}>
+            Login
           </div>
-
-          {/* Progress accent */}
-          <div style={{ height: 2, borderRadius: 99, background: '#E2E8F0', marginBottom: 28, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: '65%', background: 'linear-gradient(90deg,#0B1F4D,#2563EB,#F97316)', borderRadius: 99 }} />
+          <div style={{ fontSize: 13, color: '#64748B', marginBottom: 32 }}>
+            Sign in to your ERP account to continue
           </div>
 
           {/* Error */}
           {error && (
             <div style={{
-              background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
-              padding: '10px 14px', marginBottom: 18, fontSize: 13, color: '#DC2626', fontWeight: 500,
-              display: 'flex', alignItems: 'flex-start', gap: 8,
+              background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
+              padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#DC2626', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
               {error}
             </div>
           )}
 
-          {/* Sign-in form */}
-          <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                  Email address
-                </label>
-                <input
-                  type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  required autoComplete="email" placeholder="you@company.com"
-                  style={{
-                    width: '100%', height: 42, padding: '0 13px',
-                    border: '1.5px solid #E2E8F0', borderRadius: 9,
-                    fontSize: 13.5, color: '#0F172A', background: '#F8FAFC',
-                    outline: 'none', boxSizing: 'border-box', transition: 'border-color .15s, box-shadow .15s',
-                    fontFamily: 'inherit',
-                  }}
-                  onFocus={e => { e.target.style.borderColor = '#2563EB'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,.12)'; }}
-                  onBlur={e => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                  Password
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPw ? 'text' : 'password'} value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required autoComplete="current-password" placeholder="••••••••"
-                    style={{
-                      width: '100%', height: 42, padding: '0 52px 0 13px',
-                      border: '1.5px solid #E2E8F0', borderRadius: 9,
-                      fontSize: 13.5, color: '#0F172A', background: '#F8FAFC',
-                      outline: 'none', boxSizing: 'border-box', transition: 'border-color .15s, box-shadow .15s',
-                      fontFamily: 'inherit',
-                    }}
-                    onFocus={e => { e.target.style.borderColor = '#2563EB'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,.12)'; }}
-                    onBlur={e => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
-                  />
-                  <button type="button" onClick={() => setShowPw(s => !s)} style={{
-                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 11.5, fontWeight: 700, color: '#2563EB', padding: '2px 4px', fontFamily: 'inherit',
-                  }}>
-                    {showPw ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
+          {/* Form */}
+          <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Email address <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <input
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                required autoComplete="email" placeholder="Enter Email"
                 style={{
-                  height: 44, borderRadius: 10, border: 'none',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0B1F4D 0%, #2563EB 100%)',
-                  color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em',
-                  marginTop: 4, transition: 'opacity .18s, transform .12s, box-shadow .18s',
-                  boxShadow: loading ? 'none' : '0 4px 16px rgba(37,99,235,.35)',
+                  width: '100%', height: 44, padding: '0 14px',
+                  border: '1.5px solid #D1D5DB', borderRadius: 8,
+                  fontSize: 13.5, color: '#111827', background: '#F9FAFB',
+                  outline: 'none', boxSizing: 'border-box',
+                  transition: 'border-color .15s, box-shadow .15s',
                   fontFamily: 'inherit',
                 }}
-                onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(37,99,235,.45)'; } }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = loading ? 'none' : '0 4px 16px rgba(37,99,235,.35)'; }}
-              >
-                {loading ? 'Signing in…' : 'Sign In'}
-              </button>
-            </form>
+                onFocus={e => { e.target.style.borderColor = '#0B1F4D'; e.target.style.boxShadow = '0 0 0 3px rgba(11,31,77,.10)'; e.target.style.background = '#fff'; }}
+                onBlur={e => { e.target.style.borderColor = '#D1D5DB'; e.target.style.boxShadow = 'none'; e.target.style.background = '#F9FAFB'; }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Password <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPw ? 'text' : 'password'} value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required autoComplete="current-password" placeholder="Enter Password"
+                  style={{
+                    width: '100%', height: 44, padding: '0 52px 0 14px',
+                    border: '1.5px solid #D1D5DB', borderRadius: 8,
+                    fontSize: 13.5, color: '#111827', background: '#F9FAFB',
+                    outline: 'none', boxSizing: 'border-box',
+                    transition: 'border-color .15s, box-shadow .15s',
+                    fontFamily: 'inherit',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = '#0B1F4D'; e.target.style.boxShadow = '0 0 0 3px rgba(11,31,77,.10)'; e.target.style.background = '#fff'; }}
+                  onBlur={e => { e.target.style.borderColor = '#D1D5DB'; e.target.style.boxShadow = 'none'; e.target.style.background = '#F9FAFB'; }}
+                />
+                <button type="button" onClick={() => setShowPw(s => !s)} style={{
+                  position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, color: '#6B7280', padding: '2px 4px', fontFamily: 'inherit',
+                }}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                height: 46, borderRadius: 8, border: 'none', marginTop: 4,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                background: loading ? '#94A3B8' : '#0B1F4D',
+                color: '#fff', fontSize: 15, fontWeight: 700, letterSpacing: '0.01em',
+                transition: 'background .18s, transform .12s, box-shadow .18s',
+                boxShadow: loading ? 'none' : '0 4px 18px rgba(11,31,77,.35)',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { if (!loading) { e.currentTarget.style.background = '#1D4ED8'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(29,78,216,.40)'; } }}
+              onMouseLeave={e => { if (!loading) { e.currentTarget.style.background = '#0B1F4D'; e.currentTarget.style.boxShadow = '0 4px 18px rgba(11,31,77,.35)'; } }}
+            >
+              {loading ? 'Signing in…' : 'Login'}
+            </button>
+          </form>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 /* ── Error Boundary ──────────────────────────────────────────── */
