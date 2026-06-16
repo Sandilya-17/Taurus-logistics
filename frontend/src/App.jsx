@@ -593,16 +593,16 @@ function LoginPage() {
     width: '100%',
     height: 48,
     padding: field === 'password' ? '0 52px 0 16px' : '0 16px',
-    border: `1.5px solid ${focusedField === field ? '#1a6fb5' : '#E2E8F0'}`,
+    border: `1.5px solid ${focusedField === field ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.30)'}`,
     borderRadius: 8,
     fontSize: 14,
-    color: '#0F172A',
-    background: focusedField === field ? '#F8FAFF' : '#FAFBFC',
+    color: '#FFFFFF',
+    background: focusedField === field ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Inter', -apple-system, sans-serif",
     transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    boxShadow: focusedField === field ? '0 0 0 3px rgba(26,111,181,0.10)' : 'none',
+    boxShadow: focusedField === field ? '0 0 0 3px rgba(255,255,255,0.15)' : 'none',
   });
 
   return (
@@ -686,12 +686,12 @@ function LoginPage() {
         display: 'flex',
         flexDirection: 'column',
         padding: '48px 48px',
-        background: 'rgba(255, 255, 255, 0.85)',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
-        borderRadius: 16,
-        border: '1px solid rgba(255, 255, 255, 0.25)',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.30)',
+        background: 'rgba(255, 255, 255, 0.12)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        borderRadius: 20,
+        border: '1px solid rgba(255, 255, 255, 0.30)',
+        boxShadow: '0 8px 48px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.25)',
         boxSizing: 'border-box',
         margin: '24px',
         position: 'relative',
@@ -708,15 +708,16 @@ function LoginPage() {
             margin: 0,
             fontSize: 24,
             fontWeight: 700,
-            color: '#0F172A',
+            color: '#FFFFFF',
             letterSpacing: '-0.01em',
+            textShadow: '0 1px 4px rgba(0,0,0,0.3)',
           }}>
             Sign in
           </h1>
           <p style={{
             margin: '6px 0 0',
             fontSize: 14,
-            color: '#64748B',
+            color: 'rgba(255,255,255,0.70)',
           }}>
             Enter your credentials to access the dashboard.
           </p>
@@ -754,7 +755,7 @@ function LoginPage() {
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
-              color: '#374151',
+              color: 'rgba(255,255,255,0.85)',
               marginBottom: 6,
             }}>
               Email address
@@ -778,7 +779,7 @@ function LoginPage() {
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
-              color: '#374151',
+              color: 'rgba(255,255,255,0.85)',
               marginBottom: 6,
             }}>
               Password
@@ -871,7 +872,7 @@ function LoginPage() {
           paddingTop: 32,
           textAlign: 'center',
           fontSize: 11.5,
-          color: '#94A3B8',
+          color: 'rgba(255,255,255,0.50)',
         }}>
           © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
         </p>
@@ -883,6 +884,7 @@ function LoginPage() {
           .taurus-login-left { display: none !important; }
           .taurus-login-right { flex: 1 1 100% !important; }
         }
+        input::placeholder { color: rgba(255,255,255,0.45) !important; }
       `}</style>
     </div>
   )
