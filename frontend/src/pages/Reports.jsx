@@ -19,15 +19,14 @@ const REPORTS = [
   { key: 'maintenance',         label: 'Maintenance Report',     icon: '🛠️', color: '#0369a1',         colorHex: '#0369a1', desc: 'Service history and maintenance costs' },
 ];
 
-const fmtCurrency = (v) => {
-  if (typeof v !== 'number') return String(v);
-  if (v % 1 !== 0) return fmtCur(v);
-  return v.toLocaleString();
-};
-
 export default function ReportsPage() {
   const branchCtx = useBranch();
   const { fmt: fmtCur, symbol } = useCurrency();
+
+  const fmtCurrency = (v) => {
+    if (typeof v !== 'number') return String(v);
+    return fmtCur(v);
+  };
   const branchQS  = branchCtx?.branchQS || {};
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
   const [dateFrom, setDateFrom] = useState(new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' }));
@@ -103,9 +102,10 @@ export default function ReportsPage() {
     }
   };
 
-  const fmtCell = (cell) => {
+  const fmtCell = (cell, header) => {
     if (cell === null || cell === undefined || cell === '') return '—';
     if (typeof cell === 'number') {
+      if (isCurrencyHeader(header)) return fmtCur(cell);
       return cell % 1 !== 0
         ? cell.toLocaleString('en-GH', { minimumFractionDigits: 2 })
         : cell.toLocaleString();
@@ -240,7 +240,7 @@ export default function ReportsPage() {
                           : undefined,
                         fontWeight: isNegativeCell(data.headers, row, ci) || (data.headers[ci]?.toLowerCase().includes('profit') && typeof cell === 'number' && cell >= 0) ? 600 : undefined,
                       }}>
-                        {fmtCell(cell)}
+                        {fmtCell(cell, data.headers[ci])}
                       </td>
                     ))}
                   </tr>
