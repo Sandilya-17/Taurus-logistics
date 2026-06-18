@@ -536,12 +536,13 @@ class InvoiceReportView(BranchFilterMixin, APIView):
 class SparePartsReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        branch_filter = _branch_filter(request)
-        ledger = StockLedger.objects.filter(
-            item__item_type='SPARE_PART',
-            created_at__date__gte=date_from,
-            created_at__date__lte=date_to,
-            **(branch_filter if branch_filter else {}),
+        ledger = _apply_branch(
+            StockLedger.objects.filter(
+                item__item_type='SPARE_PART',
+                created_at__date__gte=date_from,
+                created_at__date__lte=date_to,
+            ),
+            request,
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location', 'Reference']
         rows = []
@@ -636,12 +637,13 @@ class TyreReportView(BranchFilterMixin, APIView):
 class LubricantReportView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
-        branch_filter = _branch_filter(request)
-        ledger = StockLedger.objects.filter(
-            item__item_type='LUBRICANT',
-            created_at__date__gte=date_from,
-            created_at__date__lte=date_to,
-            **(branch_filter if branch_filter else {}),
+        ledger = _apply_branch(
+            StockLedger.objects.filter(
+                item__item_type='LUBRICANT',
+                created_at__date__gte=date_from,
+                created_at__date__lte=date_to,
+            ),
+            request,
         ).select_related('item', 'location').order_by('created_at')
         headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location']
         rows = []
