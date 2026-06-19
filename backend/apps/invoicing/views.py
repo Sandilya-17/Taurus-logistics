@@ -8,19 +8,50 @@ from .models import Invoice, InvoiceLine
 from .serializers import InvoiceSerializer, InvoiceLineSerializer, InvoicePreviewSerializer
 
 
+def _invoice_branch_qs(request, base_qs):
+    """Branch-scope invoices via trip__truck__branch (for invoices with trips),
+    or return all for super admin."""
+    user = request.user
+    if not user.is_authenticated:
+        return base_qs.none()
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        param = request.query_params.get('branch_id')
+        if param:
+            try:
+                bid = int(param)
+                from django.db.models import Q
+                return base_qs.filter(
+                    Q(trip__truck__branch_id=bid) | Q(trip__isnull=True)
+                )
+            except (ValueError, TypeError):
+                pass
+        return base_qs
+    if user.branch_id:
+        from django.db.models import Q
+        return base_qs.filter(
+            Q(trip__truck__branch_id=user.branch_id) | Q(trip__isnull=True)
+        )
+    return base_qs.none()
+
+
 class InvoiceListCreate(generics.ListCreateAPIView):
-    queryset         = Invoice.objects.prefetch_related('lines').select_related('trip')
     serializer_class = InvoiceSerializer
     filterset_fields = ('status', 'client_name')
     search_fields    = ('invoice_number', 'client_name')
+
+    def get_queryset(self):
+        base = Invoice.objects.prefetch_related('lines').select_related('trip')
+        return _invoice_branch_qs(self.request, base)
 
     def get_serializer_context(self):
         return {'request': self.request}
 
 
 class InvoiceDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Invoice.objects.all()
     serializer_class = InvoiceSerializer
+
+    def get_queryset(self):
+        return _invoice_branch_qs(self.request, Invoice.objects.all())
 
     def get_serializer_context(self):
         return {'request': self.request}
