@@ -59,9 +59,12 @@ function BranchProvider({ user, children }) {
     }
     return user?.branch_currency || user?.branch?.currency || 'GHS';
   };
+  // When super admin views all branches, use multi-branch indicator
+  const isAllBranches = isSuperAdmin && !activeBranchId;
   const currencyCode = getActiveCurrencyCode();
   const currencyConfig = getCurrencyConfig(currencyCode);
   const fmt = (val) => fmtMoney(val, currencyCode);
+  // For super admin all-branches view, prefix shows mixed currencies
   return (
     <BranchCtx.Provider value={{ isSuperAdmin, activeBranchId, setActiveBranchId: isSuperAdmin ? setActiveBranchId : () => {}, branches, branchQS, branchParam }}>
       <CurrencyCtx.Provider value={{ fmt, symbol: currencyConfig.symbol, branchId: isSuperAdmin ? activeBranchId : (user?.branch?.id ?? null), currencyCode }}>
