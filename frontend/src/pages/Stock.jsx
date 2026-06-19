@@ -529,7 +529,7 @@ export default function StockPage() {
 
                     {/* Opening Stock */}
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>
-                      {ld.openQty > 0 ? ld.openQty.toLocaleString('en-GH', { maximumFractionDigits: 3 }) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {ld.openQty > 0 ? ld.openQty.toLocaleString('en', { maximumFractionDigits: 3 }) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', color: 'var(--muted)' }}>
                       {ld.openVal > 0 ? fmt(ld.openVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -537,7 +537,7 @@ export default function StockPage() {
 
                     {/* Purchased */}
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 600 }}>
-                      {ld.purchQty > 0 ? `+${ld.purchQty.toLocaleString('en-GH', { maximumFractionDigits: 3 })}` : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {ld.purchQty > 0 ? `+${ld.purchQty.toLocaleString('en', { maximumFractionDigits: 3 })}` : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', color: 'var(--green)' }}>
                       {ld.purchVal > 0 ? fmt(ld.purchVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -545,7 +545,7 @@ export default function StockPage() {
 
                     {/* Issued */}
                     <td className="mono" style={{ textAlign: 'right', color: ld.issueQty > 0 ? 'var(--red)' : '#cbd5e1', fontWeight: 600 }}>
-                      {ld.issueQty > 0 ? `−${ld.issueQty.toLocaleString('en-GH', { maximumFractionDigits: 3 })}` : '—'}
+                      {ld.issueQty > 0 ? `−${ld.issueQty.toLocaleString('en', { maximumFractionDigits: 3 })}` : '—'}
                     </td>
 
                     {/* Closing */}
@@ -553,7 +553,7 @@ export default function StockPage() {
                       textAlign: 'right', fontWeight: 800, fontSize: 14,
                       color: isOut ? 'var(--red)' : isLow ? 'var(--amber)' : 'var(--text)'
                     }}>
-                      {closingQty.toLocaleString('en-GH', { maximumFractionDigits: 3 })}
+                      {closingQty.toLocaleString('en', { maximumFractionDigits: 3 })}
                     </td>
                     <td className="ced" style={{ textAlign: 'right', fontWeight: 700 }}>
                       {closingVal > 0 ? fmt(closingVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -613,7 +613,7 @@ export default function StockPage() {
                   <td colSpan={2} style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>{fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).purchVal), 0))}</td>
                   <td></td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', fontSize: 14 }}>
-                    {filtered.reduce((s, x) => s + parseFloat(x.closing_qty || 0), 0).toLocaleString('en-GH', { maximumFractionDigits: 3 })}
+                    {filtered.reduce((s, x) => s + parseFloat(x.closing_qty || 0), 0).toLocaleString('en', { maximumFractionDigits: 3 })}
                   </td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>
                     {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
@@ -665,7 +665,7 @@ export default function StockPage() {
             </div>
             {openingForm.qty && openingForm.price && parseFloat(openingForm.qty) > 0 && parseFloat(openingForm.price) > 0 && (
               <div className="alert alert-success" style={{ margin: '10px 0' }}>
-                ✅ Total opening value: <strong>GH₵ {(parseFloat(openingForm.qty) * parseFloat(openingForm.price)).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</strong>
+                ✅ Total opening value: <strong>{symbol} {(parseFloat(openingForm.qty) * parseFloat(openingForm.price)).toLocaleString('en', { minimumFractionDigits: 2 })}</strong>
               </div>
             )}
             <div className="flex gap8 mt16">
