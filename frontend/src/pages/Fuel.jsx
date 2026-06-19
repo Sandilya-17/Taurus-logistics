@@ -327,7 +327,7 @@ export default function FuelPage() {
                         <td className="mono">{fl.truck_number}</td>
                         <td className="mono" style={{ fontSize: 11 }}>{fl.trip ? (fl.trip_waybill || fl.trip) : '—'}</td>
                         <td>{fl.litres} L</td>
-                        <td>GH₵ {fl.price_per_litre}</td>
+                        <td>{symbol} {fl.price_per_litre}</td>
                         <td className="ced" style={{ fontWeight: 600 }}>{fmt(fl.total_cost)}</td>
                         <td className="ced" style={{ color: exCost > 0 ? 'var(--red)' : 'var(--muted)' }}>
                           {exCost > 0 ? fmt(exCost) : '—'}
