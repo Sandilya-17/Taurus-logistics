@@ -1,81 +1,215 @@
-"""apps/invoicing/models.py – Invoice generation."""
-from decimal import Decimal
-from django.db import models
-from apps.core.models import TimeStampedModel
+"""apps/invoicing/views.py"""
+from io import BytesIO
+from rest_framework import generics, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.http import HttpResponse
+from .models import Invoice, InvoiceLine
+from .serializers import InvoiceSerializer, InvoiceLineSerializer, InvoicePreviewSerializer
 
 
-class Invoice(TimeStampedModel):
-    DRAFT   = 'DRAFT'
-    SENT    = 'SENT'
-    PAID    = 'PAID'
-    OVERDUE = 'OVERDUE'
-    STATUS_CHOICES = [(DRAFT,'Draft'),(SENT,'Sent'),(PAID,'Paid'),(OVERDUE,'Overdue')]
-
-    # FIX: Invoice now carries its own branch instead of relying solely on
-    # trip__truck__branch. Invoices without a linked trip (cash jobs, etc.)
-    # previously had no branch signal at all and leaked into every branch's
-    # reports/lists.
-    branch         = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='invoices', db_index=True)
-    invoice_number = models.CharField(max_length=30, unique=True)
-    client_name    = models.CharField(max_length=200)
-    client_address = models.TextField(blank=True)
-    client_phone   = models.CharField(max_length=20, blank=True)
-    invoice_date   = models.DateField()
-    due_date       = models.DateField(null=True, blank=True)
-    trip           = models.ForeignKey('trips.Trip', null=True, blank=True, on_delete=models.SET_NULL, related_name='invoices')
-    status         = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
-
-    vat_applicable = models.BooleanField(default=False)
-    vat_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=15)
-
-    # Auto-calculated totals
-    subtotal     = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    vat_amount   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-
-    paid_amount  = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    balance_due  = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-
-    notes      = models.TextField(blank=True)
-    created_by = models.ForeignKey('users.User', null=True, blank=True, on_delete=models.SET_NULL)
-
-    class Meta:
-        db_table = 'invoices'
-        ordering = ['-invoice_date']
-
-    def __str__(self): return f"{self.invoice_number} – {self.client_name}"
-
-    def recalculate(self):
-        """Recalculate totals from line items."""
-        lines    = self.lines.all()
-        subtotal = sum(l.line_total for l in lines)
-        vat_amt  = (subtotal * self.vat_percentage / 100) if self.vat_applicable else Decimal('0')
-        total    = subtotal + vat_amt
-        self.subtotal     = subtotal
-        self.vat_amount   = vat_amt
-        self.total_amount = total
-        self.balance_due  = total - self.paid_amount
-        self.save(update_fields=['subtotal','vat_amount','total_amount','balance_due'])
-
-    @classmethod
-    def generate_number(cls):
-        from django.utils import timezone
-        year  = timezone.now().year
-        count = cls.objects.filter(invoice_date__year=year).count() + 1
-        return f"INV-{year}-{count:04d}"
+def _invoice_branch_qs(request, base_qs):
+    """Branch-scope invoices via the invoice's own branch field, falling
+    back to trip__truck__branch for any legacy rows created before the
+    branch field existed on Invoice. SUPER_ADMIN sees all unless ?branch_id=
+    narrows it."""
+    from django.db.models import Q
+    user = request.user
+    if not user.is_authenticated:
+        return base_qs.none()
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        param = request.query_params.get('branch_id')
+        if param:
+            try:
+                bid = int(param)
+                return base_qs.filter(
+                    Q(branch_id=bid) | Q(branch_id__isnull=True, trip__truck__branch_id=bid)
+                )
+            except (ValueError, TypeError):
+                pass
+        return base_qs
+    if user.branch_id:
+        return base_qs.filter(
+            Q(branch_id=user.branch_id) | Q(branch_id__isnull=True, trip__truck__branch_id=user.branch_id)
+        )
+    return base_qs.none()
 
 
-class InvoiceLine(TimeStampedModel):
-    invoice     = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='lines')
-    description = models.CharField(max_length=300)
-    quantity    = models.DecimalField(max_digits=10, decimal_places=3)
-    unit_price  = models.DecimalField(max_digits=12, decimal_places=2)
-    line_total  = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+class InvoiceListCreate(generics.ListCreateAPIView):
+    serializer_class = InvoiceSerializer
+    filterset_fields = ('status', 'client_name')
+    search_fields    = ('invoice_number', 'client_name')
 
-    class Meta:
-        db_table = 'invoice_lines'
+    def get_queryset(self):
+        base = Invoice.objects.prefetch_related('lines').select_related('trip')
+        return _invoice_branch_qs(self.request, base)
 
-    def save(self, *args, **kwargs):
-        self.line_total = self.quantity * self.unit_price
-        super().save(*args, **kwargs)
-        self.invoice.recalculate()
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def perform_create(self, serializer):
+        # FIX: stamp branch on the new invoice. Prefer the linked trip's
+        # truck branch (so it stays consistent with that trip's data),
+        # otherwise fall back to the creating user's own branch. SUPER_ADMIN
+        # may pass branch_id explicitly to file it under a specific branch.
+        user  = self.request.user
+        trip  = serializer.validated_data.get('trip')
+        branch = None
+        if trip and getattr(trip, 'truck', None):
+            branch = trip.truck.branch
+        if branch is None:
+            if getattr(user, 'role', None) == 'SUPER_ADMIN':
+                bid = self.request.data.get('branch_id') or self.request.query_params.get('branch_id')
+                if bid:
+                    from apps.users.models import Branch
+                    branch = Branch.objects.filter(pk=bid).first()
+                elif user.branch_id:
+                    branch = user.branch
+            elif user.branch_id:
+                branch = user.branch
+        serializer.save(branch=branch)
+
+
+class InvoiceDetail(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = InvoiceSerializer
+
+    def get_queryset(self):
+        return _invoice_branch_qs(self.request, Invoice.objects.all())
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def update(self, request, *args, **kwargs):
+        old_status = self.get_object().status          # status BEFORE update
+        response   = super().update(request, *args, **kwargs)
+        invoice    = self.get_object()                 # fresh from DB after save
+
+        # Auto-create Revenue only on first transition to PAID
+        if old_status != Invoice.PAID and invoice.status == Invoice.PAID:
+            from apps.finance.models import Revenue
+            from django.utils import timezone
+
+            already_exists = Revenue.objects.filter(invoice=invoice).exists()
+            if not already_exists:
+                # FIX: prefer the invoice's own branch field; fall back to
+                # the linked trip's truck branch for legacy rows. Without
+                # this, paid-invoice Revenue rows were left branch=NULL and
+                # leaked into every branch's reports.
+                invoice_branch = invoice.branch or (
+                    invoice.trip.truck.branch
+                    if invoice.trip_id and invoice.trip and invoice.trip.truck_id
+                    else None
+                )
+                Revenue.objects.create(
+                    invoice     = invoice,
+                    trip        = invoice.trip,
+                    source      = Revenue.HAULAGE,
+                    description = f"Payment received – {invoice.invoice_number} ({invoice.client_name})",
+                    amount      = invoice.total_amount,
+                    date        = timezone.now().date(),
+                    reference   = invoice.invoice_number,
+                    created_by  = request.user,
+                    branch      = invoice_branch,  # ← FIX
+                )
+
+        return response
+
+
+class InvoiceLineCreate(generics.CreateAPIView):
+    queryset         = InvoiceLine.objects.all()
+    serializer_class = InvoiceLineSerializer
+
+
+class InvoicePreviewView(APIView):
+    def post(self, request):
+        s = InvoicePreviewSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        return Response(s.validated_data)
+
+
+class InvoicePDFView(APIView):
+    """Generate PDF invoice using ReportLab."""
+    def get(self, request, pk):
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import cm
+
+            invoice = Invoice.objects.prefetch_related('lines').get(pk=pk)
+            buffer  = BytesIO()
+            doc     = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+            styles  = getSampleStyleSheet()
+            story   = []
+
+            # Header
+            title_style = ParagraphStyle('title', parent=styles['Title'], fontSize=20, textColor=colors.HexColor('#006ba6'))
+            story.append(Paragraph("TAURUS TRADE & LOGISTICS", title_style))
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph(f"<b>INVOICE</b> {invoice.invoice_number}", styles['Heading2']))
+            story.append(Spacer(1, 0.5*cm))
+
+            # Invoice info table
+            info_data = [
+                ['Client:', invoice.client_name,    'Invoice Date:', str(invoice.invoice_date)],
+                ['Phone:',  invoice.client_phone,   'Status:',       invoice.status],
+                ['Trip:',   invoice.trip.waybill_no if invoice.trip else '—', 'Due Date:', str(invoice.due_date or '—')],
+            ]
+            info_tbl = Table(info_data, colWidths=[3*cm, 7*cm, 3.5*cm, 3.5*cm])
+            info_tbl.setStyle(TableStyle([
+                ('FONTNAME',  (0,0),(-1,-1), 'Helvetica'),
+                ('FONTSIZE',  (0,0),(-1,-1), 9),
+                ('FONTNAME',  (0,0),(0,-1),  'Helvetica-Bold'),
+                ('FONTNAME',  (2,0),(2,-1),  'Helvetica-Bold'),
+            ]))
+            story.append(info_tbl)
+            story.append(Spacer(1, 0.5*cm))
+
+            # Line items
+            line_header = ['#', 'Description', 'Qty', 'Unit Price (GH₵)', 'Total (GH₵)']
+            line_data   = [line_header]
+            for i, line in enumerate(invoice.lines.all(), 1):
+                line_data.append([str(i), line.description, str(line.quantity), f"{line.unit_price:,.2f}", f"{line.line_total:,.2f}"])
+
+            line_tbl = Table(line_data, colWidths=[1*cm, 9*cm, 2*cm, 3.5*cm, 3.5*cm])
+            line_tbl.setStyle(TableStyle([
+                ('BACKGROUND',  (0,0),(-1,0),  colors.HexColor('#006ba6')),
+                ('TEXTCOLOR',   (0,0),(-1,0),  colors.white),
+                ('FONTNAME',    (0,0),(-1,0),  'Helvetica-Bold'),
+                ('FONTSIZE',    (0,0),(-1,-1), 9),
+                ('ROWBACKGROUNDS', (0,1),(-1,-1), [colors.white, colors.HexColor('#f0f4f8')]),
+                ('GRID',        (0,0),(-1,-1), 0.5, colors.HexColor('#e1e8f0')),
+                ('ALIGN',       (2,0),(-1,-1), 'RIGHT'),
+            ]))
+            story.append(line_tbl)
+            story.append(Spacer(1, 0.5*cm))
+
+            # Totals
+            totals_data = [
+                ['Subtotal:', f"GH₵ {invoice.subtotal:,.2f}"],
+                [f"VAT ({invoice.vat_percentage}%):", f"GH₵ {invoice.vat_amount:,.2f}"],
+                ['TOTAL DUE:', f"GH₵ {invoice.total_amount:,.2f}"],
+            ]
+            totals_tbl = Table(totals_data, colWidths=[13*cm, 4*cm])
+            totals_tbl.setStyle(TableStyle([
+                ('FONTNAME',    (0,0),(-1,-1), 'Helvetica'),
+                ('FONTSIZE',    (0,0),(-1,-1), 10),
+                ('FONTNAME',    (0,2),(-1,2),  'Helvetica-Bold'),
+                ('FONTSIZE',    (0,2),(-1,2),  12),
+                ('TEXTCOLOR',   (0,2),(-1,2),  colors.HexColor('#006ba6')),
+                ('ALIGN',       (1,0),(1,-1),  'RIGHT'),
+                ('LINEABOVE',   (0,2),(-1,2),  1, colors.HexColor('#006ba6')),
+            ]))
+            story.append(totals_tbl)
+            story.append(Spacer(1, cm))
+            story.append(Paragraph("Thank you for your business. — Taurus Trade & Logistics", styles['Normal']))
+
+            doc.build(story)
+            buffer.seek(0)
+            return HttpResponse(buffer.read(), content_type='application/pdf',
+                                headers={'Content-Disposition': f'attachment; filename="{invoice.invoice_number}.pdf"'})
+        except Invoice.DoesNotExist:
+            return Response({'error': 'Invoice not found'}, status=404)
+        except ImportError:
+            return Response({'error': 'ReportLab not installed'}, status=500)
