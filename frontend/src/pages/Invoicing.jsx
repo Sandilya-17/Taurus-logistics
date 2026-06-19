@@ -282,7 +282,7 @@ export default function InvoicingPage() {
                 gridTemplateColumns: '3fr 80px 100px 1.1fr 1.1fr auto',
                 gap: 6, padding: '0 4px', marginBottom: 4,
               }}>
-                {['Description', 'Qty', 'Unit', 'Rate (GH₵)', 'Amount ({symbol})', ''].map((h, i) => (
+                {['Description', 'Qty', 'Unit', 'Rate', 'Amount', ''].map((h, i) => (
                   <div key={i} style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
                     {h}
                   </div>
