@@ -46,6 +46,18 @@ export default function ReportsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(branchQS)]);
 
+  // FIX: a generated report's results were never tied to the branch they
+  // were generated under. Switching the branch selector after generating a
+  // report left the OLD branch's rows on screen under the NEW branch's
+  // header — looking exactly like data had leaked across branches, even
+  // though the backend was scoping correctly. Clear any displayed report
+  // the moment the branch changes, and only that — the user re-clicks
+  // Generate Report, which now always reflects the currently selected branch.
+  useEffect(() => {
+    setData(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(branchQS)]);
+
   const current = REPORTS.find(r => r.key === active);
 
   const buildParams = (extra = {}) => {
