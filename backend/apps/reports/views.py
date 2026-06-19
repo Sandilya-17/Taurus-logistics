@@ -288,7 +288,7 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
         total_rev = revenues.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         total_exp = expenditures.aggregate(t=Sum('amount'))['t'] or Decimal('0')
         net       = total_rev - total_exp
-        headers = ['Date', 'Type', 'Category / Source', 'Truck', 'Description', 'Reference', 'Amount (GH₵)']
+        headers = ['Date', 'Type', 'Category / Source', 'Truck', 'Description', 'Reference', 'Amount']
         rows = []
         for r in revenues.order_by('date'):
             truck_num = r.trip.truck.truck_number if r.trip_id and r.trip else '—'
@@ -314,7 +314,7 @@ class FuelReportView(BranchFilterMixin, APIView):
             date__gte=date_from, date__lte=date_to
         ), request).select_related('truck', 'trip').order_by('date')
         headers = ['Date', 'Truck', 'Trip / Waybill', 'Litres', 'Limit', 'Excess',
-                   'Price/L (GH₵)', 'Total Cost (GH₵)', 'Remark']
+                   'Price/L', 'Total Cost', 'Remark']
         rows = []
         for fl in logs:
             rows.append([
@@ -329,7 +329,7 @@ class FuelReportView(BranchFilterMixin, APIView):
         summary = {
             'Total Litres':     _fmt(agg['total_litres']),
             'Total Excess (L)': _fmt(agg['total_excess']),
-            'Total Cost (GH₵)': _fmt(agg['total_cost']),
+            'Total Cost': _fmt(agg['total_cost']),
             'Excess Events':    logs.filter(excess_fuel__gt=0).count(),
         }
         return _respond(request, headers, rows, summary, 'Fuel Report')
@@ -347,7 +347,7 @@ class TripReportView(BranchFilterMixin, APIView):
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
         headers = ['Waybill', 'Truck', 'Driver', 'Origin', 'Destination', 'Material',
-                   'Loaded (t)', 'Delivered (t)', 'Status', 'Revenue (GH₵)', 'Loading Date']
+                   'Loaded (t)', 'Delivered (t)', 'Status', 'Revenue', 'Loading Date']
         rows = []
         for t in qs:
             rows.append([
@@ -365,7 +365,7 @@ class TripReportView(BranchFilterMixin, APIView):
         )
         summary = {
             'Total Trips':         qs.count(),
-            'Total Revenue (GH₵)': _fmt(agg['total_rev']),
+            'Total Revenue': _fmt(agg['total_rev']),
             'Total Loaded (t)':    _fmt(agg['total_loaded']),
             'Total Delivered (t)': _fmt(agg['total_delivered']),
         }
@@ -384,7 +384,7 @@ class TripDetailReportView(BranchFilterMixin, APIView):
             qs = qs.filter(truck_id=truck_id)
         qs = qs.order_by('loading_time')
         headers = ['Waybill', 'Truck', 'Driver', 'Route',
-                   'Revenue (GH₵)', 'Fuel Cost (GH₵)', 'Spare Parts (GH₵)', 'Net Profit (GH₵)']
+                   'Revenue', 'Fuel Cost', 'Spare Parts', 'Net Profit']
         rows = []
         for t in qs:
             rows.append([
@@ -394,10 +394,10 @@ class TripDetailReportView(BranchFilterMixin, APIView):
                 _fmt(t.spare_parts_cost), _fmt(t.net_profit),
             ])
         summary = {
-            'Total Revenue (GH₵)':     round(sum(float(r[4]) for r in rows), 2),
-            'Total Fuel Cost (GH₵)':   round(sum(float(r[5]) for r in rows), 2),
-            'Total Spare Parts (GH₵)': round(sum(float(r[6]) for r in rows), 2),
-            'Net Profit (GH₵)':        round(sum(float(r[7]) for r in rows), 2),
+            'Total Revenue':     round(sum(float(r[4]) for r in rows), 2),
+            'Total Fuel Cost':   round(sum(float(r[5]) for r in rows), 2),
+            'Total Spare Parts': round(sum(float(r[6]) for r in rows), 2),
+            'Net Profit':        round(sum(float(r[7]) for r in rows), 2),
         }
         return _respond(request, headers, rows, summary, 'Trip P&L')
 
@@ -411,10 +411,10 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
             qs = qs.filter(id=truck_id)
         headers = [
             'Truck', 'Model', 'Status', 'Trips',
-            'Trip Revenue (GH₵)', 'Other Revenue (GH₵)', 'Total Revenue (GH₵)',
-            'Fuel Cost (GH₵)', 'Maintenance (GH₵)', 'Tyre (GH₵)',
-            'Spare Parts (GH₵)', 'Driver Wage (GH₵)', 'Toll (GH₵)',
-            'Other Exp. (GH₵)', 'Total Expenditure (GH₵)', 'Net Profit (GH₵)',
+            'Trip Revenue', 'Other Revenue', 'Total Revenue',
+            'Fuel Cost', 'Maintenance', 'Tyre',
+            'Spare Parts', 'Driver Wage', 'Toll',
+            'Other Exp.', 'Total Expenditure', 'Net Profit',
         ]
         rows = []
         for truck in qs:
@@ -452,9 +452,9 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
                 total_exp, net,
             ])
         summary = {
-            'Total Revenue (GH₵)':     round(sum(float(r[6])  for r in rows), 2),
-            'Total Expenditure (GH₵)': round(sum(float(r[14]) for r in rows), 2),
-            'Net Profit (GH₵)':        round(sum(float(r[15]) for r in rows), 2),
+            'Total Revenue':     round(sum(float(r[6])  for r in rows), 2),
+            'Total Expenditure': round(sum(float(r[14]) for r in rows), 2),
+            'Net Profit':        round(sum(float(r[15]) for r in rows), 2),
         }
         return _respond(request, headers, rows, summary, 'Truck-wise Summary')
 
@@ -487,7 +487,7 @@ class StockReportView(BranchFilterMixin, APIView):
             items = Item.objects.filter(ledger_entries__isnull=False).distinct().order_by('item_type', 'name')
         else:
             items = Item.objects.none()
-        headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value (GH₵)', 'Reorder Level']
+        headers = ['Item', 'Type', 'Unit', 'Qty in Stock', 'Stock Value', 'Reorder Level']
         rows = []
         total_value = Decimal('0')
         for item in items:
@@ -498,7 +498,7 @@ class StockReportView(BranchFilterMixin, APIView):
                          _fmt(qty), _fmt(value), _fmt(item.reorder_level)])
         summary = {
             'Total Items':       len(rows),
-            'Total Value (GH₵)': _fmt(total_value),
+            'Total Value': _fmt(total_value),
             'Low Stock Items':   sum(1 for r in rows if float(r[3]) <= float(r[5]) and float(r[5]) > 0),
         }
         return _respond(request, headers, rows, summary, 'Stock Report')
@@ -510,8 +510,8 @@ class InvoiceReportView(BranchFilterMixin, APIView):
         invoices = _apply_branch(Invoice.objects.filter(
             invoice_date__gte=date_from, invoice_date__lte=date_to
         ), request).order_by('invoice_date')
-        headers = ['Invoice #', 'Client', 'Date', 'Status', 'Subtotal (GH₵)',
-                   'VAT (GH₵)', 'Total (GH₵)', 'Paid (GH₵)', 'Balance (GH₵)']
+        headers = ['Invoice #', 'Client', 'Date', 'Status', 'Subtotal',
+                   'VAT', 'Total', 'Paid', 'Balance']
         rows = []
         for inv in invoices:
             rows.append([
@@ -525,10 +525,10 @@ class InvoiceReportView(BranchFilterMixin, APIView):
             balance=Sum('balance_due'), vat=Sum('vat_amount'),
         )
         summary = {
-            'Total Invoiced (GH₵)': _fmt(agg['total']),
-            'Total Paid (GH₵)':     _fmt(agg['paid']),
-            'Balance Due (GH₵)':    _fmt(agg['balance']),
-            'Total VAT (GH₵)':      _fmt(agg['vat']),
+            'Total Invoiced': _fmt(agg['total']),
+            'Total Paid':     _fmt(agg['paid']),
+            'Balance Due':    _fmt(agg['balance']),
+            'Total VAT':      _fmt(agg['vat']),
         }
         return _respond(request, headers, rows, summary, 'Invoice Report')
 
@@ -544,7 +544,7 @@ class SparePartsReportView(BranchFilterMixin, APIView):
             ),
             request,
         ).select_related('item', 'location').order_by('created_at')
-        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location', 'Reference']
+        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit Cost', 'Total', 'Location', 'Reference']
         rows = []
         for entry in ledger:
             rows.append([
@@ -555,7 +555,7 @@ class SparePartsReportView(BranchFilterMixin, APIView):
                 entry.reference_type or '',
             ])
         agg = ledger.aggregate(total=Sum('final_amount'))
-        summary = {'Total Value (GH₵)': _fmt(agg['total'])}
+        summary = {'Total Value': _fmt(agg['total'])}
         return _respond(request, headers, rows, summary, 'Spare Parts Report')
 
 
@@ -566,7 +566,7 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
             service_date__gte=date_from, service_date__lte=date_to
         ), request).select_related('truck', 'mechanic').order_by('service_date')
         headers = ['Date', 'Truck', 'Type', 'Description', 'Mechanic',
-                   'Labour Cost (GH₵)', 'Parts Cost (GH₵)', 'Total (GH₵)', 'Status']
+                   'Labour Cost', 'Parts Cost', 'Total', 'Status']
         rows = []
         for log in logs:
             rows.append([
@@ -583,9 +583,9 @@ class MaintenanceReportView(BranchFilterMixin, APIView):
         )
         summary = {
             'Total Records':      len(rows),
-            'Total Labour (GH₵)': _fmt(agg['total_labour']),
-            'Total Parts (GH₵)':  _fmt(agg['total_parts']),
-            'Total Cost (GH₵)':   _fmt(agg['total_cost']),
+            'Total Labour': _fmt(agg['total_labour']),
+            'Total Parts':  _fmt(agg['total_parts']),
+            'Total Cost':   _fmt(agg['total_cost']),
         }
         return _respond(request, headers, rows, summary, 'Maintenance Report')
 
@@ -597,7 +597,7 @@ class VATReportView(BranchFilterMixin, APIView):
             invoice_date__gte=date_from, invoice_date__lte=date_to,
             vat_applicable=True,
         ), request).order_by('invoice_date')
-        headers = ['Invoice #', 'Client', 'Date', 'Subtotal (GH₵)', 'VAT %', 'VAT Amount (GH₵)', 'Total (GH₵)']
+        headers = ['Invoice #', 'Client', 'Date', 'Subtotal', 'VAT %', 'VAT Amount', 'Total']
         rows = []
         for inv in invoices:
             rows.append([
@@ -606,7 +606,7 @@ class VATReportView(BranchFilterMixin, APIView):
                 _fmt(inv.vat_amount), _fmt(inv.total_amount),
             ])
         total_vat = invoices.aggregate(t=Sum('vat_amount'))['t'] or Decimal('0')
-        summary   = {'Total VAT Collected (GH₵)': _fmt(total_vat)}
+        summary   = {'Total VAT Collected': _fmt(total_vat)}
         return _respond(request, headers, rows, summary, 'VAT Report')
 
 
@@ -614,7 +614,7 @@ class TyreReportView(BranchFilterMixin, APIView):
     def get(self, request):
         tyres = _apply_branch(Tyre.objects.all(), request).prefetch_related('assignments__truck').order_by('status', 'serial_number')
         headers = ['Serial #', 'Brand', 'Model', 'Size', 'Status',
-                   'Unit Cost (GH₵)', 'Truck Fitted', 'Position', 'KM Used']
+                   'Unit Cost', 'Truck Fitted', 'Position', 'KM Used']
         rows = []
         for tyre in tyres:
             asgn = tyre.current_assignment
@@ -645,7 +645,7 @@ class LubricantReportView(BranchFilterMixin, APIView):
             ),
             request,
         ).select_related('item', 'location').order_by('created_at')
-        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost (GH₵)', 'Total (GH₵)', 'Location']
+        headers = ['Date', 'Item', 'Transaction', 'Qty', 'Unit', 'Unit Cost', 'Total', 'Location']
         rows = []
         for entry in ledger:
             rows.append([
@@ -656,7 +656,7 @@ class LubricantReportView(BranchFilterMixin, APIView):
                 entry.location.name if entry.location else '—',
             ])
         agg = ledger.aggregate(total=Sum('final_amount'))
-        summary = {'Total Value (GH₵)': _fmt(agg['total'])}
+        summary = {'Total Value': _fmt(agg['total'])}
         return _respond(request, headers, rows, summary, 'Lubricant Report')
 
 
