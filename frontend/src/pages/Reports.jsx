@@ -43,7 +43,8 @@ export default function ReportsPage() {
       const data = r.data;
       setTrucks(Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []);
     }).catch(() => setTrucks([]));
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(branchQS)]);
 
   const current = REPORTS.find(r => r.key === active);
 
@@ -58,7 +59,7 @@ export default function ReportsPage() {
     setData(null);
     try {
       const resp = await api.get(`/reports/${active}/`, {
-        params: buildParams({ export: 'json' })
+        params: { ...branchQS, ...buildParams({ export: 'json' }) }
       });
       setData(resp.data);
       if (!resp.data?.rows?.length && !resp.data?.summary) {
@@ -79,7 +80,7 @@ export default function ReportsPage() {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const resp = await api.get(`/reports/${active}/`, {
-        params: buildParams({ export: fmt }),
+        params: { ...branchQS, ...buildParams({ export: fmt }) },
         responseType: 'blob',
       });
       const blob = new Blob([resp.data], { type: mime });
@@ -115,10 +116,11 @@ export default function ReportsPage() {
 
   const isCurrencyHeader = (h) => {
     const k = h?.toLowerCase();
-    return k?.includes('amount') || k?.includes('cost') || k?.includes('gh₵') ||
-           k?.includes('revenue') || k?.includes('expenditure') || k?.includes('profit') ||
-           k?.includes('vat') || k?.includes('total') || k?.includes('wage') ||
-           k?.includes('subtotal') || k?.includes('balance');
+    return k?.includes('amount') || k?.includes('cost') || k?.includes('revenue') ||
+           k?.includes('expenditure') || k?.includes('profit') || k?.includes('vat') ||
+           k?.includes('total') || k?.includes('wage') || k?.includes('subtotal') ||
+           k?.includes('balance') || k?.includes('labour') || k?.includes('parts') ||
+           k?.includes('value') || k?.includes('invoiced') || k?.includes('price');
   };
 
   const isNegativeCell = (headers, row, colIdx) => {
@@ -189,7 +191,7 @@ export default function ReportsPage() {
         <div className="mb16" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))', gap: 10 }}>
           {Object.entries(data.summary).map(([k, v]) => (
             <div key={k} className="kpi" style={{ border: `1px solid var(--border)` }}>
-              <div className="kpi-label">{k}</div>
+              <div className="kpi-label">{k.replace(/ *\(GH₵\)| *\(Le\)/g, '')}</div>
               <div className="kpi-val" style={{
                 fontSize: 16,
                 color: k.toLowerCase().includes('net') || k.toLowerCase().includes('profit')
@@ -221,7 +223,7 @@ export default function ReportsPage() {
               <thead>
                 <tr>
                   {data.headers.map((h, i) => (
-                    <th key={i} style={{ textAlign: isCurrencyHeader(h) ? 'right' : 'left' }}>{h}</th>
+                    <th key={i} style={{ textAlign: isCurrencyHeader(h) ? 'right' : 'left' }}>{h.replace(/ *\(GH₵\)| *\(Le\)/g, '')}</th>
                   ))}
                 </tr>
               </thead>
