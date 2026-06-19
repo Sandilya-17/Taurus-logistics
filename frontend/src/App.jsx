@@ -44,7 +44,14 @@ function BranchProvider({ user, children }) {
   useEffect(() => {
     if (!isSuperAdmin) return;
     api.get('/users/branches/')
-      .then(r => setBranches(r.data?.results ?? r.data ?? []))
+      .then(r => {
+        const list = r.data?.results ?? r.data ?? [];
+        setBranches(list);
+        // Auto-select first branch so super admin never sees "all branches" view
+        if (list.length > 0) {
+          setActiveBranchId(prev => prev ?? list[0].id);
+        }
+      })
       .catch(() => {});
   }, [isSuperAdmin]);
   const branchQS = (isSuperAdmin && activeBranchId) ? { branch_id: activeBranchId } : {};
@@ -350,7 +357,6 @@ function BranchSelector() {
           height: 32,
         }}
       >
-        <option value="">All Branches</option>
         {branches.map(b => (
           <option key={b.id} value={b.id}>{b.name}</option>
         ))}
