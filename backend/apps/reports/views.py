@@ -257,16 +257,25 @@ class DashboardSummaryView(BranchFilterMixin, APIView):
         if branch_id is not None:
             qs = qs.filter(branch_id=branch_id)
         # if branch_id is None = SUPER_ADMIN viewing all branches, no filter applied
+
         for truck in qs:
-            trips = Trip.objects.filter(
+            # Scope Trip and Expenditure sub-queries to the same branch_id
+            # so a truck that exists in both branches doesn't leak cross-branch data.
+            trip_filter = dict(
                 truck=truck,
                 loading_time__date__gte=date_from,
                 loading_time__date__lte=date_to,
             )
+            if branch_id is not None:
+                trip_filter['branch_id'] = branch_id
+
+            exp_filter = dict(truck=truck, date__gte=date_from, date__lte=date_to)
+            if branch_id is not None:
+                exp_filter['branch_id'] = branch_id
+
+            trips     = Trip.objects.filter(**trip_filter)
             trip_rev  = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
-            total_exp = _fmt(Expenditure.objects.filter(
-                truck=truck, date__gte=date_from, date__lte=date_to
-            ).aggregate(t=Sum('amount'))['t'])
+            total_exp = _fmt(Expenditure.objects.filter(**exp_filter).aggregate(t=Sum('amount'))['t'])
             net = round(trip_rev - total_exp, 2)
             rows.append({
                 'truck':       truck.truck_number,
@@ -406,9 +415,21 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
     def get(self, request):
         date_from, date_to = _parse_dates(request)
         truck_id = request.query_params.get('truck')
+
+        # Resolve the effective branch_id for this request
+        # This is used to scope ALL sub-queries (trips, revenue, expenditure)
+        # so data never leaks across branches.
+        user = request.user
+        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+            param = request.query_params.get('branch_id')
+            effective_branch_id = int(param) if param else None
+        else:
+            effective_branch_id = user.branch_id if user.branch_id else -1
+
         qs = _apply_branch(Truck.objects.all(), request)
         if truck_id:
             qs = qs.filter(id=truck_id)
+
         headers = [
             'Truck', 'Model', 'Status', 'Trips',
             'Trip Revenue', 'Other Revenue', 'Total Revenue',
@@ -418,20 +439,45 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
         ]
         rows = []
         for truck in qs:
-            trips = Trip.objects.filter(
+            # ── Trips: always scope to truck AND branch ──────────────────────
+            trip_filter = dict(
                 truck=truck,
                 loading_time__date__gte=date_from,
                 loading_time__date__lte=date_to,
             )
+            if effective_branch_id is not None:
+                trip_filter['branch_id'] = effective_branch_id
+
+            trips      = Trip.objects.filter(**trip_filter)
             trip_count = trips.count()
             trip_rev   = _fmt(trips.aggregate(t=Sum('trip_revenue'))['t'])
-            other_rev  = _fmt(Revenue.objects.filter(
-                date__gte=date_from, date__lte=date_to, trip__truck=truck,
-            ).exclude(source='TRIP_REVENUE').aggregate(t=Sum('amount'))['t'])
-            total_rev  = round(trip_rev + other_rev, 2)
-            exp_qs = Expenditure.objects.filter(truck=truck, date__gte=date_from, date__lte=date_to)
+
+            # ── Other revenue: scope to branch via trip__branch_id ────────────
+            rev_filter = dict(
+                date__gte=date_from,
+                date__lte=date_to,
+                trip__truck=truck,
+            )
+            if effective_branch_id is not None:
+                rev_filter['branch_id'] = effective_branch_id
+
+            other_rev = _fmt(
+                Revenue.objects.filter(**rev_filter)
+                .exclude(source='TRIP_REVENUE')
+                .aggregate(t=Sum('amount'))['t']
+            )
+            total_rev = round(trip_rev + other_rev, 2)
+
+            # ── Expenditure: scope to truck AND branch ────────────────────────
+            exp_base = dict(truck=truck, date__gte=date_from, date__lte=date_to)
+            if effective_branch_id is not None:
+                exp_base['branch_id'] = effective_branch_id
+
+            exp_qs = Expenditure.objects.filter(**exp_base)
+
             def _exp_cat(cat):
                 return _fmt(exp_qs.filter(category=cat).aggregate(t=Sum('amount'))['t'])
+
             fuel_exp  = _exp_cat(Expenditure.FUEL)
             maint_exp = _exp_cat(Expenditure.MAINTENANCE)
             tyre_exp  = _exp_cat(Expenditure.TYRE)
@@ -441,16 +487,21 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
             other_exp = round(_fmt(exp_qs.filter(
                 category__in=[Expenditure.ADMIN, Expenditure.OTHER]
             ).aggregate(t=Sum('amount'))['t']), 2)
-            total_exp = round(fuel_exp + maint_exp + tyre_exp + spare_exp + wage_exp + toll_exp + other_exp, 2)
+            total_exp = round(
+                fuel_exp + maint_exp + tyre_exp + spare_exp + wage_exp + toll_exp + other_exp, 2
+            )
             net = round(total_rev - total_exp, 2)
+
             if trip_count == 0 and total_rev == 0 and total_exp == 0 and not truck_id:
                 continue
+
             rows.append([
                 truck.truck_number, truck.model, truck.get_status_display(), trip_count,
                 trip_rev, other_rev, total_rev,
                 fuel_exp, maint_exp, tyre_exp, spare_exp, wage_exp, toll_exp, other_exp,
                 total_exp, net,
             ])
+
         summary = {
             'Total Revenue':     round(sum(float(r[6])  for r in rows), 2),
             'Total Expenditure': round(sum(float(r[14]) for r in rows), 2),
