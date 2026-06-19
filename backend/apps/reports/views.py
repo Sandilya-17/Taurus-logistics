@@ -574,8 +574,22 @@ class SparePartsReportView(BranchFilterMixin, APIView):
                 entry.location.name if entry.location else '—',
                 entry.reference_type or '',
             ])
-        agg = ledger.aggregate(total=Sum('final_amount'))
-        summary = {'Total Value': _fmt(agg['total'])}
+        # FIX: a single netted "Total Value" was misleading whenever an Issue
+        # fell inside the report's date range but the Purchase that stocked
+        # it happened earlier (outside the range) — the period showed a
+        # large negative figure that looked like a loss, even though the
+        # transaction was valid (IssueService refuses to issue more stock
+        # than is actually available). Report purchased-in and issued-out
+        # separately so a one-sided period is self-explanatory, and label
+        # the net figure for what it actually is: the stock VALUE change
+        # within this period, not revenue or profit/loss.
+        purchased = ledger.filter(quantity__gt=0).aggregate(t=Sum('final_amount'))['t'] or Decimal('0')
+        issued    = ledger.filter(quantity__lt=0).aggregate(t=Sum('final_amount'))['t'] or Decimal('0')
+        summary = {
+            'Purchased (In)':  _fmt(purchased),
+            'Issued (Out)':    _fmt(issued),
+            'Net Stock Value Change': _fmt(purchased + issued),
+        }
         return _respond(request, headers, rows, summary, 'Spare Parts Report')
 
 
@@ -675,8 +689,16 @@ class LubricantReportView(BranchFilterMixin, APIView):
                 _fmt(entry.unit_price), _fmt(entry.final_amount),
                 entry.location.name if entry.location else '—',
             ])
-        agg = ledger.aggregate(total=Sum('final_amount'))
-        summary = {'Total Value': _fmt(agg['total'])}
+        # FIX: same issue as Spare Parts — split purchased vs issued instead
+        # of one netted figure that misreads as a loss when an Issue falls
+        # in-range but its covering Purchase happened before the window.
+        purchased = ledger.filter(quantity__gt=0).aggregate(t=Sum('final_amount'))['t'] or Decimal('0')
+        issued    = ledger.filter(quantity__lt=0).aggregate(t=Sum('final_amount'))['t'] or Decimal('0')
+        summary = {
+            'Purchased (In)':  _fmt(purchased),
+            'Issued (Out)':    _fmt(issued),
+            'Net Stock Value Change': _fmt(purchased + issued),
+        }
         return _respond(request, headers, rows, summary, 'Lubricant Report')
 
 
