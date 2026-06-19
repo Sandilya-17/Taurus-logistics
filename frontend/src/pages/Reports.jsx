@@ -38,13 +38,15 @@ export default function ReportsPage() {
   const [trucks,   setTrucks]   = useState([]);
   const [truckFilter, setTruckFilter] = useState('');
 
+  const branchKey = JSON.stringify(branchQS);
+
   useEffect(() => {
-    api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r => {
-      const data = r.data;
-      setTrucks(Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []);
+    const qs = branchKey ? JSON.parse(branchKey) : {};
+    api.get('/trucks/?status=ACTIVE', { params: qs }).then(r => {
+      const respData = r.data;
+      setTrucks(Array.isArray(respData) ? respData : Array.isArray(respData?.results) ? respData.results : []);
     }).catch(() => setTrucks([]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(branchQS)]);
+  }, [branchKey]);
 
   // FIX: a generated report's results were never tied to the branch they
   // were generated under. Switching the branch selector after generating a
@@ -55,8 +57,7 @@ export default function ReportsPage() {
   // Generate Report, which now always reflects the currently selected branch.
   useEffect(() => {
     setData(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(branchQS)]);
+  }, [branchKey]);
 
   const current = REPORTS.find(r => r.key === active);
 
