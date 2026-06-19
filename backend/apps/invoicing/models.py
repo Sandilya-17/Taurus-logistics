@@ -11,6 +11,11 @@ class Invoice(TimeStampedModel):
     OVERDUE = 'OVERDUE'
     STATUS_CHOICES = [(DRAFT,'Draft'),(SENT,'Sent'),(PAID,'Paid'),(OVERDUE,'Overdue')]
 
+    # FIX: Invoice now carries its own branch instead of relying solely on
+    # trip__truck__branch. Invoices without a linked trip (cash jobs, etc.)
+    # previously had no branch signal at all and leaked into every branch's
+    # reports/lists.
+    branch         = models.ForeignKey('users.Branch', null=True, blank=True, on_delete=models.PROTECT, related_name='invoices', db_index=True)
     invoice_number = models.CharField(max_length=30, unique=True)
     client_name    = models.CharField(max_length=200)
     client_address = models.TextField(blank=True)
