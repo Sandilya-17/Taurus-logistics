@@ -1,3 +1,4 @@
+from django.db import models
 """apps/tyres/views.py"""
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -7,16 +8,52 @@ from .serializers import TyreSerializer, TyreAssignmentSerializer, TyreSwapSeria
 from .services import TyreService
 
 
+def _tyre_branch_qs(request):
+    """Scope tyres: SUPER_ADMIN can see all or filter; others see tyres fitted to branch trucks."""
+    from .models import TyreAssignment
+    user = request.user
+    base = Tyre.objects.all()
+    if not user.is_authenticated:
+        return base.none()
+    if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        param = request.query_params.get('branch_id')
+        if param:
+            try:
+                bid = int(param)
+                # Return tyres assigned to trucks of this branch, plus unassigned tyres
+                fitted_ids = TyreAssignment.objects.filter(
+                    truck__branch_id=bid, removed_at__isnull=True
+                ).values_list('tyre_id', flat=True)
+                return base.filter(
+                    models.Q(id__in=fitted_ids) | models.Q(assignments__isnull=True)
+                ).distinct()
+            except (ValueError, TypeError):
+                pass
+        return base  # all
+    if user.branch_id:
+        fitted_ids = TyreAssignment.objects.filter(
+            truck__branch_id=user.branch_id, removed_at__isnull=True
+        ).values_list('tyre_id', flat=True)
+        return base.filter(
+            models.Q(id__in=fitted_ids) | models.Q(assignments__isnull=True)
+        ).distinct()
+    return base.none()
+
+
 class TyreListCreate(generics.ListCreateAPIView):
-    queryset         = Tyre.objects.all()
     serializer_class = TyreSerializer
     filterset_fields = ('status', 'brand')
     search_fields    = ('serial_number', 'brand', 'model', 'size')
 
+    def get_queryset(self):
+        return _tyre_branch_qs(self.request)
+
 
 class TyreDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Tyre.objects.all()
     serializer_class = TyreSerializer
+
+    def get_queryset(self):
+        return _tyre_branch_qs(self.request)
 
 
 class TyreAssignView(APIView):
