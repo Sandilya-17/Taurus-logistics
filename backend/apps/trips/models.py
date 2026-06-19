@@ -66,6 +66,13 @@ class Trip(TimeStampedModel):
         return f"{h}h {m}m" if h else f"{m}m"
 
     def save(self, *args, **kwargs):
+        # FIX: default branch from the truck if not explicitly set, so a
+        # trip never ends up branch=NULL (which then propagates NULL to
+        # the auto-created Revenue/Expenditure rows and leaks across
+        # branches in reports).
+        if not self.branch_id and getattr(self.truck, 'branch_id', None):
+            self.branch_id = self.truck.branch_id
+
         # Auto-calculate quantity difference
         if self.delivered_qty is not None:
             self.qty_difference = self.loaded_qty - self.delivered_qty
@@ -102,6 +109,12 @@ class Trip(TimeStampedModel):
 
         trip_date = self.unloading_time.date() if self.unloading_time else self.loading_time.date()
 
+        # Branch to stamp on auto-created Revenue/Expenditure rows.
+        # Prefer the trip's own branch; fall back to the truck's branch so
+        # records never end up with branch=NULL (which made them leak
+        # across branches in reports). FIX: branch stamping added.
+        trip_branch = self.branch_id and self.branch or getattr(self.truck, 'branch', None)
+
         # ── Revenue ──
         if self.trip_revenue and self.trip_revenue > 0:
             Revenue.objects.update_or_create(
@@ -111,6 +124,7 @@ class Trip(TimeStampedModel):
                     amount=self.trip_revenue,
                     date=trip_date,
                     description=f"Trip {self.waybill_no} Revenue",
+                    branch=trip_branch,  # ← FIX
                 ),
             )
 
@@ -125,6 +139,7 @@ class Trip(TimeStampedModel):
                     amount=self.fuel_cost,
                     date=trip_date,
                     description=f"Trip {self.waybill_no} Fuel Cost",
+                    branch=trip_branch,  # ← FIX
                 ),
             )
 
@@ -138,6 +153,7 @@ class Trip(TimeStampedModel):
                     amount=self.spare_parts_cost,
                     date=trip_date,
                     description=f"Trip {self.waybill_no} Spare Parts Cost",
+                    branch=trip_branch,  # ← FIX
                 ),
             )
 
