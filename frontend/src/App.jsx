@@ -1,4 +1,4 @@
-// src/App.jsx — Taurus ERP — Premium Enterprise UI v3
+// src/App.jsx — Taurus ERP — Enterprise UI v4
 import { useState, createContext, useContext, useEffect, useCallback, useRef, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link, NavLink } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -47,7 +47,6 @@ function BranchProvider({ user, children }) {
       .then(r => {
         const list = r.data?.results ?? r.data ?? [];
         setBranches(list);
-        // Auto-select first branch so super admin never sees "all branches" view
         if (list.length > 0) {
           setActiveBranchId(prev => prev ?? list[0].id);
         }
@@ -66,12 +65,9 @@ function BranchProvider({ user, children }) {
     }
     return user?.branch_currency || user?.branch?.currency || 'GHS';
   };
-  // When super admin views all branches, use multi-branch indicator
-  const isAllBranches = isSuperAdmin && !activeBranchId;
   const currencyCode = getActiveCurrencyCode();
   const currencyConfig = getCurrencyConfig(currencyCode);
   const fmt = (val) => fmtMoney(val, currencyCode);
-  // For super admin all-branches view, prefix shows mixed currencies
   return (
     <BranchCtx.Provider value={{ isSuperAdmin, activeBranchId, setActiveBranchId: isSuperAdmin ? setActiveBranchId : () => {}, branches, branchQS, branchParam }}>
       <CurrencyCtx.Provider value={{ fmt, symbol: currencyConfig.symbol, branchId: isSuperAdmin ? activeBranchId : (user?.branch?.id ?? null), currencyCode }}>
@@ -115,10 +111,10 @@ function AuthProvider({ children }) {
 }
 
 /* ── Icons ─────────────────────────────────────────────────── */
-const Ic = ({ path, children, size = 16 }) => (
+const Ic = ({ children, size = 16 }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
     strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    {children || <path d={path} />}
+    {children}
   </svg>
 );
 
@@ -229,9 +225,7 @@ function CommandPalette({ open, onClose }) {
   }, [open]);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
     if (open) document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose]);
@@ -248,7 +242,7 @@ function CommandPalette({ open, onClose }) {
           <input
             ref={inputRef}
             className="cmd-input"
-            placeholder="Search pages, modules…"
+            placeholder="Search pages and modules…"
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -346,7 +340,7 @@ function BranchSelector() {
         onChange={e => setActiveBranchId(e.target.value ? Number(e.target.value) : null)}
         style={{
           fontSize: 12, fontWeight: 600,
-          padding: '5px 10px',
+          padding: '0 10px',
           borderRadius: 8,
           border: '1px solid var(--border)',
           background: 'var(--bg-card)',
@@ -396,7 +390,6 @@ function Topbar({ onMenu, onCmd }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const menuRef = useRef(null);
-  const notifRef = useRef(null);
 
   useEffect(() => {
     const handler = (e) => {
@@ -422,11 +415,12 @@ function Topbar({ onMenu, onCmd }) {
         <button
           onClick={onCmd}
           title="Search (⌘K)"
+          aria-label="Open search"
           style={{
             display: 'flex', alignItems: 'center', gap: 7,
-            height: 32, padding: '0 10px',
+            height: 34, padding: '0 11px',
             borderRadius: 8, border: '1px solid var(--border)',
-            background: 'var(--bg)', color: 'var(--text-3)',
+            background: 'var(--bg-card)', color: 'var(--text-3)',
             cursor: 'pointer', fontSize: 12, fontWeight: 500,
             transition: 'all var(--t)',
           }}
@@ -441,13 +435,13 @@ function Topbar({ onMenu, onCmd }) {
         {/* Branch selector — SUPER_ADMIN only */}
         <BranchSelector />
 
-        <button className="icon-btn" onClick={toggle} title={dark ? 'Light mode' : 'Dark mode'}>
+        <button className="icon-btn" onClick={toggle} title={dark ? 'Light mode' : 'Dark mode'} aria-label="Toggle theme">
           {dark ? Icons.Sun : Icons.Moon}
         </button>
 
         {/* Notification bell */}
-        <div style={{ position: 'relative' }} ref={notifRef}>
-          <button className="icon-btn" title="Notifications" onClick={() => setNotifOpen(o => !o)}>
+        <div style={{ position: 'relative' }}>
+          <button className="icon-btn" title="Notifications" aria-label="Notifications" onClick={() => setNotifOpen(o => !o)}>
             {Icons.Bell}
           </button>
           <NotifPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
@@ -455,7 +449,7 @@ function Topbar({ onMenu, onCmd }) {
 
         {/* User menu */}
         <div className="user-menu-wrap" ref={menuRef}>
-          <button className="user-chip" onClick={() => setMenuOpen(o => !o)}>
+          <button className="user-chip" onClick={() => setMenuOpen(o => !o)} aria-label="User menu">
             <div className="avatar avatar-sm">{initials(user)}</div>
             <div style={{ textAlign: 'left' }}>
               <div className="user-chip-name">{fullName(user)}</div>
@@ -490,7 +484,6 @@ function AppLayout({ children }) {
   const location = useLocation();
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
-  // Global ⌘K shortcut
   useEffect(() => {
     const h = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -515,42 +508,39 @@ function AppLayout({ children }) {
 }
 
 /* ── Taurus SVG Logo ─────────────────────────────────────────── */
-/* ── Taurus SVG Logo ─────────────────────────────────────────── */
 function TaurusLogo({ size = 'md' }) {
   const isLarge = size === 'lg';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: isLarge ? 14 : 10 }}>
-      {/* Geometric mark — stacked chevrons */}
       <svg
-        width={isLarge ? 40 : 28}
-        height={isLarge ? 40 : 28}
+        width={isLarge ? 40 : 30}
+        height={isLarge ? 40 : 30}
         viewBox="0 0 40 40"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <path d="M6 10 L20 4 L34 10 L20 16 Z" fill="#0B1F4D" />
-        <path d="M6 20 L20 14 L34 20 L20 26 Z" fill="#1a6fb5" />
-        <path d="M6 30 L20 24 L34 30 L20 36 Z" fill="#EA580C" opacity="0.85" />
+        <rect width="40" height="40" rx="10" fill="#0B1F4D" />
+        <path d="M10 14 L20 10 L30 14 L20 18 Z" fill="#2563EB" />
+        <path d="M10 21 L20 17 L30 21 L20 25 Z" fill="#3B82F6" opacity=".85" />
+        <path d="M10 28 L20 24 L30 28 L20 32 Z" fill="#F97316" opacity=".9" />
       </svg>
-      {/* Wordmark */}
       <div>
         <div style={{
           fontFamily: "'Inter', -apple-system, sans-serif",
           fontWeight: 800,
           fontSize: isLarge ? 22 : 15,
-          letterSpacing: '0.08em',
-          color: '#0B1F4D',
+          letterSpacing: '-0.02em',
+          color: '#FFFFFF',
           lineHeight: 1,
-          textTransform: 'uppercase',
         }}>
           Taurus
         </div>
         <div style={{
           fontFamily: "'Inter', -apple-system, sans-serif",
-          fontWeight: 500,
-          fontSize: isLarge ? 9 : 7,
-          letterSpacing: '0.22em',
-          color: '#EA580C',
+          fontWeight: 600,
+          fontSize: isLarge ? 9 : 7.5,
+          letterSpacing: '0.18em',
+          color: 'rgba(255,255,255,.55)',
           lineHeight: 1,
           marginTop: 3,
           textTransform: 'uppercase',
@@ -571,7 +561,7 @@ function LoginPage() {
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
-  const [focusedField, setFocusedField] = useState(null);
+  const [focused, setFocused]   = useState(null);
 
   const doLogin = async (loginEmail, loginPassword) => {
     setError('');
@@ -598,20 +588,20 @@ function LoginPage() {
     setLoading(false);
   };
 
-  const inputStyle = (field) => ({
+  const fieldStyle = (field) => ({
     width: '100%',
-    height: 48,
-    padding: field === 'password' ? '0 52px 0 16px' : '0 16px',
-    border: `1.5px solid ${focusedField === field ? '#1a6fb5' : 'rgba(255,255,255,0.75)'}`,
-    borderRadius: 8,
+    height: 46,
+    padding: field === 'password' ? '0 48px 0 14px' : '0 14px',
+    border: `1.5px solid ${focused === field ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.35)'}`,
+    borderRadius: 10,
     fontSize: 14,
     color: '#0F172A',
-    background: focusedField === field ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.82)',
+    background: focused === field ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.80)',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Inter', -apple-system, sans-serif",
     transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-    boxShadow: focusedField === field ? '0 0 0 3px rgba(26,111,181,0.18)' : 'none',
+    boxShadow: focused === field ? '0 0 0 3px rgba(255,255,255,.2)' : 'none',
   });
 
   return (
@@ -627,108 +617,52 @@ function LoginPage() {
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
     }}>
-      {/* Dark overlay to reduce image brightness */}
+      {/* Overlay */}
       <div style={{
-        position: 'absolute',
-        inset: 0,
-        background: 'rgba(10, 20, 50, 0.10)',
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(135deg, rgba(11,31,77,.70) 0%, rgba(11,31,77,.45) 100%)',
         zIndex: 0,
       }} />
-      {/* ── LEFT PANEL — brand identity (hidden) ── */}
+
+      {/* Login card */}
       <div style={{
-        display: 'none',
-      }}>
-        {/* Logo */}
-        <div>
-          <TaurusLogo size="lg" />
-        </div>
-
-        {/* Center value statement */}
-        <div>
-          <div style={{
-            fontSize: 36,
-            fontWeight: 700,
-            color: '#FFFFFF',
-            lineHeight: 1.22,
-            letterSpacing: '-0.01em',
-            maxWidth: 420,
-            marginBottom: 20,
-          }}>
-            Fleet & logistics<br />
-            <span style={{ color: '#5FA8E8' }}>managed in one place.</span>
-          </div>
-          <p style={{
-            fontSize: 15,
-            color: 'rgba(255,255,255,0.55)',
-            lineHeight: 1.65,
-            maxWidth: 380,
-            margin: 0,
-          }}>
-            Taurus ERP gives your team real-time visibility across trucks, drivers,
-            inventory, and finances — from a single dashboard.
-          </p>
-        </div>
-
-        {/* Stat strip */}
-        <div style={{ display: 'flex', gap: 40 }}>
-          {[
-            { label: 'Active Trucks', value: 'Fleet' },
-            { label: 'Trips Tracked', value: 'Live' },
-            { label: 'Cost Visibility', value: '100%' },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#EA580C', letterSpacing: '-0.01em' }}>
-                {value}
-              </div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 3, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── CENTER CARD — login form ── */}
-      <div style={{
-        width: '100%',
-        maxWidth: 420,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '48px 48px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
+        width: '100%', maxWidth: 420,
+        display: 'flex', flexDirection: 'column',
+        padding: '44px 44px',
+        background: 'rgba(255,255,255,.06)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         borderRadius: 20,
-        border: '1.5px solid rgba(255, 255, 255, 0.55)',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.20)',
+        border: '1.5px solid rgba(255,255,255,.22)',
+        boxShadow: '0 8px 40px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.2)',
         boxSizing: 'border-box',
-        margin: '24px',
+        margin: '20px',
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Top logo (mobile / fallback visibility) */}
-        <div style={{ marginBottom: 40 }}>
+        {/* Logo */}
+        <div style={{ marginBottom: 36 }}>
           <TaurusLogo size="sm" />
         </div>
 
         {/* Heading */}
-        <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 28 }}>
           <h1 style={{
             margin: 0,
-            fontSize: 24,
-            fontWeight: 700,
+            fontSize: 26, fontWeight: 800,
             color: '#FFFFFF',
-            letterSpacing: '-0.01em',
-            textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
           }}>
-            Sign in
+            Welcome back
           </h1>
           <p style={{
-            margin: '6px 0 0',
+            margin: '8px 0 0',
             fontSize: 14,
-            color: 'rgba(255,255,255,0.70)',
+            color: 'rgba(255,255,255,.60)',
+            lineHeight: 1.5,
           }}>
-            Enter your credentials to access the dashboard.
+            Sign in to access the logistics dashboard.
           </p>
         </div>
 
@@ -741,10 +675,10 @@ function LoginPage() {
             background: '#FFF5F5',
             border: '1px solid #FECACA',
             borderLeft: '3px solid #EF4444',
-            borderRadius: 8,
+            borderRadius: 10,
             padding: '11px 14px',
             marginBottom: 20,
-            fontSize: 13.5,
+            fontSize: 13, fontWeight: 500,
             color: '#B91C1C',
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -756,70 +690,48 @@ function LoginPage() {
         )}
 
         {/* Form */}
-        <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-          {/* Email field */}
-          <div style={{ marginBottom: 16 }}>
+        <form onSubmit={onSubmit} autoComplete="on" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
             <label style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'rgba(255,255,255,0.85)',
-              marginBottom: 6,
+              display: 'block', fontSize: 13, fontWeight: 600,
+              color: 'rgba(255,255,255,.80)', marginBottom: 6,
             }}>
               Email address
             </label>
             <input
-              type="email"
-              value={email}
+              type="email" value={email}
               onChange={e => setEmail(e.target.value)}
-              required
-              autoComplete="email"
+              required autoComplete="email"
               placeholder="you@company.com"
-              style={inputStyle('email')}
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField(null)}
+              style={fieldStyle('email')}
+              onFocus={() => setFocused('email')}
+              onBlur={() => setFocused(null)}
             />
           </div>
 
-          {/* Password field */}
-          <div style={{ marginBottom: 24 }}>
+          <div>
             <label style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'rgba(255,255,255,0.85)',
-              marginBottom: 6,
+              display: 'block', fontSize: 13, fontWeight: 600,
+              color: 'rgba(255,255,255,.80)', marginBottom: 6,
             }}>
               Password
             </label>
             <div style={{ position: 'relative' }}>
               <input
-                type={showPw ? 'text' : 'password'}
-                value={password}
+                type={showPw ? 'text' : 'password'} value={password}
                 onChange={e => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
+                required autoComplete="current-password"
                 placeholder="••••••••"
-                style={inputStyle('password')}
-                onFocus={() => setFocusedField('password')}
-                onBlur={() => setFocusedField(null)}
+                style={fieldStyle('password')}
+                onFocus={() => setFocused('password')}
+                onBlur={() => setFocused(null)}
               />
               <button
-                type="button"
-                onClick={() => setShowPw(s => !s)}
+                type="button" onClick={() => setShowPw(s => !s)}
                 style={{
-                  position: 'absolute',
-                  right: 14,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#94A3B8',
-                  padding: 4,
-                  display: 'flex',
-                  alignItems: 'center',
+                  position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center',
                 }}
                 aria-label={showPw ? 'Hide password' : 'Show password'}
               >
@@ -839,25 +751,21 @@ function LoginPage() {
             </div>
           </div>
 
-          {/* Submit */}
           <button
-            type="submit"
-            disabled={loading}
+            type="submit" disabled={loading}
             style={{
-              height: 48,
-              borderRadius: 8,
-              border: 'none',
+              height: 48, borderRadius: 10, border: 'none',
               cursor: loading ? 'not-allowed' : 'pointer',
               background: loading
-                ? '#94A3B8'
-                : 'linear-gradient(135deg, #1a6fb5 0%, #0B4F8A 100%)',
+                ? 'rgba(255,255,255,.25)'
+                : 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
               color: '#fff',
-              fontSize: 15,
-              fontWeight: 600,
-              letterSpacing: '0.01em',
+              fontSize: 15, fontWeight: 700,
+              letterSpacing: '-0.01em',
               transition: 'opacity 0.15s, box-shadow 0.15s',
-              boxShadow: loading ? 'none' : '0 4px 16px rgba(26,111,181,0.30)',
+              boxShadow: loading ? 'none' : '0 4px 18px rgba(37,99,235,.45)',
               fontFamily: "'Inter', -apple-system, sans-serif",
+              marginTop: 4,
             }}
             onMouseEnter={e => { if (!loading) e.currentTarget.style.opacity = '0.88'; }}
             onMouseLeave={e => { if (!loading) e.currentTarget.style.opacity = '1'; }}
@@ -875,29 +783,24 @@ function LoginPage() {
           </button>
         </form>
 
-        {/* Footer */}
         <p style={{
-          marginTop: 'auto',
-          paddingTop: 32,
+          marginTop: 'auto', paddingTop: 28,
           textAlign: 'center',
           fontSize: 11.5,
-          color: 'rgba(255,255,255,0.50)',
+          color: 'rgba(255,255,255,.35)',
         }}>
-          © {new Date().getFullYear()} Taurus Trade &amp; Logistics · All rights reserved
+          © {new Date().getFullYear()} Taurus Trade &amp; Logistics
         </p>
       </div>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 768px) {
-          .taurus-login-left { display: none !important; }
-          .taurus-login-right { flex: 1 1 100% !important; }
-        }
-        input::placeholder { color: rgba(100,116,139,0.75) !important; }
+        input::placeholder { color: rgba(100,116,139,0.7) !important; }
       `}</style>
     </div>
-  )
+  );
 }
+
 /* ── Error Boundary ──────────────────────────────────────────── */
 class ErrorBoundary extends Component {
   state = { hasError: false, error: null };
