@@ -112,13 +112,18 @@ class ItemListCreate(generics.ListCreateAPIView):
         return [IsAdmin()]
 
     def create(self, request, *args, **kwargs):
+        import logging
+        from django.db import transaction as db_transaction
+        logger = logging.getLogger(__name__)
+
         data = request.data.copy()
         if hasattr(data, 'dict'):
             data = data.dict()
+
         opening_qty_raw = data.pop('opening_qty', None)
         unit_price_raw  = data.pop('unit_price',  None)
         location_id     = data.pop('location_id', None)
-        data.pop('quantity', None)  # frontend sends quantity; pop it to avoid serializer confusion
+        data.pop('quantity', None)
 
         def _scalar(v):
             if isinstance(v, (list, tuple)):
@@ -128,6 +133,7 @@ class ItemListCreate(generics.ListCreateAPIView):
         opening_qty_raw = _scalar(opening_qty_raw)
         unit_price_raw  = _scalar(unit_price_raw)
         location_id     = _scalar(location_id)
+
         try:
             opening_qty = Decimal(str(opening_qty_raw)) if opening_qty_raw not in (None, '', '0', 0, '0.0') else None
         except (InvalidOperation, TypeError):
@@ -137,52 +143,63 @@ class ItemListCreate(generics.ListCreateAPIView):
         except (InvalidOperation, TypeError):
             unit_price = None
 
-        # Ensure reorder_level has a default if not provided
         if 'reorder_level' not in data or data.get('reorder_level') in (None, ''):
             data['reorder_level'] = 0
 
-        serializer = self.get_serializer(data=data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        item = serializer.save()
-
-        if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
-            try:
-                if location_id:
-                    try:
-                        loc = Location.objects.get(id=location_id)
-                    except Location.DoesNotExist:
-                        loc = None
+        try:
+            with db_transaction.atomic():
+                item_name = data.get('name', '').strip()
+                existing_item = Item.objects.filter(name=item_name).first()
+                if existing_item:
+                    item = existing_item
                 else:
+                    serializer = self.get_serializer(data=data)
+                    if not serializer.is_valid():
+                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    item = serializer.save()
+
+                if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
                     loc = None
+                    if location_id:
+                        loc = Location.objects.filter(id=location_id).first()
+                    if loc is None:
+                        loc = Location.objects.filter(deleted_at__isnull=True).first()
+                    if loc is None:
+                        loc, _ = Location.objects.get_or_create(
+                            name='Main Store',
+                            defaults={'location_type': 'STORE', 'address': ''}
+                        )
 
-                # Always guarantee a location exists
-                if loc is None:
-                    loc = Location.objects.filter(deleted_at__isnull=True).first()
-                if loc is None:
-                    loc, _ = Location.objects.get_or_create(
-                        name='Main Store',
-                        defaults={'location_type': 'STORE', 'address': ''}
-                    )
+                    branch = _resolve_branch(request.user, request.data, request.query_params)
 
-                # ── FIX: tag opening stock entry with the acting branch ──
-                branch = _resolve_branch(request.user, request.data, request.query_params)
+                    already_has_opening = StockLedger.objects.filter(
+                        item=item,
+                        transaction_type=StockLedger.OPENING,
+                        branch=branch,
+                    ).exists()
 
-                StockLedger.objects.create(
-                    item=item, location=loc,
-                    branch=branch,                          # ← NEW
-                    transaction_type=StockLedger.OPENING,
-                    quantity=opening_qty, unit_price=unit_price,
-                    created_by=request.user if request.user.is_authenticated else None,
-                    remark='Initial Opening Stock',
-                )
-            except Exception as ex:
-                import logging
-                logging.getLogger(__name__).error(
-                    "Failed to create opening stock ledger for item %s: %s", item.pk, ex
-                )
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+                    if not already_has_opening:
+                        StockLedger.objects.create(
+                            item=item,
+                            location=loc,
+                            branch=branch,
+                            transaction_type=StockLedger.OPENING,
+                            quantity=opening_qty,
+                            unit_price=unit_price,
+                            created_by=request.user if request.user.is_authenticated else None,
+                            remark='Initial Opening Stock',
+                        )
+
+        except Exception as ex:
+            logger.exception("Failed to create inventory item: %s", ex)
+            return Response(
+                {'error': f'Failed to save item: {str(ex)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        headers = self.get_success_headers(ItemSerializer(item).data)
+        return Response(ItemSerializer(item).data, status=status.HTTP_201_CREATED, headers=headers)
+
 
 
 class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
