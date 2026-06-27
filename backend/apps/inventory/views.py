@@ -149,11 +149,21 @@ class ItemListCreate(generics.ListCreateAPIView):
         if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
             try:
                 if location_id:
-                    loc = Location.objects.get(id=location_id)
+                    try:
+                        loc = Location.objects.get(id=location_id)
+                    except Location.DoesNotExist:
+                        loc = None
                 else:
+                    loc = None
+
+                # Always guarantee a location exists
+                if loc is None:
                     loc = Location.objects.filter(deleted_at__isnull=True).first()
-                    if not loc:
-                        loc = Location.objects.create(name='Main Store', location_type='STORE')
+                if loc is None:
+                    loc, _ = Location.objects.get_or_create(
+                        name='Main Store',
+                        defaults={'location_type': 'STORE', 'address': ''}
+                    )
 
                 # ── FIX: tag opening stock entry with the acting branch ──
                 branch = _resolve_branch(request.user, request.data, request.query_params)
@@ -436,11 +446,18 @@ def post_opening_stock(request):
         try:
             loc = Location.objects.get(pk=location_id)
         except Location.DoesNotExist:
-            return Response({'error': 'Location not found'}, status=404)
+            loc = None
     else:
+        loc = None
+
+    # Always guarantee a location exists
+    if loc is None:
         loc = Location.objects.filter(deleted_at__isnull=True).first()
-        if not loc:
-            loc = Location.objects.create(name='Main Store', location_type='STORE')
+    if loc is None:
+        loc, _ = Location.objects.get_or_create(
+            name='Main Store',
+            defaults={'location_type': 'STORE', 'address': ''}
+        )
 
     # ── FIX: tag with branch ──
     branch = _resolve_branch(request.user, request.data, request.query_params)
