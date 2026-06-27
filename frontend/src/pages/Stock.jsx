@@ -107,12 +107,16 @@ export default function StockPage() {
   const { register, handleSubmit, reset, watch } = useForm({
     defaultValues: {
       item_type: 'SPARE_PART', unit: 'pcs',
-      reorder_level: 0,
+      unit_price: '', quantity: '',
       name: '', tyre_size: '', description: ''
     }
   });
 
-  const watchedType  = watch('item_type');
+  const watchedUnitPrice = watch('unit_price');
+  const watchedQuantity  = watch('quantity');
+  const totalCost = (parseFloat(watchedQuantity || 0) * parseFloat(watchedUnitPrice || 0)) || 0;
+
+  const watchedType = watch('item_type');
 
   const loadData = () => {
     setLoading(true);
@@ -164,10 +168,11 @@ export default function StockPage() {
         name: (watchedType === 'TYRE' && data.tyre_size)
           ? `${data.name} - ${data.tyre_size}`
           : data.name,
-        item_type:     data.item_type,
-        unit:          data.unit,
-        description:   data.description || '',
-        reorder_level: parseFloat(data.reorder_level || 0),
+        item_type:   data.item_type,
+        unit:        data.unit,
+        description: data.description || '',
+        unit_price:  parseFloat(data.unit_price || 0),
+        quantity:    parseFloat(data.quantity || 0),
       };
 
       if (editing) {
@@ -178,7 +183,7 @@ export default function StockPage() {
         toast.success('Item created. Use "Set Stock" to post opening stock.');
       }
 
-      reset({ item_type: 'SPARE_PART', unit: 'pcs', reorder_level: 0, tyre_size: '', name: '', description: '' });
+      reset({ item_type: 'SPARE_PART', unit: 'pcs', unit_price: '', quantity: '', tyre_size: '', name: '', description: '' });
       setEditing(null);
       setShowForm(false);
       loadData();
@@ -253,7 +258,7 @@ export default function StockPage() {
       tyreSize = parts.pop();
       name = parts.join(' - ');
     }
-    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, reorder_level: s.item__reorder_level, description: '' });
+    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, unit_price: s.item__unit_price || '', quantity: '', description: '' });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -376,7 +381,7 @@ export default function StockPage() {
             </button>
             <button className="btn btn-primary btn-sm" onClick={() => {
               if (showForm) {
-                reset({ item_type: 'SPARE_PART', unit: 'pcs', reorder_level: 0, tyre_size: '', name: '', description: '' });
+                reset({ item_type: 'SPARE_PART', unit: 'pcs', unit_price: '', quantity: '', tyre_size: '', name: '', description: '' });
                 setEditing(null);
               }
               setShowForm(!showForm);
@@ -436,8 +441,13 @@ export default function StockPage() {
                 </div>
 
                 <div className="fg">
-                  <label>Reorder Quantity</label>
-                  <input type="number" step="0.01" min="0" placeholder="0" {...register('reorder_level')} />
+                  <label>Unit Price ({symbol}) *</label>
+                  <input type="number" step="0.01" min="0" placeholder="0.00" {...register('unit_price', { required: true })} />
+                </div>
+
+                <div className="fg">
+                  <label>Quantity *</label>
+                  <input type="number" step="0.001" min="0" placeholder="0" {...register('quantity', { required: true })} />
                 </div>
 
                 <div className="fg" style={{ gridColumn: 'span 2' }}>
@@ -445,6 +455,15 @@ export default function StockPage() {
                   <input type="text" placeholder="Optional description…" {...register('description')} />
                 </div>
               </div>
+
+              {totalCost > 0 && (
+                <div className="alert alert-success" style={{ margin: '10px 0' }}>
+                  💰 Total Cost: <strong>{symbol} {totalCost.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>
+                    ({parseFloat(watchedQuantity || 0).toLocaleString()} {watch('unit')} × {symbol} {parseFloat(watchedUnitPrice || 0).toLocaleString('en', { minimumFractionDigits: 2 })})
+                  </span>
+                </div>
+              )}
 
 
 
@@ -475,7 +494,8 @@ export default function StockPage() {
                 <th style={{ textAlign: 'right', color: 'var(--red)' }}>− Issued Qty</th>
                 <th style={{ textAlign: 'right', fontWeight: 700 }}>Closing Qty</th>
                 <th style={{ textAlign: 'right' }}>Closing Value</th>
-                <th>Reorder</th>
+                <th style={{ textAlign: 'right' }}>Unit Price</th>
+                <th style={{ textAlign: 'right', fontWeight: 700 }}>Total Cost</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -483,7 +503,7 @@ export default function StockPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={13} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                  <td colSpan={14} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
                     ⏳ Loading stock data…
                   </td>
                 </tr>
@@ -560,7 +580,13 @@ export default function StockPage() {
                     </td>
 
                     <td style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
-                      {reorder > 0 ? reorder.toLocaleString() : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {s.item__unit_price > 0 ? fmt(parseFloat(s.item__unit_price)) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
+                      {s.item__unit_price > 0 && closingQty > 0
+                        ? fmt(closingQty * parseFloat(s.item__unit_price))
+                        : closingVal > 0 ? fmt(closingVal)
+                        : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
                     <td>
@@ -597,7 +623,7 @@ export default function StockPage() {
               })}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={13} style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>
+                  <td colSpan={14} style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>
                     No inventory items found{search ? ` matching "${search}"` : ''}.
                   </td>
                 </tr>
@@ -618,7 +644,15 @@ export default function StockPage() {
                   <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>
                     {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
                   </td>
-                  <td colSpan={3}></td>
+                  <td></td>
+                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--text)' }}>
+                    {fmt(filtered.reduce((s, x) => {
+                      const qty = parseFloat(x.closing_qty || 0);
+                      const price = parseFloat(x.item__unit_price || 0);
+                      return s + (price > 0 ? qty * price : parseFloat(x.closing_value || 0));
+                    }, 0))}
+                  </td>
+                  <td colSpan={2}></td>
                 </tr>
               </tfoot>
             )}
