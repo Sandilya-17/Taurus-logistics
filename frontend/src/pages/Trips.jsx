@@ -30,7 +30,7 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: '' });
 
-  const { register, handleSubmit, watch } = useForm({
+  const { register, handleSubmit, watch, setValue } = useForm({
     defaultValues: {
       truck:          trip.truck,
       driver:         trip.driver,
@@ -48,6 +48,7 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
     }
   });
 
+  const wTruck      = watch('truck');
   const wLoaded     = watch('loaded_qty');
   const wDelivered  = watch('delivered_qty');
   const wRate       = watch('rate_per_ton');
@@ -59,6 +60,19 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
     const d = calcDurationFromISO(wLoadTime, wUnloadTime);
     setComputed({ ...c, duration: d });
   }, [wLoaded, wDelivered, wRate, wLoadTime, wUnloadTime]);
+
+  // Auto-select the driver assigned to this truck whenever the truck
+  // changes (e.g. user swaps truck while editing). Skips the initial
+  // render value so it only kicks in on an actual change away from
+  // the trip's original truck.
+  const initialTruck = trip.truck;
+  useEffect(() => {
+    if (!wTruck || String(wTruck) === String(initialTruck)) return;
+    const match = drivers.find(d => String(d.assigned_truck) === String(wTruck));
+    if (match && match.can_be_assigned) {
+      setValue('driver', match.id);
+    }
+  }, [wTruck, drivers, setValue, initialTruck]);
 
   const autoStatus = parseFloat(wDelivered || 0) > 0 && !!wUnloadTime ? 'COMPLETED' : null;
 
@@ -124,6 +138,14 @@ function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
                 <option value="">— Select Truck —</option>
                 {trucks.map(t => <option key={t.id} value={t.id}>{t.truck_number} – {t.model}</option>)}
               </select>
+              {wTruck && String(wTruck) !== String(initialTruck) && (() => {
+                const matchedDriver = drivers.find(d => String(d.assigned_truck) === String(wTruck));
+                return matchedDriver ? (
+                  <div style={{ fontSize: 11, marginTop: 3, color: matchedDriver.can_be_assigned ? 'var(--green)' : 'var(--red)' }}>
+                    🧑‍✈️ {matchedDriver.name}{matchedDriver.can_be_assigned ? ' (auto-filled)' : ' ⚠️ licence expired — pick another driver'}
+                  </div>
+                ) : null;
+              })()}
             </div>
             <div className="fg">
               <label>Driver *</label>
@@ -255,11 +277,21 @@ export default function TripsPage() {
   const [tab,      setTab]      = useState('active');
   const [editTrip, setEditTrip] = useState(null);
 
-  const { register, handleSubmit, watch, reset } = useForm({
+  const { register, handleSubmit, watch, reset, setValue } = useForm({
     defaultValues: { rate_per_ton: '' }
   });
 
   const wTruck = watch('truck');
+
+  // Auto-select the driver assigned to this truck (Driver.assigned_truck),
+  // so picking a truck fills in its driver automatically wherever possible.
+  useEffect(() => {
+    if (!wTruck) return;
+    const match = drivers.find(d => String(d.assigned_truck) === String(wTruck));
+    if (match && match.can_be_assigned) {
+      setValue('driver', match.id);
+    }
+  }, [wTruck, drivers, setValue]);
 
   const loadData = useCallback(() => {
     api.get('/trucks/?status=ACTIVE', { params: branchQS }).then(r  => setTrucks(r.data.results  || r.data));
@@ -366,9 +398,15 @@ export default function TripsPage() {
                 </select>
                 {wTruck && (() => {
                   const tk = trucks.find(t => String(t.id) === String(wTruck));
+                  const matchedDriver = drivers.find(d => String(d.assigned_truck) === String(wTruck));
                   return tk ? (
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
                       ✓ {tk.truck_number} · {tk.model} · {tk.status}
+                      {matchedDriver && (
+                        <span style={{ color: matchedDriver.can_be_assigned ? 'var(--green)' : 'var(--red)' }}>
+                          {' · '}🧑‍✈️ {matchedDriver.name}{matchedDriver.can_be_assigned ? ' (auto-filled)' : ' ⚠️ licence expired — pick another driver'}
+                        </span>
+                      )}
                     </div>
                   ) : null;
                 })()}
