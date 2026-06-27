@@ -1,4 +1,4 @@
-// src/pages/Stock.jsx – Taurus ERP · Professional Stock Ledger
+\// src/pages/Stock.jsx – Taurus ERP · Professional Stock Ledger
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
