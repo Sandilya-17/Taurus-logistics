@@ -123,7 +123,7 @@ export default function DriversPage() {
                           {fmtDate(d.licence_expiry_date)}{isExpired ? ' ⚠️' : ''}
                         </span>
                       </td>
-                      <td className="mono" style={{ fontSize: 11 }}>{d.assigned_truck_number || '—'}</td>
+                      <td className="mono" style={{ fontSize: 11 }}>{d.truck_number || '—'}</td>
                       <td><span className={`badge ${STATUS_BADGE[d.status]}`}>{d.status}</span></td>
                       <td>
                         <div className="flex gap4">
