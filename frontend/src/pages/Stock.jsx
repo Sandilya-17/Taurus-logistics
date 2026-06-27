@@ -1,4 +1,4 @@
-\// src/pages/Stock.jsx – Taurus ERP · Professional Stock Ledger
+// src/pages/Stock.jsx – Taurus ERP · Professional Stock Ledger
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -40,22 +40,20 @@ const SPARE_PARTS = [
   "Starter Motor","Bearing Set","Piston with Ring","Head Gasket","Windscreen","Synchronizer",
   "Low Gear","Steel Plate"
 ];
-
 const TYRES = [
   "315/80R22.5 KAPSEN S09 TRAILER D 2 AXLE","Apollo Tyre","MRF Tyre","Ceat Tyre",
   "JK Tyre","Birla Tyre","Michelin Tyre","Bridgestone Tyre","Goodyear Tyre","Continental Tyre",
   "315/80R22.5","385/65R22.5","12.00R24","12.00R20",
 ];
-
 const LUBRICANTS = [
   "Engine Oil 15W-40","Engine Oil 20W-50","Gear Oil 80W-90","Gear Oil 85W-140",
   "Hydraulic Oil","Brake Fluid","Coolant","Grease","Differential Oil","Power Steering Fluid"
 ];
-
 const ITEM_DICT = { SPARE_PART: SPARE_PARTS, TYRE: TYRES, LUBRICANT: LUBRICANTS };
-
 const TYPE_LABEL = { SPARE_PART: 'Spare Part', TYRE: 'Tyre', LUBRICANT: 'Lubricant' };
 const TYPE_BADGE = { SPARE_PART: 'b-navy', TYRE: 'b-purple', LUBRICANT: 'b-teal' };
+
+const FORM_DEFAULTS = { item_type: 'SPARE_PART', unit: 'pcs', unit_price: '', quantity: '', tyre_size: '', name: '', description: '' };
 
 export default function StockPage() {
   const { user } = useAuth();
@@ -64,26 +62,26 @@ export default function StockPage() {
   const branchQS  = branchCtx?.branchQS || {};
   const { fmt, symbol } = useCurrency();
 
-  const [stock,    setStock]    = useState([]);
-  const [allItems, setAllItems] = useState([]);
-  const [ledger,   setLedger]   = useState([]);
-  const [search,   setSearch]   = useState('');
+  const [stock,      setStock]      = useState([]);
+  const [allItems,   setAllItems]   = useState([]);
+  const [ledger,     setLedger]     = useState([]);
+  const [search,     setSearch]     = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [loading,  setLoading]  = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [editing,  setEditing]  = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [showForm,   setShowForm]   = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [editing,    setEditing]    = useState(null); // item id when editing
 
-  const [dlStock, setDlStock] = useState(''); // '' | 'excel' | 'pdf'
+  const [dlStock, setDlStock] = useState('');
 
-  const handleStockDownload = async (fmt) => {
-    setDlStock(fmt);
+  const handleStockDownload = async (fmtType) => {
+    setDlStock(fmtType);
     try {
-      const mime = fmt === 'pdf'
+      const mime = fmtType === 'pdf'
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const ext = fmt === 'pdf' ? 'pdf' : 'xlsx';
-      const r = await api.get(`/reports/stock/?export=${fmt}`, { responseType: 'blob' });
+      const ext = fmtType === 'pdf' ? 'pdf' : 'xlsx';
+      const r = await api.get(`/reports/stock/?export=${fmtType}`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([r.data], { type: mime }));
       const a = document.createElement('a');
       a.href = url;
@@ -92,31 +90,25 @@ export default function StockPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success(`Stock report downloaded as ${fmt.toUpperCase()}.`);
+      toast.success(`Stock report downloaded as ${fmtType.toUpperCase()}.`);
     } catch { toast.error('Download failed. Please try again.'); }
     finally { setDlStock(''); }
   };
 
-  // Quick-add modal: 'SPARE_PART' | 'LUBRICANT' | 'TYRE' | null
-  const [quickAdd, setQuickAdd] = useState(null);
-  const [qaName,   setQaName]   = useState('');
-  const [qaTyreSize, setQaTyreSize] = useState('');
-  const [qaUnit,   setQaUnit]   = useState('pcs');
-  const [qaSaving, setQaSaving] = useState(false);
+  // Quick-add modal
+  const [quickAdd,    setQuickAdd]    = useState(null);
+  const [qaName,      setQaName]      = useState('');
+  const [qaTyreSize,  setQaTyreSize]  = useState('');
+  const [qaUnit,      setQaUnit]      = useState('pcs');
+  const [qaSaving,    setQaSaving]    = useState(false);
 
-  const { register, handleSubmit, reset, watch } = useForm({
-    defaultValues: {
-      item_type: 'SPARE_PART', unit: 'pcs',
-      unit_price: '', quantity: '',
-      name: '', tyre_size: '', description: ''
-    }
-  });
+  const { register, handleSubmit, reset, watch } = useForm({ defaultValues: FORM_DEFAULTS });
 
+  const watchedType      = watch('item_type');
   const watchedUnitPrice = watch('unit_price');
   const watchedQuantity  = watch('quantity');
+  const watchedUnit      = watch('unit');
   const totalCost = (parseFloat(watchedQuantity || 0) * parseFloat(watchedUnitPrice || 0)) || 0;
-
-  const watchedType = watch('item_type');
 
   const loadData = () => {
     setLoading(true);
@@ -133,85 +125,89 @@ export default function StockPage() {
 
   useEffect(() => { loadData(); }, [branchCtx?.activeBranchId]);
 
-  // Build per-item transaction breakdown from ledger
   const buildLedgerSummary = (itemId) => {
-    // Compare as numbers to avoid type mismatch (string vs int)
     const id = parseInt(itemId, 10);
     const entries = ledger.filter(e => parseInt(e.item, 10) === id);
-
-    const sum = (type) => entries
-      .filter(e => e.transaction_type === type)
-      .reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
-
-    const sumVal = (type) => entries
-      .filter(e => e.transaction_type === type)
-      .reduce((s, e) => {
-        // final_amount is negative for issues in the ledger — take absolute value for display
-        return s + Math.abs(parseFloat(e.final_amount || 0));
-      }, 0);
-
-    const openQty  = sum('OPENING');
-    const openVal  = sumVal('OPENING');
-    const purchQty = sum('PURCHASE');
-    const purchVal = sumVal('PURCHASE');
-    const issueQty = Math.abs(sum('ISSUE'));
-    const issueVal = sumVal('ISSUE');
-    const hasAnyEntry = entries.length > 0;
-
-    return { openQty, openVal, purchQty, purchVal, issueQty, issueVal, hasAnyEntry };
+    const sum    = (type) => entries.filter(e => e.transaction_type === type).reduce((s, e) => s + parseFloat(e.quantity || 0), 0);
+    const sumVal = (type) => entries.filter(e => e.transaction_type === type).reduce((s, e) => s + Math.abs(parseFloat(e.final_amount || 0)), 0);
+    return {
+      openQty:  sum('OPENING'),
+      openVal:  sumVal('OPENING'),
+      purchQty: sum('PURCHASE'),
+      purchVal: sumVal('PURCHASE'),
+      issueQty: Math.abs(sum('ISSUE')),
+      issueVal: sumVal('ISSUE'),
+      hasAnyEntry: entries.length > 0,
+    };
   };
 
   const onSubmit = async (data) => {
     setSaving(true);
     try {
-      const payload = {
-        name: (watchedType === 'TYRE' && data.tyre_size)
-          ? `${data.name} - ${data.tyre_size}`
-          : data.name,
-        item_type:   data.item_type,
-        unit:        data.unit,
-        description: data.description || '',
-        unit_price:  parseFloat(data.unit_price || 0),
-        opening_qty: parseFloat(data.quantity || 0),
-      };
+      const itemName = (watchedType === 'TYRE' && data.tyre_size)
+        ? `${data.name} - ${data.tyre_size}`
+        : data.name;
 
       if (editing) {
-        await api.patch(`/inventory/items/${editing}/`, payload);
+        // PATCH: only send Item model fields (no unit_price/opening_qty — not Item fields)
+        const patchPayload = {
+          name:        itemName,
+          item_type:   data.item_type,
+          unit:        data.unit,
+          description: data.description || '',
+        };
+        await api.patch(`/inventory/items/${editing}/`, patchPayload);
         toast.success('Item updated successfully.');
       } else {
-        await api.post('/inventory/items/', payload);
-        toast.success('Item created. Use "Set Stock" to post opening stock.');
+        // POST: send item fields + opening_qty + unit_price for auto stock creation
+        const postPayload = {
+          name:        itemName,
+          item_type:   data.item_type,
+          unit:        data.unit,
+          description: data.description || '',
+          unit_price:  parseFloat(data.unit_price || 0),
+          opening_qty: parseFloat(data.quantity   || 0),
+        };
+        await api.post('/inventory/items/', postPayload);
+        const qty = parseFloat(data.quantity || 0);
+        if (qty > 0) {
+          toast.success(`Item created with opening stock of ${qty} ${data.unit}.`);
+        } else {
+          toast.success('Item created. Use "Set Stock" to post opening stock.');
+        }
       }
 
-      reset({ item_type: 'SPARE_PART', unit: 'pcs', unit_price: '', quantity: '', tyre_size: '', name: '', description: '' });
+      reset(FORM_DEFAULTS);
       setEditing(null);
       setShowForm(false);
       loadData();
     } catch (e) {
-      toast.error(e.response?.data?.detail || JSON.stringify(e.response?.data) || 'Failed to save item.');
+      // Handle both DRF error formats: {detail:...}, {error:...}, or field errors
+      const errData = e.response?.data;
+      const msg = errData?.error || errData?.detail || (typeof errData === 'object' ? JSON.stringify(errData) : null) || 'Failed to save item.';
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  // Post / Edit opening stock for an existing item
-  const [openingModal, setOpeningModal] = useState(null);   // { id, name, ledgerId? }
-  const [openingForm,  setOpeningForm]  = useState({ qty: '', price: '' });
-  const [savingOpening, setSavingOpening] = useState(false);
+  // Opening stock modal
+  const [openingModal,   setOpeningModal]   = useState(null);
+  const [openingForm,    setOpeningForm]    = useState({ qty: '', price: '' });
+  const [savingOpening,  setSavingOpening]  = useState(false);
 
   const openSetStock = (s, ld) => {
-    // Find the OPENING ledger entry id so we can PATCH it for editing
     const openingEntry = ledger.find(
       e => parseInt(e.item, 10) === parseInt(s.item__id, 10) && e.transaction_type === 'OPENING'
     );
     setOpeningModal({
-      id: s.item__id,
-      name: s.item__name,
+      id:       s.item__id,
+      name:     s.item__name,
       ledgerId: openingEntry?.id || null,
-      isEdit: ld.openQty > 0,
+      isEdit:   ld.openQty > 0,
     });
     setOpeningForm({
-      qty:   ld.openQty > 0   ? String(ld.openQty)   : '',
+      qty:   ld.openQty > 0 ? String(ld.openQty) : '',
       price: ld.openVal > 0 && ld.openQty > 0 ? String((ld.openVal / ld.openQty).toFixed(4)) : '',
     });
   };
@@ -219,31 +215,23 @@ export default function StockPage() {
   const submitOpeningStock = async () => {
     const qty   = parseFloat(openingForm.qty   || 0);
     const price = parseFloat(openingForm.price || 0);
-    if (!qty || qty <= 0)     { toast.error('Enter a valid quantity.');   return; }
+    if (!qty   || qty   <= 0) { toast.error('Enter a valid quantity.');   return; }
     if (!price || price <= 0) { toast.error('Enter a valid unit price.'); return; }
     setSavingOpening(true);
     try {
       if (openingModal.isEdit && openingModal.ledgerId) {
-        // PATCH the existing OPENING ledger entry
-        await api.patch(`/inventory/ledger/${openingModal.ledgerId}/`, {
-          quantity:   qty,
-          unit_price: price,
-        });
+        await api.patch(`/inventory/ledger/${openingModal.ledgerId}/`, { quantity: qty, unit_price: price });
         toast.success(`Opening stock updated for ${openingModal.name}.`);
       } else {
-        // No existing opening entry — create one
-        await api.post('/inventory/opening-stock/', {
-          item_id:    openingModal.id,
-          quantity:   qty,
-          unit_price: price,
-        });
+        await api.post('/inventory/opening-stock/', { item_id: openingModal.id, quantity: qty, unit_price: price });
         toast.success(`Opening stock of ${qty} units posted for ${openingModal.name}.`);
       }
       setOpeningModal(null);
       setOpeningForm({ qty: '', price: '' });
       loadData();
     } catch (e) {
-      toast.error(e.response?.data?.error || e.response?.data?.detail || 'Failed to save opening stock.');
+      const errData = e.response?.data;
+      toast.error(errData?.error || errData?.detail || 'Failed to save opening stock.');
     } finally {
       setSavingOpening(false);
     }
@@ -258,6 +246,7 @@ export default function StockPage() {
       tyreSize = parts.pop();
       name = parts.join(' - ');
     }
+    // unit_price and quantity are blank on edit — those are StockLedger fields, not Item fields
     reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, unit_price: '', quantity: '', description: '' });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -279,7 +268,8 @@ export default function StockPage() {
       setQuickAdd(null); setQaName(''); setQaTyreSize(''); setQaUnit('pcs');
       loadData();
     } catch (e) {
-      toast.error(e.response?.data?.name?.[0] || 'Failed to add item.');
+      const errData = e.response?.data;
+      toast.error(errData?.name?.[0] || errData?.error || 'Failed to add item.');
     } finally { setQaSaving(false); }
   };
 
@@ -301,7 +291,6 @@ export default function StockPage() {
     return matchSearch && matchType;
   });
 
-  // KPI calculations — only count items that have had stock entries
   const totalItems = stock.length;
   const lowStock   = stock.filter(s => {
     const qty = parseFloat(s.closing_qty || 0);
@@ -309,9 +298,8 @@ export default function StockPage() {
     return qty > 0 && reorder > 0 && qty <= reorder;
   }).length;
   const outOfStock = stock.filter(s => {
-    const ld = buildLedgerSummary(s.item__id);
+    const ld  = buildLedgerSummary(s.item__id);
     const qty = parseFloat(s.closing_qty || 0);
-    // Only "out of stock" if item actually had stock before and now it's 0
     return ld.hasAnyEntry && qty <= 0;
   }).length;
   const totalValue = stock.reduce((sum, s) => sum + parseFloat(s.closing_value || 0), 0);
@@ -321,9 +309,9 @@ export default function StockPage() {
       {/* ── KPI Summary ── */}
       <div className="kpi-grid mb16" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {[
-          { label: 'Total Items',  val: totalItems,         color: 'var(--blue)',  icon: '📦' },
-          { label: 'Low Stock',    val: lowStock,           color: 'var(--amber)', icon: '⚠️' },
-          { label: 'Out of Stock', val: outOfStock,         color: 'var(--red)',   icon: '🚨' },
+          { label: 'Total Items',  val: totalItems,      color: 'var(--blue)',  icon: '📦' },
+          { label: 'Low Stock',    val: lowStock,        color: 'var(--amber)', icon: '⚠️' },
+          { label: 'Out of Stock', val: outOfStock,      color: 'var(--red)',   icon: '🚨' },
           { label: 'Total Value',  val: fmt(totalValue), color: 'var(--green)', icon: '💰' },
         ].map((k, i) => (
           <div key={i} className="kpi">
@@ -351,16 +339,12 @@ export default function StockPage() {
               onChange={e => setSearch(e.target.value)}
               style={{ width: 200, padding: '7px 10px', fontSize: 12 }}
             />
-            <select
-              value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              style={{ padding: '7px 10px', fontSize: 12 }}
-            >
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ padding: '7px 10px', fontSize: 12 }}>
               <option value="">All Types</option>
               <option value="SPARE_PART">Spare Parts</option>
               <option value="LUBRICANT">Lubricants</option>
               <option value="TYRE">Tyres</option>
             </select>
-            {/* Quick-add buttons — available to all, but admin can also delete */}
             <button className="btn btn-sm" style={{ background:'var(--navy,#1e3a5f)', color:'#fff', fontSize:11 }}
               onClick={() => { setQuickAdd('SPARE_PART'); setQaName(''); setQaTyreSize(''); setQaUnit('pcs'); }}>
               + Add Stock
@@ -380,10 +364,7 @@ export default function StockPage() {
               {dlStock === 'pdf' ? '⏳ Exporting…' : '🖨️ PDF'}
             </button>
             <button className="btn btn-primary btn-sm" onClick={() => {
-              if (showForm) {
-                reset({ item_type: 'SPARE_PART', unit: 'pcs', unit_price: '', quantity: '', tyre_size: '', name: '', description: '' });
-                setEditing(null);
-              }
+              if (showForm) { reset(FORM_DEFAULTS); setEditing(null); }
               setShowForm(!showForm);
             }}>
               {showForm ? '✕ Cancel' : '+ Add Inventory Item'}
@@ -410,11 +391,7 @@ export default function StockPage() {
                 {watchedType === 'TYRE' && (
                   <div className="fg">
                     <label>Tyre Size (type manually)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 11.00 R20"
-                      {...register('tyre_size')}
-                    />
+                    <input type="text" placeholder="e.g. 11.00 R20" {...register('tyre_size')} />
                   </div>
                 )}
 
@@ -440,15 +417,21 @@ export default function StockPage() {
                   </select>
                 </div>
 
-                <div className="fg">
-                  <label>Unit Price ({symbol}) *</label>
-                  <input type="number" step="0.01" min="0" placeholder="0.00" {...register('unit_price', { required: true })} />
-                </div>
-
-                <div className="fg">
-                  <label>Quantity *</label>
-                  <input type="number" step="0.001" min="0" placeholder="0" {...register('quantity', { required: true })} />
-                </div>
+                {/* Unit Price + Quantity only shown when ADDING (not editing) */}
+                {!editing && (
+                  <>
+                    <div className="fg">
+                      <label>Unit Price ({symbol}) *</label>
+                      <input type="number" step="0.01" min="0" placeholder="0.00"
+                        {...register('unit_price', { required: !editing })} />
+                    </div>
+                    <div className="fg">
+                      <label>Opening Quantity *</label>
+                      <input type="number" step="0.001" min="0" placeholder="0"
+                        {...register('quantity', { required: !editing })} />
+                    </div>
+                  </>
+                )}
 
                 <div className="fg" style={{ gridColumn: 'span 2' }}>
                   <label>Description / Notes</label>
@@ -456,23 +439,22 @@ export default function StockPage() {
                 </div>
               </div>
 
-              {totalCost > 0 && (
+              {/* Total cost preview — only for new items */}
+              {!editing && totalCost > 0 && (
                 <div className="alert alert-success" style={{ margin: '10px 0' }}>
-                  💰 Total Cost: <strong>{symbol} {totalCost.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  💰 Total Opening Value: <strong>{symbol} {totalCost.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                   <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>
-                    ({parseFloat(watchedQuantity || 0).toLocaleString()} {watch('unit')} × {symbol} {parseFloat(watchedUnitPrice || 0).toLocaleString('en', { minimumFractionDigits: 2 })})
+                    ({parseFloat(watchedQuantity || 0).toLocaleString()} {watchedUnit} × {symbol} {parseFloat(watchedUnitPrice || 0).toLocaleString('en', { minimumFractionDigits: 2 })})
                   </span>
                 </div>
               )}
-
-
 
               <div className="flex gap8 mt12">
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? '⏳ Saving…' : editing ? '✓ Update Item' : '✓ Save Item'}
                 </button>
                 <button type="button" className="btn btn-ghost" onClick={() => {
-                  reset(); setEditing(null); setShowForm(false);
+                  reset(FORM_DEFAULTS); setEditing(null); setShowForm(false);
                 }}>Cancel</button>
               </div>
             </form>
@@ -493,9 +475,8 @@ export default function StockPage() {
                 <th style={{ textAlign: 'right', color: 'var(--green)' }}>Purchased Value</th>
                 <th style={{ textAlign: 'right', color: 'var(--red)' }}>− Issued Qty</th>
                 <th style={{ textAlign: 'right', fontWeight: 700 }}>Closing Qty</th>
-                <th style={{ textAlign: 'right' }}>Closing Value</th>
                 <th style={{ textAlign: 'right' }}>Unit Price</th>
-                <th style={{ textAlign: 'right', fontWeight: 700 }}>Total Cost</th>
+                <th style={{ textAlign: 'right', fontWeight: 700 }}>Total Value</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -503,31 +484,25 @@ export default function StockPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={14} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                  <td colSpan={13} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
                     ⏳ Loading stock data…
                   </td>
                 </tr>
               )}
               {!loading && filtered.map((s, idx) => {
-                const closingQty = parseFloat(s.closing_qty  || 0);
+                const closingQty = parseFloat(s.closing_qty   || 0);
                 const closingVal = parseFloat(s.closing_value || 0);
                 const reorder    = parseFloat(s.item__reorder_level || 0);
                 const ld         = buildLedgerSummary(s.item__id);
+                const avgPrice   = closingQty > 0 && closingVal > 0 ? closingVal / closingQty : 0;
 
-                // Status logic:
-                // - "Out of Stock" only if item had ledger entries AND qty is now 0
-                // - "Low Stock"    only if qty > 0 AND reorder level is set AND qty <= reorder
-                // - "No Stock Set" if item has no ledger entries at all
-                // - "OK"           otherwise
                 const neverHadStock = !ld.hasAnyEntry;
                 const isOut = ld.hasAnyEntry && closingQty <= 0;
                 const isLow = !isOut && reorder > 0 && closingQty > 0 && closingQty <= reorder;
 
                 return (
                   <tr key={s.item__id} style={{ background: isOut ? 'rgba(220,38,38,0.03)' : isLow ? 'rgba(245,158,11,0.03)' : undefined }}>
-                    <td style={{ color: 'var(--muted)', fontSize: 11 }}>
-                      {String(idx + 1).padStart(2, '0')}
-                    </td>
+                    <td style={{ color: 'var(--muted)', fontSize: 11 }}>{String(idx + 1).padStart(2, '0')}</td>
 
                     <td style={{ fontWeight: 600 }}>
                       <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginBottom: 2 }}>
@@ -547,7 +522,6 @@ export default function StockPage() {
                       </span>
                     </td>
 
-                    {/* Opening Stock */}
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>
                       {ld.openQty > 0 ? ld.openQty.toLocaleString('en', { maximumFractionDigits: 3 }) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
@@ -555,7 +529,6 @@ export default function StockPage() {
                       {ld.openVal > 0 ? fmt(ld.openVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
-                    {/* Purchased */}
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 600 }}>
                       {ld.purchQty > 0 ? `+${ld.purchQty.toLocaleString('en', { maximumFractionDigits: 3 })}` : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
@@ -563,31 +536,25 @@ export default function StockPage() {
                       {ld.purchVal > 0 ? fmt(ld.purchVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
-                    {/* Issued */}
                     <td className="mono" style={{ textAlign: 'right', color: ld.issueQty > 0 ? 'var(--red)' : '#cbd5e1', fontWeight: 600 }}>
                       {ld.issueQty > 0 ? `−${ld.issueQty.toLocaleString('en', { maximumFractionDigits: 3 })}` : '—'}
                     </td>
 
-                    {/* Closing */}
                     <td className="mono" style={{
                       textAlign: 'right', fontWeight: 800, fontSize: 14,
                       color: isOut ? 'var(--red)' : isLow ? 'var(--amber)' : 'var(--text)'
                     }}>
                       {closingQty.toLocaleString('en', { maximumFractionDigits: 3 })}
                     </td>
-                    <td className="ced" style={{ textAlign: 'right', fontWeight: 700 }}>
-                      {closingVal > 0 ? fmt(closingVal) : <span style={{ color: '#cbd5e1' }}>—</span>}
+
+                    {/* Unit Price = closing_value / closing_qty (weighted avg) */}
+                    <td className="ced" style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
+                      {avgPrice > 0 ? fmt(avgPrice) : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
-                    <td style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
-                      {closingQty > 0 && closingVal > 0
-                        ? fmt(closingVal / closingQty)
-                        : <span style={{ color: '#cbd5e1' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
-                      {closingVal > 0
-                        ? fmt(closingVal)
-                        : <span style={{ color: '#cbd5e1' }}>—</span>}
+                    {/* Total Value = closing_value (qty × avg price) */}
+                    <td className="ced" style={{ textAlign: 'right', fontWeight: 700, color: closingVal > 0 ? 'var(--text)' : '#cbd5e1' }}>
+                      {closingVal > 0 ? fmt(closingVal) : '—'}
                     </td>
 
                     <td>
@@ -608,11 +575,7 @@ export default function StockPage() {
                           {ld.openQty > 0 ? '✏️ Edit Stock' : '📦 Set Stock'}
                         </button>
                         {isAdmin && (
-                          <button
-                            className="btn btn-ghost btn-xs"
-                            onClick={() => startEdit(s)}
-                            title="Edit item name / type / unit"
-                          >✏️ Item</button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => startEdit(s)} title="Edit item name / type / unit">✏️ Item</button>
                         )}
                         {isAdmin && (
                           <button className="btn btn-danger btn-xs" onClick={() => deleteItem(s.item__id)} title="Delete">🗑️</button>
@@ -624,7 +587,7 @@ export default function StockPage() {
               })}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={14} style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>
+                  <td colSpan={13} style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>
                     No inventory items found{search ? ` matching "${search}"` : ''}.
                   </td>
                 </tr>
@@ -636,17 +599,18 @@ export default function StockPage() {
                   <td colSpan={4} style={{ padding: '10px 12px', fontSize: 12, color: 'var(--muted)' }}>
                     Showing {filtered.length} of {totalItems} items
                   </td>
-                  <td style={{ textAlign: 'right', padding: '10px 12px' }}>{fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).openVal), 0))}</td>
-                  <td colSpan={2} style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>{fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).purchVal), 0))}</td>
+                  <td style={{ textAlign: 'right', padding: '10px 12px' }}>
+                    {fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).openVal), 0))}
+                  </td>
+                  <td colSpan={2} style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>
+                    {fmt(filtered.reduce((s, x) => s + parseFloat(buildLedgerSummary(x.item__id).purchVal), 0))}
+                  </td>
                   <td></td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', fontSize: 14 }}>
                     {filtered.reduce((s, x) => s + parseFloat(x.closing_qty || 0), 0).toLocaleString('en', { maximumFractionDigits: 3 })}
                   </td>
-                  <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)' }}>
-                    {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
-                  </td>
                   <td></td>
-                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--text)' }}>
+                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--green)' }}>
                     {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
                   </td>
                   <td colSpan={2}></td>
@@ -656,7 +620,8 @@ export default function StockPage() {
           </table>
         </div>
       </div>
-      {/* ── Opening Stock Modal (for existing no-stock items) ── */}
+
+      {/* ── Opening Stock Modal ── */}
       {openingModal && (
         <div className="modal-overlay" onClick={() => setOpeningModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -669,29 +634,23 @@ export default function StockPage() {
               <strong style={{ color: 'var(--text)' }}>{openingModal.name}</strong>
             </p>
             {openingModal.isEdit && (
-              <div className="alert" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid var(--amber)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: 'var(--text)', marginBottom: 12 }}>
+              <div className="alert" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid var(--amber)', borderRadius: 8, padding: '8px 14px', fontSize: 12, marginBottom: 12 }}>
                 ⚠️ Editing will update the opening ledger entry. This affects the closing balance.
               </div>
             )}
             <div className="fgrid">
               <div className="fg">
                 <label>Opening Quantity *</label>
-                <input
-                  type="number" step="0.001" min="0.001"
-                  placeholder="e.g. 10"
+                <input type="number" step="0.001" min="0.001" placeholder="e.g. 10"
                   value={openingForm.qty}
                   onChange={e => setOpeningForm(f => ({ ...f, qty: e.target.value }))}
-                  autoFocus
-                />
+                  autoFocus />
               </div>
               <div className="fg">
                 <label>Unit Cost ({symbol}) *</label>
-                <input
-                  type="number" step="0.01" min="0.01"
-                  placeholder="e.g. 250.00"
+                <input type="number" step="0.01" min="0.01" placeholder="e.g. 250.00"
                   value={openingForm.price}
-                  onChange={e => setOpeningForm(f => ({ ...f, price: e.target.value }))}
-                />
+                  onChange={e => setOpeningForm(f => ({ ...f, price: e.target.value }))} />
               </div>
             </div>
             {openingForm.qty && openingForm.price && parseFloat(openingForm.qty) > 0 && parseFloat(openingForm.price) > 0 && (
@@ -710,7 +669,8 @@ export default function StockPage() {
           </div>
         </div>
       )}
-      {/* ── Quick-Add / Manage Modal (Stock / Lubricant / Tyre) ── */}
+
+      {/* ── Quick-Add Modal ── */}
       {quickAdd && (
         <div className="modal-overlay" onClick={() => setQuickAdd(null)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
@@ -725,28 +685,17 @@ export default function StockPage() {
             <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
               Items here appear in Purchase & Issue dropdowns and the Add Inventory list.
             </p>
-
-            {/* Add new item */}
             <div className="fgrid" style={{ marginBottom: 8 }}>
               <div className="fg" style={{ gridColumn: quickAdd === 'TYRE' ? 'span 1' : 'span 2' }}>
                 <label>{quickAdd === 'TYRE' ? 'Tyre Brand / Name *' : 'Item Name *'}</label>
-                <input
-                  type="text"
+                <input type="text"
                   placeholder={quickAdd === 'TYRE' ? 'e.g. Apollo Tyre' : quickAdd === 'LUBRICANT' ? 'e.g. Engine Oil 15W-40' : 'e.g. Brake Pad'}
-                  value={qaName}
-                  onChange={e => setQaName(e.target.value)}
-                  autoFocus
-                />
+                  value={qaName} onChange={e => setQaName(e.target.value)} autoFocus />
               </div>
               {quickAdd === 'TYRE' && (
                 <div className="fg">
                   <label>Tyre Size (type manually)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 11.00 R20"
-                    value={qaTyreSize}
-                    onChange={e => setQaTyreSize(e.target.value)}
-                  />
+                  <input type="text" placeholder="e.g. 11.00 R20" value={qaTyreSize} onChange={e => setQaTyreSize(e.target.value)} />
                 </div>
               )}
             </div>
@@ -756,33 +705,23 @@ export default function StockPage() {
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setQaName(''); setQaTyreSize(''); }}>Clear</button>
             </div>
-
-            {/* Existing items list with delete */}
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                 Current {TYPE_LABEL[quickAdd]} Items — 🗑️ to remove from dropdowns
               </div>
               <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {allItems
-                  .filter(s => s.item_type === quickAdd)
-                  .map(s => (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', background: 'var(--surface)', borderRadius: 6, fontSize: 12 }}>
-                      <span>{s.name}</span>
-                      <button
-                        className="btn btn-danger btn-xs"
-                        style={{ padding: '2px 7px', fontSize: 11 }}
-                        onClick={() => deleteItem(s.id)}
-                        title="Remove from list"
-                      >🗑️</button>
-                    </div>
-                  ))
-                }
+                {allItems.filter(s => s.item_type === quickAdd).map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', background: 'var(--surface)', borderRadius: 6, fontSize: 12 }}>
+                    <span>{s.name}</span>
+                    <button className="btn btn-danger btn-xs" style={{ padding: '2px 7px', fontSize: 11 }}
+                      onClick={() => deleteItem(s.id)} title="Remove from list">🗑️</button>
+                  </div>
+                ))}
                 {allItems.filter(s => s.item_type === quickAdd).length === 0 && (
                   <div style={{ color: 'var(--muted)', fontSize: 12, padding: '8px 0' }}>No items yet.</div>
                 )}
               </div>
             </div>
-
             <div className="flex gap8 mt16">
               <button className="btn btn-ghost" onClick={() => { setQuickAdd(null); setQaName(''); setQaTyreSize(''); }}>Close</button>
             </div>
