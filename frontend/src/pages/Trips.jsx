@@ -26,6 +26,7 @@ function calcDurationFromISO(start, end) {
 
 // ─── Edit / Complete Trip Modal ───────────────────────────────────────────────
 function EditTripModal({ trip, trucks, drivers, onClose, onSaved }) {
+  const { fmt, symbol } = useCurrency();
   const [saving, setSaving] = useState(false);
   const [computed, setComputed] = useState({ qty_difference: 0, trip_revenue: 0, duration: '' });
 
@@ -306,10 +307,13 @@ export default function TripsPage() {
   const completedTrips = trips.filter(t => t.status === 'COMPLETED');
   const displayTrips   = tab === 'active' ? activeTrips : tab === 'completed' ? completedTrips : trips;
 
-  const totalRevenue  = trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
-  const totalFuelCost = trips.reduce((s,t) => s + parseFloat(t.fuel_cost||0), 0);
-  const totalSpare    = trips.reduce((s,t) => s + parseFloat(t.spare_parts_cost||0), 0);
-  const totalNet      = totalRevenue - totalFuelCost - totalSpare;
+  const totalRevenue    = trips.reduce((s,t) => s + parseFloat(t.trip_revenue||0), 0);
+  const totalDiffAmount = trips
+    .filter(t => t.delivered_qty != null)
+    .reduce((s,t) => {
+      const dq = parseFloat(t.qty_difference != null ? t.qty_difference : (parseFloat(t.loaded_qty||0) - parseFloat(t.delivered_qty||0)));
+      return s + dq * parseFloat(t.rate_per_ton || 0);
+    }, 0);
 
   return (
     <div>
@@ -326,10 +330,10 @@ export default function TripsPage() {
       {/* KPIs */}
       <div className="g2 mb16" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {[
-          { label: 'Active Trips',  val: activeTrips.length,    color: 'var(--blue)'  },
-          { label: 'Completed',     val: completedTrips.length, color: 'var(--green)' },
-          { label: 'Total Revenue', val: fmt(totalRevenue),  color: 'var(--amber)' },
-          { label: 'Net Profit',    val: fmt(totalNet),      color: totalNet >= 0 ? 'var(--green)' : 'var(--red)' },
+          { label: 'Active Trips',      val: activeTrips.length,    color: 'var(--blue)'  },
+          { label: 'Completed',         val: completedTrips.length, color: 'var(--green)' },
+          { label: 'Total Revenue',     val: fmt(totalRevenue),  color: 'var(--amber)' },
+          { label: 'Total Diff Amount', val: fmt(Math.abs(totalDiffAmount)), color: totalDiffAmount > 0 ? 'var(--red)' : totalDiffAmount < 0 ? 'var(--amber)' : 'var(--green)' },
         ].map((k,i) => (
           <div key={i} className="kpi">
             <div className="kpi-label">{k.label}</div>
@@ -455,15 +459,19 @@ export default function TripsPage() {
               <thead>
                 <tr>
                   <th>Waybill</th><th>Truck</th><th>Driver</th><th>Route</th>
-                  <th>Loaded</th><th>Delivered</th><th>Revenue</th>
-                  <th>Fuel Cost</th><th>Spare Parts</th><th>Net Profit</th>
+                  <th>Loaded</th><th>Delivered</th>
+                  <th>Diff Qty</th><th>Diff Amount</th>
+                  <th>Revenue</th>
                   <th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {displayTrips.map(t => {
-                  const net = parseFloat(t.trip_revenue||0) - parseFloat(t.fuel_cost||0) - parseFloat(t.spare_parts_cost||0);
                   const needsCompletion = ['PLANNED','EN_ROUTE','DELAYED'].includes(t.status);
+                  const diffQty = t.delivered_qty != null
+                    ? parseFloat(t.qty_difference != null ? t.qty_difference : (parseFloat(t.loaded_qty||0) - parseFloat(t.delivered_qty||0)))
+                    : null;
+                  const diffAmt = diffQty != null ? diffQty * parseFloat(t.rate_per_ton || 0) : null;
                   return (
                     <tr key={t.id}>
                       <td className="mono">{t.waybill_no}</td>
@@ -477,12 +485,19 @@ export default function TripsPage() {
                       }}>
                         {t.delivered_qty ? `${t.delivered_qty}T` : 'Pending'}
                       </td>
-                      <td className="ced">{fmt(t.trip_revenue)}</td>
-                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmt(t.fuel_cost)}</td>
-                      <td className="ced" style={{ color: 'var(--amber)' }}>{fmt(t.spare_parts_cost)}</td>
-                      <td className="ced" style={{ color: net >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-                        {fmt(net)}
+                      <td className="ced" style={{
+                        color: diffQty == null ? 'var(--muted)' : diffQty > 0 ? 'var(--red)' : diffQty < 0 ? 'var(--amber)' : 'var(--green)',
+                        fontStyle: diffQty == null ? 'italic' : 'normal',
+                      }}>
+                        {diffQty == null ? '—' : `${diffQty > 0 ? '▼' : diffQty < 0 ? '▲' : '✓'} ${Math.abs(diffQty).toFixed(3)}T`}
                       </td>
+                      <td className="ced" style={{
+                        color: diffAmt == null ? 'var(--muted)' : diffAmt > 0 ? 'var(--red)' : diffAmt < 0 ? 'var(--amber)' : 'var(--green)',
+                        fontStyle: diffAmt == null ? 'italic' : 'normal',
+                      }}>
+                        {diffAmt == null ? '—' : fmt(Math.abs(diffAmt))}
+                      </td>
+                      <td className="ced">{fmt(t.trip_revenue)}</td>
                       <td><span className={`badge ${STATUS_BADGE[t.status]}`}>{t.status}</span></td>
                       <td>
                         <div className="flex gap4">
@@ -507,7 +522,7 @@ export default function TripsPage() {
                 })}
                 {displayTrips.length === 0 && (
                   <tr>
-                    <td colSpan={12} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+                    <td colSpan={11} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
                       {tab === 'active' ? 'No active trips — create one on the left.' : 'No trips found.'}
                     </td>
                   </tr>
@@ -517,31 +532,41 @@ export default function TripsPage() {
           </div>
 
           {/* Completed trips totals */}
-          {tab === 'completed' && completedTrips.length > 0 && (
-            <div style={{
-              padding: '12px 16px', borderTop: '1px solid var(--border)',
-              display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8,
-            }}>
-              {[
-                { label: 'Total Revenue',     val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0),0)),     color: 'var(--green)' },
-                { label: 'Total Fuel Cost',   val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.fuel_cost||0),0)),        color: 'var(--amber)' },
-                { label: 'Total Spare Parts', val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.spare_parts_cost||0),0)), color: 'var(--amber)' },
-                { label: 'Total Net Profit',  val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0)-parseFloat(t.fuel_cost||0)-parseFloat(t.spare_parts_cost||0),0)), color: 'var(--blue)' },
-              ].map((k,i) => (
-                <div key={i} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' }}>{k.label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{k.val}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          {tab === 'completed' && completedTrips.length > 0 && (() => {
+            const diffEntries = completedTrips
+              .filter(t => t.delivered_qty != null)
+              .map(t => {
+                const dq = parseFloat(t.qty_difference != null ? t.qty_difference : (parseFloat(t.loaded_qty||0) - parseFloat(t.delivered_qty||0)));
+                const da = dq * parseFloat(t.rate_per_ton || 0);
+                return { dq, da };
+              });
+            const totalDiffQty = diffEntries.reduce((s,e) => s + e.dq, 0);
+            const totalDiffAmt = diffEntries.reduce((s,e) => s + e.da, 0);
+            return (
+              <div style={{
+                padding: '12px 16px', borderTop: '1px solid var(--border)',
+                display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8,
+              }}>
+                {[
+                  { label: 'Total Revenue',     val: fmt(completedTrips.reduce((s,t)=>s+parseFloat(t.trip_revenue||0),0)), color: 'var(--green)' },
+                  { label: 'Total Diff Qty',    val: `${totalDiffQty > 0 ? '▼' : totalDiffQty < 0 ? '▲' : '✓'} ${Math.abs(totalDiffQty).toFixed(3)}T`, color: totalDiffQty > 0 ? 'var(--red)' : totalDiffQty < 0 ? 'var(--amber)' : 'var(--green)' },
+                  { label: 'Total Diff Amount', val: fmt(Math.abs(totalDiffAmt)), color: totalDiffAmt > 0 ? 'var(--red)' : totalDiffAmt < 0 ? 'var(--amber)' : 'var(--green)' },
+                ].map((k,i) => (
+                  <div key={i} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' }}>{k.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{k.val}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           <div style={{
             padding: '10px 14px', borderTop: '1px solid var(--border)',
             fontSize: 11, color: 'var(--muted)', marginTop: 4,
           }}>
-            💡 Fuel &amp; spare parts costs auto-populate from logs linked to each trip.
-            Revenue &amp; expenditure auto-post to Finance on <strong>COMPLETED</strong>.
+            💡 <strong>Diff Qty</strong> = Loaded − Delivered (▼ shortage / ▲ overage). <strong>Diff Amount</strong> is that difference valued at the trip's rate per ton.
+            Revenue auto-posts to Finance on <strong>COMPLETED</strong>.
           </div>
         </div>
       </div>
