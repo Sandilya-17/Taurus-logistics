@@ -172,7 +172,7 @@ export default function StockPage() {
         unit:        data.unit,
         description: data.description || '',
         unit_price:  parseFloat(data.unit_price || 0),
-        quantity:    parseFloat(data.quantity || 0),
+        opening_qty: parseFloat(data.quantity || 0),
       };
 
       if (editing) {
@@ -258,7 +258,7 @@ export default function StockPage() {
       tyreSize = parts.pop();
       name = parts.join(' - ');
     }
-    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, unit_price: s.item__unit_price || '', quantity: '', description: '' });
+    reset({ name, tyre_size: tyreSize, item_type: s.item__item_type, unit: s.item__unit, unit_price: '', quantity: '', description: '' });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -580,12 +580,13 @@ export default function StockPage() {
                     </td>
 
                     <td style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
-                      {s.item__unit_price > 0 ? fmt(parseFloat(s.item__unit_price)) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {closingQty > 0 && closingVal > 0
+                        ? fmt(closingVal / closingQty)
+                        : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
-                      {s.item__unit_price > 0 && closingQty > 0
-                        ? fmt(closingQty * parseFloat(s.item__unit_price))
-                        : closingVal > 0 ? fmt(closingVal)
+                      {closingVal > 0
+                        ? fmt(closingVal)
                         : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
 
@@ -646,11 +647,7 @@ export default function StockPage() {
                   </td>
                   <td></td>
                   <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--text)' }}>
-                    {fmt(filtered.reduce((s, x) => {
-                      const qty = parseFloat(x.closing_qty || 0);
-                      const price = parseFloat(x.item__unit_price || 0);
-                      return s + (price > 0 ? qty * price : parseFloat(x.closing_value || 0));
-                    }, 0))}
+                    {fmt(filtered.reduce((s, x) => s + parseFloat(x.closing_value || 0), 0))}
                   </td>
                   <td colSpan={2}></td>
                 </tr>
