@@ -118,6 +118,7 @@ class ItemListCreate(generics.ListCreateAPIView):
         opening_qty_raw = data.pop('opening_qty', None)
         unit_price_raw  = data.pop('unit_price',  None)
         location_id     = data.pop('location_id', None)
+        data.pop('quantity', None)  # frontend sends quantity; pop it to avoid serializer confusion
 
         def _scalar(v):
             if isinstance(v, (list, tuple)):
@@ -136,8 +137,13 @@ class ItemListCreate(generics.ListCreateAPIView):
         except (InvalidOperation, TypeError):
             unit_price = None
 
+        # Ensure reorder_level has a default if not provided
+        if 'reorder_level' not in data or data.get('reorder_level') in (None, ''):
+            data['reorder_level'] = 0
+
         serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         item = serializer.save()
 
         if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
