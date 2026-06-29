@@ -67,23 +67,35 @@ export default function ReportsPage() {
     return p;
   };
 
-  const doFetch = async () => {
+  const doFetch = async ({ silent = false } = {}) => {
     setLoading(true);
-    setData(null);
+    if (!silent) setData(null);
     try {
       const resp = await api.get(`/reports/${active}/`, {
         params: { ...branchQS, ...buildParams({ export: 'json' }) }
       });
       setData(resp.data);
-      if (!resp.data?.rows?.length && !resp.data?.summary) {
+      if (!silent && !resp.data?.rows?.length && !resp.data?.summary) {
         toast('No data found for the selected period.', { icon: 'ℹ️' });
       }
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Report generation failed.');
+      if (!silent) toast.error(e.response?.data?.detail || 'Report generation failed.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Any other page (Trips, Fuel, Invoicing, etc.) dispatches this event after
+  // a create/update/delete. If a report is currently on screen, silently
+  // re-fetch it so a deleted trip (etc.) disappears from the report without
+  // the user needing to click "Generate Report" again.
+  useEffect(() => {
+    const handler = () => {
+      if (data) doFetch({ silent: true });
+    };
+    window.addEventListener('taurus:dashboard:refresh', handler);
+    return () => window.removeEventListener('taurus:dashboard:refresh', handler);
+  }, [data, active, dateFrom, dateTo, truckFilter, branchKey]);
 
   const doDownload = async (fmt) => {
     setDownloading(fmt);
