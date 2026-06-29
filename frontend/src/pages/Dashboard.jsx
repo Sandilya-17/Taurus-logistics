@@ -135,6 +135,15 @@ export default function Dashboard() {
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
+  // Other pages (Trips, Fuel, Invoicing, etc.) dispatch this event after any
+  // create/update/delete so the dashboard KPIs never go stale without a
+  // manual refresh or full page reload.
+  useEffect(() => {
+    const handler = () => fetchDashboard();
+    window.addEventListener('taurus:dashboard:refresh', handler);
+    return () => window.removeEventListener('taurus:dashboard:refresh', handler);
+  }, [fetchDashboard]);
+
   const fleet  = kpis?.fleet         || {};
   const month  = kpis?.this_month    || {};
   const alerts = kpis?.expiry_alerts || [];
