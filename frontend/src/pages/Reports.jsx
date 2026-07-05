@@ -141,11 +141,17 @@ export default function ReportsPage() {
 
   const isCurrencyHeader = (h) => {
     const k = h?.toLowerCase();
+    // Anything with an explicit non-money unit (tons, litres) or that is a plain
+    // count is NEVER a currency value, no matter what other words are in the label.
+    if (/\(t\)|\(l\)|\btons?\b|\blitres?\b/.test(k || '')) return false;
+    if (/trips|events|tyres|items|records|fitted|store|condemned/.test(k || '')) return false;
     return k?.includes('amount') || k?.includes('cost') || k?.includes('revenue') ||
            k?.includes('expenditure') || k?.includes('profit') || k?.includes('vat') ||
            k?.includes('total') || k?.includes('wage') || k?.includes('subtotal') ||
            k?.includes('balance') || k?.includes('labour') || k?.includes('parts') ||
-           k?.includes('value') || k?.includes('invoiced') || k?.includes('price');
+           k?.includes('value') || k?.includes('invoiced') || k?.includes('price') ||
+           k?.includes('purchased') || k?.includes('issued') || k?.includes('paid') ||
+           k?.includes('due');
   };
 
   const isNegativeCell = (headers, row, colIdx) => {
@@ -214,21 +220,29 @@ export default function ReportsPage() {
       {/* Summary cards */}
       {data?.summary && (
         <div className="mb16" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))', gap: 10 }}>
-          {Object.entries(data.summary).map(([k, v]) => (
-            <div key={k} className="kpi" style={{ border: `1px solid var(--border)` }}>
-              <div className="kpi-label">{k.replace(/ *\(GH₵\)| *\(Le\)/g, '')}</div>
-              <div className="kpi-val" style={{
-                fontSize: 16,
-                color: k.toLowerCase().includes('net') || k.toLowerCase().includes('profit')
-                  ? (v >= 0 ? 'var(--green)' : 'var(--red)')
-                  : k.toLowerCase().includes('revenue') ? 'var(--green)'
-                  : k.toLowerCase().includes('cost') || k.toLowerCase().includes('expenditure') ? 'var(--amber)'
-                  : 'var(--blue)'
-              }}>
-                {typeof v === 'number' ? fmtCurrency(v) : v}
+          {Object.entries(data.summary).map(([k, v]) => {
+            const isMoney = isCurrencyHeader(k);
+            const displayVal = typeof v !== 'number'
+              ? v
+              : isMoney
+                ? fmtCurrency(v)
+                : v.toLocaleString('en-GH', v % 1 !== 0 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
+            return (
+              <div key={k} className="kpi" style={{ border: `1px solid var(--border)` }}>
+                <div className="kpi-label">{k.replace(/ *\(GH₵\)| *\(Le\)/g, '')}</div>
+                <div className="kpi-val" style={{
+                  fontSize: 16,
+                  color: k.toLowerCase().includes('net') || k.toLowerCase().includes('profit')
+                    ? (v >= 0 ? 'var(--green)' : 'var(--red)')
+                    : k.toLowerCase().includes('revenue') ? 'var(--green)'
+                    : k.toLowerCase().includes('cost') || k.toLowerCase().includes('expenditure') ? 'var(--amber)'
+                    : 'var(--blue)'
+                }}>
+                  {displayVal}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
