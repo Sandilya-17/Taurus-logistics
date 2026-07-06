@@ -11,10 +11,14 @@ FIX SUMMARY
 6. ClosingStockView – respects branch filtering.
 7. available_stock  – respects branch filtering.
 """
+import logging
+from io import BytesIO
 from decimal import Decimal, InvalidOperation
+from django.db import transaction as db_transaction
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import api_view, permission_classes
 from .models import Item, Location, StockLedger, Purchase, IssueItem
 from .serializers import (ItemSerializer, LocationSerializer, StockLedgerSerializer,
@@ -23,6 +27,8 @@ from .services import PurchaseService, IssueService, StockService
 from apps.core.models import Supplier
 from apps.core.branch_mixin import BranchScopedQuerysetMixin
 from apps.core.serializers import SupplierSerializer
+
+logger = logging.getLogger(__name__)
 
 
 # ── Permissions ────────────────────────────────────────────────────────────────
@@ -497,3 +503,170 @@ def post_opening_stock(request):
         'final_amount': float(entry.final_amount),
         'message': f'Opening stock of {qty} units posted for {item.name}',
     }, status=201)
+
+
+# ── Bulk Excel Import (Opening Stock) ───────────────────────────────────────────
+
+class ImportOpeningStockView(APIView):
+    """
+    Bulk-import Items + Opening Stock from an uploaded .xlsx workbook.
+
+    Expected header row (any column order, case-insensitive), matching the
+    standard "opening_stock_with_unit_price.xlsx" export:
+
+        S/N | ITEM DESCRIPTION | OPENING STOCK | UNIT PRICE
+
+    Optional columns also honoured if present: ITEM TYPE, UNIT.
+
+    Behaviour
+    ---------
+    - Item matched by name (case-insensitive). If missing, it's created.
+    - If the item already has an OPENING ledger entry for this branch, that
+      entry is UPDATED with the new qty/unit price (safe to re-import the
+      same sheet after edits — no duplicate opening rows are ever created).
+    - Rows with zero/blank qty or price still create the Item (so it shows
+      up in the Stock Ledger with "No Stock") but post no ledger entry.
+    - Because this writes directly to the same Item / StockLedger tables
+      used everywhere else (Purchases, Issues, Closing Stock, Dashboard,
+      Reports/Exports), every imported row is immediately reflected across
+      the whole app — no extra wiring needed downstream.
+    """
+    parser_classes     = [MultiPartParser, FormParser]
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response(
+                {'error': 'No file uploaded. Attach an .xlsx file under the "file" field.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not file_obj.name.lower().endswith(('.xlsx', '.xlsm')):
+            return Response({'error': 'Only .xlsx / .xlsm files are supported.'}, status=400)
+
+        item_type_default = str(request.data.get('item_type', Item.SPARE_PART)).upper()
+        if item_type_default not in dict(Item.TYPE_CHOICES):
+            item_type_default = Item.SPARE_PART
+
+        location_id = request.data.get('location_id')
+        loc = None
+        if location_id:
+            loc = Location.objects.filter(id=location_id).first()
+        if loc is None:
+            loc = Location.objects.filter(deleted_at__isnull=True).first()
+        if loc is None:
+            loc, _ = Location.objects.get_or_create(
+                name='Main Store', defaults={'location_type': 'STORE', 'address': ''}
+            )
+
+        branch = _resolve_branch(request.user, request.data, request.query_params)
+
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(BytesIO(file_obj.read()), data_only=True, read_only=True)
+            ws = wb.active
+        except Exception as ex:
+            logger.exception('Failed to read uploaded stock workbook: %s', ex)
+            return Response({'error': f'Could not read Excel file: {ex}'}, status=400)
+
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return Response({'error': 'The sheet is empty.'}, status=400)
+
+        header = [str(c).strip().upper() if c is not None else '' for c in rows[0]]
+
+        def find_col(*keywords):
+            for i, h in enumerate(header):
+                if any(k in h for k in keywords):
+                    return i
+            return None
+
+        col_name  = find_col('ITEM DESCRIPTION', 'ITEM NAME', 'DESCRIPTION', 'NAME')
+        col_qty   = find_col('OPENING STOCK', 'OPENING QTY', 'QUANTITY', 'QTY')
+        col_price = find_col('UNIT PRICE', 'PRICE', 'RATE', 'COST')
+        col_unit  = find_col('UNIT OF MEASURE', 'UOM', 'UNIT')
+        col_type  = find_col('ITEM TYPE', 'TYPE')
+
+        if col_name is None:
+            return Response(
+                {'error': 'Could not find an "ITEM DESCRIPTION" / "Item Name" column in row 1 of the sheet.'},
+                status=400
+            )
+
+        created, updated, skipped_no_stock, errors = 0, 0, 0, []
+        data_rows = rows[1:]
+
+        with db_transaction.atomic():
+            for idx, row in enumerate(data_rows, start=2):  # Excel row numbers start at 2 for data
+                try:
+                    raw_name = row[col_name] if col_name < len(row) else None
+                    name = str(raw_name).strip() if raw_name is not None else ''
+                    if not name:
+                        continue  # blank row, silently skip
+
+                    qty_raw   = row[col_qty]   if (col_qty   is not None and col_qty   < len(row)) else None
+                    price_raw = row[col_price] if (col_price is not None and col_price < len(row)) else None
+                    unit_raw  = row[col_unit]  if (col_unit  is not None and col_unit  < len(row)) else None
+                    type_raw  = row[col_type]  if (col_type  is not None and col_type  < len(row)) else None
+
+                    try:
+                        qty = Decimal(str(qty_raw)) if qty_raw not in (None, '') else Decimal('0')
+                    except (InvalidOperation, TypeError):
+                        qty = Decimal('0')
+                    try:
+                        price = Decimal(str(price_raw)) if price_raw not in (None, '') else Decimal('0')
+                    except (InvalidOperation, TypeError):
+                        price = Decimal('0')
+
+                    item_type = item_type_default
+                    if type_raw:
+                        candidate = str(type_raw).strip().upper().replace(' ', '_')
+                        if candidate in dict(Item.TYPE_CHOICES):
+                            item_type = candidate
+
+                    unit = str(unit_raw).strip() if unit_raw else ('litres' if item_type == Item.LUBRICANT else 'pcs')
+
+                    item = Item.objects.filter(name__iexact=name).first()
+                    if item is None:
+                        item = Item.objects.create(name=name, item_type=item_type, unit=unit)
+                        created += 1
+
+                    if qty > 0 and price > 0:
+                        existing = StockLedger.objects.filter(
+                            item=item, transaction_type=StockLedger.OPENING, branch=branch,
+                        ).first()
+                        if existing:
+                            existing.quantity   = qty
+                            existing.unit_price = price
+                            existing.save()
+                        else:
+                            StockLedger.objects.create(
+                                item=item, location=loc, branch=branch,
+                                transaction_type=StockLedger.OPENING,
+                                quantity=qty, unit_price=price,
+                                created_by=request.user if request.user.is_authenticated else None,
+                                remark=f'Imported from {file_obj.name}',
+                            )
+                        updated += 1
+                    else:
+                        skipped_no_stock += 1
+
+                except Exception as row_ex:
+                    logger.exception('Import row %s failed: %s', idx, row_ex)
+                    errors.append(f'Row {idx} ("{name if "name" in locals() else "?"}"): {row_ex}')
+
+        total_rows = len(data_rows)
+        return Response({
+            'message': (
+                f'Import complete — {created} new item(s) created, '
+                f'{updated} opening stock entr{"y" if updated == 1 else "ies"} posted, '
+                f'{skipped_no_stock} row(s) skipped (no qty/price).'
+            ),
+            'created':          created,
+            'opening_posted':   updated,
+            'skipped_no_stock': skipped_no_stock,
+            'errors':           errors,
+            'total_rows':       total_rows,
+            'branch':           branch.name if branch else None,
+        }, status=status.HTTP_200_OK)
