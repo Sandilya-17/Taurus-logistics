@@ -1,5 +1,5 @@
 // src/pages/Stock.jsx – Taurus ERP · Professional Stock Ledger
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -73,6 +73,44 @@ export default function StockPage() {
   const [editing,    setEditing]    = useState(null); // item id when editing
 
   const [dlStock, setDlStock] = useState('');
+
+  // ── Excel → Stock Ledger import ──
+  const importInputRef = useRef(null);
+  const [importing,     setImporting]     = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
+
+  const handleImportClick = () => importInputRef.current?.click();
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    if (!/\.(xlsx|xlsm)$/i.test(file.name)) {
+      toast.error('Please upload a .xlsx or .xlsm file.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setImporting(true);
+    setImportSummary(null);
+    try {
+      const r = await api.post('/inventory/import-opening-stock/', formData, {
+        params: branchQS,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportSummary(r.data);
+      toast.success(r.data.message || 'Import complete.');
+      loadData();
+    } catch (e) {
+      const errData = e.response?.data;
+      toast.error(errData?.error || errData?.detail || 'Import failed. Please check the file format.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleStockDownload = async (fmtType) => {
     setDlStock(fmtType);
@@ -327,6 +365,27 @@ export default function StockPage() {
         </div>
       )}
 
+      {importSummary && (
+        <div className="alert alert-success mb16" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            ✅ <strong>Excel import complete:</strong> {importSummary.created} new item(s) created,{' '}
+            {importSummary.opening_posted} opening stock entr{importSummary.opening_posted === 1 ? 'y' : 'ies'} posted
+            {importSummary.skipped_no_stock > 0 && <>, {importSummary.skipped_no_stock} row(s) skipped (no qty/price)</>}
+            {' '}out of {importSummary.total_rows} row(s).
+            {importSummary.errors?.length > 0 && (
+              <div style={{ marginTop: 6, color: 'var(--red)', fontSize: 12 }}>
+                {importSummary.errors.length} row(s) had errors:
+                <ul style={{ margin: '4px 0 0 18px' }}>
+                  {importSummary.errors.slice(0, 8).map((e, i) => <li key={i}>{e}</li>)}
+                  {importSummary.errors.length > 8 && <li>…and {importSummary.errors.length - 8} more</li>}
+                </ul>
+              </div>
+            )}
+          </div>
+          <button className="btn btn-ghost btn-xs" onClick={() => setImportSummary(null)}>✕</button>
+        </div>
+      )}
+
       <div className="card">
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb16">
@@ -357,6 +416,17 @@ export default function StockPage() {
               onClick={() => { setQuickAdd('TYRE'); setQaName(''); setQaTyreSize(''); setQaUnit('pcs'); }}>
               + Add Tyre & Size
             </button>
+            <input
+              type="file" accept=".xlsx,.xlsm" ref={importInputRef}
+              style={{ display: 'none' }} onChange={handleImportFile}
+            />
+            {isAdmin && (
+              <button className="btn btn-sm" style={{ background:'var(--green,#059669)', color:'#fff', fontSize:11 }}
+                onClick={handleImportClick} disabled={importing}
+                title="Bulk-import Items + Opening Stock from an Excel file (S/N, Item Description, Opening Stock, Unit Price)">
+                {importing ? '⏳ Importing…' : '📥 Import Excel'}
+              </button>
+            )}
             <button className="export-btn excel" onClick={() => handleStockDownload('excel')} disabled={!!dlStock}>
               {dlStock === 'excel' ? '⏳ Exporting…' : '📊 Excel'}
             </button>
