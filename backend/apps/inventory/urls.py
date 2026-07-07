@@ -21,4 +21,5 @@ urlpatterns = [
     path('opening-stock/',          post_opening_stock,             name='opening-stock'),
     path('import-opening-stock/',   ImportOpeningStockView.as_view(), name='import-opening-stock'),
     path('zero-closing-stock/',     ZeroClosingStockView.as_view(),   name='zero-closing-stock'),
+    path('undo-zero-closing-stock/', UndoZeroClosingStockView.as_view(), name='undo-zero-closing-stock'),
 ]
