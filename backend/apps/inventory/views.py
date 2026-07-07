@@ -597,9 +597,14 @@ class ImportOpeningStockView(APIView):
         created, updated, skipped_no_stock, errors = 0, 0, 0, []
         data_rows = rows[1:]
 
-        with db_transaction.atomic():
-            for idx, row in enumerate(data_rows, start=2):  # Excel row numbers start at 2 for data
-                try:
+        for idx, row in enumerate(data_rows, start=2):  # Excel row numbers start at 2 for data
+            name = '?'
+            try:
+                # Each row gets its OWN transaction/savepoint. If this row
+                # fails (e.g. a duplicate-name race, bad data, etc.) only
+                # this row is rolled back — it can no longer poison every
+                # row that comes after it.
+                with db_transaction.atomic():
                     raw_name = row[col_name] if col_name < len(row) else None
                     name = str(raw_name).strip() if raw_name is not None else ''
                     if not name:
@@ -627,9 +632,17 @@ class ImportOpeningStockView(APIView):
 
                     unit = str(unit_raw).strip() if unit_raw else ('litres' if item_type == Item.LUBRICANT else 'pcs')
 
-                    item = Item.objects.filter(name__iexact=name).first()
+                    # Look up INCLUDING soft-deleted items, not just Item.objects
+                    # (which silently hides deleted rows). Otherwise a
+                    # previously-deleted item with the same name causes a
+                    # real database duplicate-key error on .create().
+                    item = Item.objects.all_with_deleted().filter(name__iexact=name).first()
                     if item is None:
                         item = Item.objects.create(name=name, item_type=item_type, unit=unit)
+                        created += 1
+                    elif item.is_deleted:
+                        item.deleted_at = None
+                        item.save(update_fields=['deleted_at'])
                         created += 1
 
                     if qty > 0 and price > 0:
@@ -652,9 +665,9 @@ class ImportOpeningStockView(APIView):
                     else:
                         skipped_no_stock += 1
 
-                except Exception as row_ex:
-                    logger.exception('Import row %s failed: %s', idx, row_ex)
-                    errors.append(f'Row {idx} ("{name if "name" in locals() else "?"}"): {row_ex}')
+            except Exception as row_ex:
+                logger.exception('Import row %s failed: %s', idx, row_ex)
+                errors.append(f'Row {idx} ("{name}"): {row_ex}')
 
         total_rows = len(data_rows)
         return Response({
