@@ -79,6 +79,7 @@ export default function StockPage() {
   const [importing,     setImporting]     = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [zeroing,       setZeroing]       = useState(false);
+  const [restoring,     setRestoring]     = useState(false);
 
   const handleImportClick = () => importInputRef.current?.click();
 
@@ -101,6 +102,28 @@ export default function StockPage() {
       toast.error(errData?.error || errData?.detail || 'Failed to reset closing stock.');
     } finally {
       setZeroing(false);
+    }
+  };
+
+  const handleUndoZeroClosingStock = async () => {
+    const ok = window.confirm(
+      'This will undo a previous "Zero Closing Stock" reset for this branch.\n\n' +
+      'Closing Qty / Value will go back to reflecting the real Opening + ' +
+      'Purchased − Issued history. Nothing else is changed.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    setRestoring(true);
+    try {
+      const r = await api.post('/inventory/undo-zero-closing-stock/', {}, { params: branchQS });
+      toast.success(r.data.message || 'Closing stock restored.');
+      loadData();
+    } catch (e) {
+      const errData = e.response?.data;
+      toast.error(errData?.error || errData?.detail || 'Failed to restore closing stock.');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -455,6 +478,13 @@ export default function StockPage() {
                 onClick={handleZeroClosingStock} disabled={zeroing}
                 title="Set every item's Closing Qty to 0. Opening/Purchased/Issued history is kept.">
                 {zeroing ? '⏳ Resetting…' : '0️⃣ Zero Closing Stock'}
+              </button>
+            )}
+            {isAdmin && (
+              <button className="btn btn-sm" style={{ background:'var(--orange,#d97706)', color:'#fff', fontSize:11 }}
+                onClick={handleUndoZeroClosingStock} disabled={restoring}
+                title="Undo a previous 'Zero Closing Stock' reset — restores Closing Qty/Value from real history.">
+                {restoring ? '⏳ Restoring…' : '↩️ Restore Closing Stock'}
               </button>
             )}
             <button className="export-btn excel" onClick={() => handleStockDownload('excel')} disabled={!!dlStock}>
