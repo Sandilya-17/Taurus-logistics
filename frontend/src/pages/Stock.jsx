@@ -78,8 +78,31 @@ export default function StockPage() {
   const importInputRef = useRef(null);
   const [importing,     setImporting]     = useState(false);
   const [importSummary, setImportSummary] = useState(null);
+  const [zeroing,       setZeroing]       = useState(false);
 
   const handleImportClick = () => importInputRef.current?.click();
+
+  const handleZeroClosingStock = async () => {
+    const ok = window.confirm(
+      'This will set Closing Qty to 0 for every item in this branch.\n\n' +
+      'Existing Opening / Purchased / Issued history is kept — this only ' +
+      'posts a balancing adjustment so the running total becomes 0.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    setZeroing(true);
+    try {
+      const r = await api.post('/inventory/zero-closing-stock/', {}, { params: branchQS });
+      toast.success(r.data.message || 'Closing stock reset to 0.');
+      loadData();
+    } catch (e) {
+      const errData = e.response?.data;
+      toast.error(errData?.error || errData?.detail || 'Failed to reset closing stock.');
+    } finally {
+      setZeroing(false);
+    }
+  };
 
   const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
@@ -425,6 +448,13 @@ export default function StockPage() {
                 onClick={handleImportClick} disabled={importing}
                 title="Bulk-import Items + Opening Stock from an Excel file (S/N, Item Description, Opening Stock, Unit Price)">
                 {importing ? '⏳ Importing…' : '📥 Import Excel'}
+              </button>
+            )}
+            {isAdmin && (
+              <button className="btn btn-sm" style={{ background:'var(--red,#dc2626)', color:'#fff', fontSize:11 }}
+                onClick={handleZeroClosingStock} disabled={zeroing}
+                title="Set every item's Closing Qty to 0. Opening/Purchased/Issued history is kept.">
+                {zeroing ? '⏳ Resetting…' : '0️⃣ Zero Closing Stock'}
               </button>
             )}
             <button className="export-btn excel" onClick={() => handleStockDownload('excel')} disabled={!!dlStock}>
