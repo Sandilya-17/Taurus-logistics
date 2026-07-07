@@ -15,6 +15,7 @@ import logging
 from io import BytesIO
 from decimal import Decimal, InvalidOperation
 from django.db import transaction as db_transaction
+from django.db.models import Sum
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -682,4 +683,85 @@ class ImportOpeningStockView(APIView):
             'errors':           errors,
             'total_rows':       total_rows,
             'branch':           branch.name if branch else None,
+        }, status=status.HTTP_200_OK)
+
+
+# ── Zero Closing Stock (bulk balancing adjustment) ─────────────────────────────
+
+class ZeroClosingStockView(APIView):
+    """
+    Sets every item's Closing Qty to 0 for the caller's branch, WITHOUT
+    deleting any existing history.
+
+    For every item whose running total (SUM of all StockLedger.quantity for
+    this branch) is not zero, posts one balancing StockLedger row with
+    transaction_type=ADJUSTMENT and quantity = -current_total. Opening
+    Qty / Purchased Qty / Issued Qty (each computed by filtering on their
+    own transaction_type) are left completely untouched — only the
+    aggregate Closing Qty becomes 0.
+
+    Safe to call repeatedly: items already at 0 are simply skipped.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        branch = _resolve_branch(request.user, request.data, request.query_params)
+
+        totals = (
+            StockLedger.objects
+            .filter(branch=branch)
+            .values('item_id')
+            .annotate(total_qty=Sum('quantity'))
+            .exclude(total_qty=0)
+        )
+        totals = list(totals)
+
+        if not totals:
+            return Response({
+                'message': 'Every item already has Closing Qty = 0 — nothing to do.',
+                'adjusted': 0,
+                'branch': branch.name if branch else None,
+            }, status=status.HTTP_200_OK)
+
+        default_location = Location.objects.filter(deleted_at__isnull=True).first()
+
+        adjusted, errors = 0, []
+        for row in totals:
+            item_id   = row['item_id']
+            total_qty = row['total_qty']
+            try:
+                with db_transaction.atomic():
+                    last_entry = (
+                        StockLedger.objects
+                        .filter(branch=branch, item_id=item_id)
+                        .order_by('-created_at')
+                        .first()
+                    )
+                    location = last_entry.location if last_entry else default_location
+                    if location is None:
+                        raise ValueError('No Location exists in the system.')
+
+                    StockLedger.objects.create(
+                        branch=branch,
+                        item_id=item_id,
+                        location=location,
+                        transaction_type=StockLedger.ADJUSTMENT,
+                        quantity=-total_qty,
+                        unit_price=0,
+                        created_by=request.user if request.user.is_authenticated else None,
+                        remark='Closing stock reset to 0 (balancing adjustment) — history preserved.',
+                    )
+                    adjusted += 1
+            except Exception as ex:
+                logger.exception('Zero-closing-stock failed for item %s: %s', item_id, ex)
+                errors.append(f'Item {item_id}: {ex}')
+
+        return Response({
+            'message': (
+                f'Closing stock reset — {adjusted} item(s) adjusted to 0'
+                + (f', {len(errors)} error(s).' if errors else '.')
+            ),
+            'adjusted': adjusted,
+            'errors':   errors,
+            'branch':   branch.name if branch else None,
         }, status=status.HTTP_200_OK)
