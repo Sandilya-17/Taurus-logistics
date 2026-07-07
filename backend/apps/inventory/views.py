@@ -690,17 +690,25 @@ class ImportOpeningStockView(APIView):
 
 class ZeroClosingStockView(APIView):
     """
-    Sets every item's Closing Qty to 0 for the caller's branch, WITHOUT
-    deleting any existing history.
+    Sets every item's Closing Qty AND Closing Value to 0 for the caller's
+    branch, WITHOUT deleting any existing history.
 
-    For every item whose running total (SUM of all StockLedger.quantity for
-    this branch) is not zero, posts one balancing StockLedger row with
-    transaction_type=ADJUSTMENT and quantity = -current_total. Opening
-    Qty / Purchased Qty / Issued Qty (each computed by filtering on their
-    own transaction_type) are left completely untouched — only the
-    aggregate Closing Qty becomes 0.
+    Closing Qty   = SUM(quantity)     across all StockLedger rows for the item+branch
+    Closing Value = SUM(final_amount) across the same rows
 
-    Safe to call repeatedly: items already at 0 are simply skipped.
+    For every item where either total isn't already 0, posts TWO balancing
+    StockLedger rows (transaction_type=ADJUSTMENT):
+        leg 1: quantity = -total_qty + 1,  unit_price = 0
+        leg 2: quantity = -1,               unit_price = total_value
+    These two legs always net to  quantity = -total_qty  and
+    final_amount = -total_value  in combination — regardless of whether
+    quantity, value, both, or neither were already at 0 — so this is safe
+    to call repeatedly (e.g. if a previous run only zeroed quantity but
+    left value behind, the next run cleans that up too).
+
+    Opening Qty / Purchased Qty / Issued Qty (each computed by filtering on
+    their own transaction_type in the UI) are left completely untouched —
+    only the aggregate Closing Qty/Value become 0.
     """
     permission_classes = [IsAdmin]
 
@@ -711,14 +719,14 @@ class ZeroClosingStockView(APIView):
             StockLedger.objects
             .filter(branch=branch)
             .values('item_id')
-            .annotate(total_qty=Sum('quantity'))
-            .exclude(total_qty=0)
+            .annotate(total_qty=Sum('quantity'), total_value=Sum('final_amount'))
         )
-        totals = list(totals)
+        # Only touch items where qty OR value still has something to clear.
+        totals = [r for r in totals if r['total_qty'] != 0 or r['total_value'] != 0]
 
         if not totals:
             return Response({
-                'message': 'Every item already has Closing Qty = 0 — nothing to do.',
+                'message': 'Every item already has Closing Qty and Value = 0 — nothing to do.',
                 'adjusted': 0,
                 'branch': branch.name if branch else None,
             }, status=status.HTTP_200_OK)
@@ -727,8 +735,9 @@ class ZeroClosingStockView(APIView):
 
         adjusted, errors = 0, []
         for row in totals:
-            item_id   = row['item_id']
-            total_qty = row['total_qty']
+            item_id     = row['item_id']
+            total_qty   = row['total_qty']   or Decimal('0')
+            total_value = row['total_value'] or Decimal('0')
             try:
                 with db_transaction.atomic():
                     last_entry = (
@@ -741,15 +750,20 @@ class ZeroClosingStockView(APIView):
                     if location is None:
                         raise ValueError('No Location exists in the system.')
 
-                    StockLedger.objects.create(
-                        branch=branch,
-                        item_id=item_id,
-                        location=location,
+                    common = dict(
+                        branch=branch, item_id=item_id, location=location,
                         transaction_type=StockLedger.ADJUSTMENT,
-                        quantity=-total_qty,
-                        unit_price=0,
                         created_by=request.user if request.user.is_authenticated else None,
-                        remark='Closing stock reset to 0 (balancing adjustment) — history preserved.',
+                        remark='Closing stock reset to 0 (qty + value) — history preserved.',
+                    )
+                    # Leg 1: clears quantity, contributes 0 value.
+                    StockLedger.objects.create(
+                        quantity=-total_qty + 1, unit_price=0, **common
+                    )
+                    # Leg 2: carries the value cancellation, net qty impact 0
+                    # when combined with the "+1" above.
+                    StockLedger.objects.create(
+                        quantity=-1, unit_price=total_value, **common
                     )
                     adjusted += 1
             except Exception as ex:
