@@ -791,13 +791,15 @@ class UndoZeroClosingStockView(APIView):
     i.e. reverses a "Zero Closing Stock" click without touching any real
     transaction (opening, purchase, issue, transfer) history.
 
-    Only rows with the exact remark that ZeroClosingStockView writes are
-    removed, so this is safe even if genuine manual ADJUSTMENT entries
-    exist for other reasons.
+    NOTE: transaction_type=ADJUSTMENT is written ONLY by ZeroClosingStockView
+    anywhere in this codebase (nothing else creates ADJUSTMENT rows), so it's
+    safe and sufficient to match on transaction_type alone — we deliberately
+    do NOT also require an exact remark string match, since that proved
+    fragile (e.g. dash/encoding differences) and silently left the paired
+    "leg" row of a zero-closing pair undeleted, which under-restored the
+    Closing Qty while Closing Value looked fine.
     """
     permission_classes = [IsAdmin]
-
-    ZERO_REMARK = 'Closing stock reset to 0 (qty + value) — history preserved.'
 
     def post(self, request):
         branch = _resolve_branch(request.user, request.data, request.query_params)
@@ -805,7 +807,6 @@ class UndoZeroClosingStockView(APIView):
         qs = StockLedger.objects.filter(
             branch=branch,
             transaction_type=StockLedger.ADJUSTMENT,
-            remark=self.ZERO_REMARK,
         )
         count = qs.count()
         if not count:
