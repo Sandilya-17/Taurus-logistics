@@ -779,3 +779,47 @@ class ZeroClosingStockView(APIView):
             'errors':   errors,
             'branch':   branch.name if branch else None,
         }, status=status.HTTP_200_OK)
+
+
+# ── Undo Zero Closing Stock (reverses the balancing adjustment above) ─────────
+
+class UndoZeroClosingStockView(APIView):
+    """
+    Deletes the ADJUSTMENT rows that ZeroClosingStockView previously posted
+    for the caller's branch, so Closing Qty / Closing Value go back to being
+    computed purely from OPENING + PURCHASE + ISSUE + TRANSFER history —
+    i.e. reverses a "Zero Closing Stock" click without touching any real
+    transaction (opening, purchase, issue, transfer) history.
+
+    Only rows with the exact remark that ZeroClosingStockView writes are
+    removed, so this is safe even if genuine manual ADJUSTMENT entries
+    exist for other reasons.
+    """
+    permission_classes = [IsAdmin]
+
+    ZERO_REMARK = 'Closing stock reset to 0 (qty + value) — history preserved.'
+
+    def post(self, request):
+        branch = _resolve_branch(request.user, request.data, request.query_params)
+
+        qs = StockLedger.objects.filter(
+            branch=branch,
+            transaction_type=StockLedger.ADJUSTMENT,
+            remark=self.ZERO_REMARK,
+        )
+        count = qs.count()
+        if not count:
+            return Response({
+                'message': 'No "Zero Closing Stock" adjustments found to undo for this branch.',
+                'removed': 0,
+                'branch': branch.name if branch else None,
+            }, status=status.HTTP_200_OK)
+
+        with db_transaction.atomic():
+            qs.delete()
+
+        return Response({
+            'message': f'Removed {count} balancing adjustment row(s). Closing stock now reflects real history again.',
+            'removed': count,
+            'branch': branch.name if branch else None,
+        }, status=status.HTTP_200_OK)
