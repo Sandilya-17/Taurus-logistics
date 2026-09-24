@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useBranch, useCurrency } from '../App';
+import PieChartCard from '../components/PieChartCard';
 
 /* ── Inline SVG icons ─────────────────────────────────────── */
 const Ic = ({ children, size = 20 }) => (
@@ -501,6 +502,33 @@ export default function Dashboard() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Visual breakdowns: Revenue vs Expenditure / Fleet status ── */}
+      {(rev > 0 || exp > 0 || fleet.active_trucks != null) && (
+        <div className="g2" style={{ marginTop: 20 }}>
+          <PieChartCard
+            title="Revenue vs Expenditure"
+            icon={<IcRevenue />}
+            fmt={fmt}
+            emptyText="No revenue or expenditure recorded this month"
+            data={[
+              { label: 'Revenue',     value: rev, color: '#10B981' },
+              { label: 'Expenditure', value: exp, color: '#EF4444' },
+            ]}
+          />
+          <PieChartCard
+            title="Fleet Status"
+            icon={<IcTruck />}
+            fmt={(v) => `${v} truck${v === 1 ? '' : 's'}`}
+            emptyText="No trucks registered yet"
+            data={[
+              { label: 'Active',   value: fleet.active_trucks ?? 0,   color: '#10B981' },
+              { label: 'On Trip',  value: fleet.ongoing_trips ?? 0,   color: '#2563EB' },
+              { label: 'Inactive', value: fleet.inactive_trucks ?? 0, color: '#EF4444' },
+            ]}
+          />
         </div>
       )}
     </div>
