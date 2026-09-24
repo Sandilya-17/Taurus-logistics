@@ -14,6 +14,7 @@ import Fuel        from './pages/Fuel';
 import Trips       from './pages/Trips';
 import Invoicing   from './pages/Invoicing';
 import Reports     from './pages/Reports';
+import Analysis    from './pages/Analysis';
 import Trucks      from './pages/Trucks';
 import Drivers     from './pages/Drivers';
 import Stock       from './pages/Stock';
@@ -180,6 +181,7 @@ const NAV = [
       { to: '/invoicing',   icon: Icons.Receipt,     label: 'Invoicing' },
       { to: '/expenditure', icon: Icons.Expenditure, label: 'Expenditure' },
       { to: '/revenue',     icon: Icons.Chart,       label: 'Revenue' },
+      { to: '/analysis',    icon: Icons.Chart,       label: 'Analysis' },
     ],
   },
   {
@@ -198,6 +200,7 @@ const TITLE_MAP = {
   '/trips': 'Trips', '/fuel': 'Fuel Control', '/purchase': 'Purchase',
   '/issue': 'Issue Items', '/stock': 'Stock Ledger', '/tyres': 'Tyres',
   '/invoicing': 'Invoicing', '/expenditure': 'Expenditure', '/revenue': 'Revenue',
+  '/analysis': 'Analysis',
   '/maintenance': 'Maintenance', '/reports': 'Reports', '/users': 'User Management',
   '/audit': 'Audit Log', '/profile': 'My Profile',
 };
@@ -965,6 +968,7 @@ export default function App() {
                         <Route path="/invoicing"   element={<Invoicing />} />
                         <Route path="/expenditure" element={<Expenditure />} />
                         <Route path="/revenue"     element={<Revenue />} />
+                        <Route path="/analysis"    element={<Analysis />} />
                         <Route path="/maintenance" element={<Maintenance />} />
                         <Route path="/reports"     element={<Reports />} />
                         <Route path="/users"       element={<Users />} />
