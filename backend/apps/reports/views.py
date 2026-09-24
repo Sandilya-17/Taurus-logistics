@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date, timedelta
 import io
 
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from django.http import HttpResponse
@@ -315,10 +315,11 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
 
 
 class AnalysisReportView(BranchFilterMixin, APIView):
-    """Month-by-month breakdown of income (Revenue) and expense (Expenditure),
-    each split by area (Revenue.source / Expenditure.category), for the
-    Analysis tab's charts. Also powers that tab's Excel/PDF download via
-    ?export=excel|pdf, same convention as every other report endpoint.
+    """Month-by-month AND whole-period breakdown of income (Revenue) and
+    expense (Expenditure), each split by area (Revenue.source /
+    Expenditure.category), for the Analysis tab's charts and detail tables.
+    Also powers that tab's Excel/PDF download via ?export=excel|pdf, same
+    convention as every other report endpoint.
     """
     def get(self, request):
         date_from, date_to = _parse_dates(request)
@@ -329,6 +330,10 @@ class AnalysisReportView(BranchFilterMixin, APIView):
             Expenditure.objects.filter(date__gte=date_from, date__lte=date_to), request
         )
 
+        source_labels   = dict(Revenue.SOURCE_CHOICES)
+        category_labels = dict(Expenditure.CATEGORY_CHOICES)
+
+        # ── Month × Area breakdown (for the monthly chart + pivot tables) ──
         rev_rows = (
             revenues.annotate(month=TruncMonth('date'))
             .values('month', 'source')
@@ -341,9 +346,6 @@ class AnalysisReportView(BranchFilterMixin, APIView):
             .annotate(total=Sum('amount'))
             .order_by('month', 'category')
         )
-
-        source_labels   = dict(Revenue.SOURCE_CHOICES)
-        category_labels = dict(Expenditure.CATEGORY_CHOICES)
 
         months = {}
 
@@ -387,28 +389,75 @@ class AnalysisReportView(BranchFilterMixin, APIView):
                 'expense_by_area': b['expense_by_area'],
             })
 
-        # Whole-period totals per area — feeds the two pie charts.
-        income_by_area_total  = {}
-        expense_by_area_total = {}
-        for m in monthly:
-            for label, val in m['income_by_area'].items():
-                income_by_area_total[label] = round(income_by_area_total.get(label, 0) + val, 2)
-            for label, val in m['expense_by_area'].items():
-                expense_by_area_total[label] = round(expense_by_area_total.get(label, 0) + val, 2)
-
         total_income  = round(sum(m['income'] for m in monthly), 2)
         total_expense = round(sum(m['expense'] for m in monthly), 2)
 
+        # ── Whole-period totals per area, WITH transaction count — this is
+        # the detailed "which area did money come from / go to" breakdown.
+        rev_area = (
+            revenues.values('source')
+            .annotate(total=Sum('amount'), cnt=Count('id'))
+            .order_by('-total')
+        )
+        exp_area = (
+            expenditures.values('category')
+            .annotate(total=Sum('amount'), cnt=Count('id'))
+            .order_by('-total')
+        )
+
+        def _area_detail(rows, key, labels, grand_total):
+            out = []
+            for row in rows:
+                amt = _fmt(row['total'])
+                out.append({
+                    'label':       labels.get(row[key], row[key]),
+                    'amount':      amt,
+                    'count':       row['cnt'],
+                    'avg':         _fmt(amt / row['cnt']) if row['cnt'] else 0,
+                    'pct':         round((amt / grand_total * 100), 1) if grand_total else 0,
+                })
+            return out
+
+        income_by_area_total  = _area_detail(rev_area, 'source', source_labels, total_income)
+        expense_by_area_total = _area_detail(exp_area, 'category', category_labels, total_expense)
+
+        # ── Area × Month pivot — every area's amount in every month, so it's
+        # clear at a glance which area moved money in which month.
+        income_areas  = [a['label'] for a in income_by_area_total]
+        expense_areas = [a['label'] for a in expense_by_area_total]
+        month_labels  = [m['label'] for m in monthly]
+
+        income_pivot = [
+            {
+                'area': area,
+                'by_month': [m['income_by_area'].get(area, 0) for m in monthly],
+                'total': round(sum(m['income_by_area'].get(area, 0) for m in monthly), 2),
+            }
+            for area in income_areas
+        ]
+        expense_pivot = [
+            {
+                'area': area,
+                'by_month': [m['expense_by_area'].get(area, 0) for m in monthly],
+                'total': round(sum(m['expense_by_area'].get(area, 0) for m in monthly), 2),
+            }
+            for area in expense_areas
+        ]
+
         export = request.query_params.get('export', 'json')
         if export in ('excel', 'pdf'):
-            headers = ['Month', 'Type', 'Area (Category / Source)', 'Amount']
+            headers = ['Section', 'Month', 'Type', 'Area', 'Transactions', 'Amount', '% of Total']
             rows = []
+            for a in income_by_area_total:
+                rows.append(['Area Summary (All Period)', '—', 'Income', a['label'], a['count'], a['amount'], f"{a['pct']}%"])
+            for a in expense_by_area_total:
+                rows.append(['Area Summary (All Period)', '—', 'Expense', a['label'], a['count'], a['amount'], f"{a['pct']}%"])
             for m in monthly:
                 for label, val in sorted(m['income_by_area'].items(), key=lambda x: -x[1]):
-                    rows.append([m['label'], 'Income', label, val])
+                    rows.append(['Monthly Detail', m['label'], 'Income', label, '—', val, ''])
                 for label, val in sorted(m['expense_by_area'].items(), key=lambda x: -x[1]):
-                    rows.append([m['label'], 'Expense', label, val])
-                rows.append([m['label'], 'Net', 'Month Total', m['net']])
+                    rows.append(['Monthly Detail', m['label'], 'Expense', label, '—', val, ''])
+                rows.append(['Monthly Detail', m['label'], 'Net', 'Month Total', '—', m['net'], ''])
             if export == 'excel':
                 return _export_excel(headers, rows, 'Monthly Analysis')
             return _export_pdf(headers, rows, 'Monthly Analysis')
@@ -417,14 +466,10 @@ class AnalysisReportView(BranchFilterMixin, APIView):
             'date_from': str(date_from),
             'date_to':   str(date_to),
             'monthly':   monthly,
-            'income_by_area_total': [
-                {'label': k, 'amount': v}
-                for k, v in sorted(income_by_area_total.items(), key=lambda x: -x[1])
-            ],
-            'expense_by_area_total': [
-                {'label': k, 'amount': v}
-                for k, v in sorted(expense_by_area_total.items(), key=lambda x: -x[1])
-            ],
+            'income_by_area_total':  income_by_area_total,
+            'expense_by_area_total': expense_by_area_total,
+            'income_pivot':  {'months': month_labels, 'rows': income_pivot},
+            'expense_pivot': {'months': month_labels, 'rows': expense_pivot},
             'summary': {
                 'Total Income':  total_income,
                 'Total Expense': total_expense,
