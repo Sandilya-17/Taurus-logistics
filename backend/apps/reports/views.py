@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import io
 
 from django.db.models import Sum, Q
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from django.http import HttpResponse
 
@@ -311,6 +312,125 @@ class RevenueExpenditureReportView(BranchFilterMixin, APIView):
             'Net Profit / Loss': _fmt(net),
         }
         return _respond(request, headers, rows, summary, 'Revenue vs Expenditure')
+
+
+class AnalysisReportView(BranchFilterMixin, APIView):
+    """Month-by-month breakdown of income (Revenue) and expense (Expenditure),
+    each split by area (Revenue.source / Expenditure.category), for the
+    Analysis tab's charts. Also powers that tab's Excel/PDF download via
+    ?export=excel|pdf, same convention as every other report endpoint.
+    """
+    def get(self, request):
+        date_from, date_to = _parse_dates(request)
+        revenues = _apply_branch(
+            Revenue.objects.filter(date__gte=date_from, date__lte=date_to), request
+        )
+        expenditures = _apply_branch(
+            Expenditure.objects.filter(date__gte=date_from, date__lte=date_to), request
+        )
+
+        rev_rows = (
+            revenues.annotate(month=TruncMonth('date'))
+            .values('month', 'source')
+            .annotate(total=Sum('amount'))
+            .order_by('month', 'source')
+        )
+        exp_rows = (
+            expenditures.annotate(month=TruncMonth('date'))
+            .values('month', 'category')
+            .annotate(total=Sum('amount'))
+            .order_by('month', 'category')
+        )
+
+        source_labels   = dict(Revenue.SOURCE_CHOICES)
+        category_labels = dict(Expenditure.CATEGORY_CHOICES)
+
+        months = {}
+
+        def _bucket(month):
+            key = month.strftime('%Y-%m')
+            if key not in months:
+                months[key] = {
+                    'month': key,
+                    'label': month.strftime('%b %Y'),
+                    'income': Decimal('0'),
+                    'expense': Decimal('0'),
+                    'income_by_area': {},
+                    'expense_by_area': {},
+                }
+            return months[key]
+
+        for r in rev_rows:
+            b = _bucket(r['month'])
+            amt = r['total'] or Decimal('0')
+            b['income'] += amt
+            label = source_labels.get(r['source'], r['source'])
+            b['income_by_area'][label] = round(b['income_by_area'].get(label, 0) + float(amt), 2)
+
+        for e in exp_rows:
+            b = _bucket(e['month'])
+            amt = e['total'] or Decimal('0')
+            b['expense'] += amt
+            label = category_labels.get(e['category'], e['category'])
+            b['expense_by_area'][label] = round(b['expense_by_area'].get(label, 0) + float(amt), 2)
+
+        monthly = []
+        for key in sorted(months.keys()):
+            b = months[key]
+            monthly.append({
+                'month':           b['month'],
+                'label':           b['label'],
+                'income':          _fmt(b['income']),
+                'expense':         _fmt(b['expense']),
+                'net':             _fmt(b['income'] - b['expense']),
+                'income_by_area':  b['income_by_area'],
+                'expense_by_area': b['expense_by_area'],
+            })
+
+        # Whole-period totals per area — feeds the two pie charts.
+        income_by_area_total  = {}
+        expense_by_area_total = {}
+        for m in monthly:
+            for label, val in m['income_by_area'].items():
+                income_by_area_total[label] = round(income_by_area_total.get(label, 0) + val, 2)
+            for label, val in m['expense_by_area'].items():
+                expense_by_area_total[label] = round(expense_by_area_total.get(label, 0) + val, 2)
+
+        total_income  = round(sum(m['income'] for m in monthly), 2)
+        total_expense = round(sum(m['expense'] for m in monthly), 2)
+
+        export = request.query_params.get('export', 'json')
+        if export in ('excel', 'pdf'):
+            headers = ['Month', 'Type', 'Area (Category / Source)', 'Amount']
+            rows = []
+            for m in monthly:
+                for label, val in sorted(m['income_by_area'].items(), key=lambda x: -x[1]):
+                    rows.append([m['label'], 'Income', label, val])
+                for label, val in sorted(m['expense_by_area'].items(), key=lambda x: -x[1]):
+                    rows.append([m['label'], 'Expense', label, val])
+                rows.append([m['label'], 'Net', 'Month Total', m['net']])
+            if export == 'excel':
+                return _export_excel(headers, rows, 'Monthly Analysis')
+            return _export_pdf(headers, rows, 'Monthly Analysis')
+
+        return Response({
+            'date_from': str(date_from),
+            'date_to':   str(date_to),
+            'monthly':   monthly,
+            'income_by_area_total': [
+                {'label': k, 'amount': v}
+                for k, v in sorted(income_by_area_total.items(), key=lambda x: -x[1])
+            ],
+            'expense_by_area_total': [
+                {'label': k, 'amount': v}
+                for k, v in sorted(expense_by_area_total.items(), key=lambda x: -x[1])
+            ],
+            'summary': {
+                'Total Income':  total_income,
+                'Total Expense': total_expense,
+                'Net':           round(total_income - total_expense, 2),
+            },
+        })
 
 
 class FuelReportView(BranchFilterMixin, APIView):
