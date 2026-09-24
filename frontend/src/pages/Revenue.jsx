@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
+import PieChartCard from '../components/PieChartCard';
 
 // ── Expanded revenue sources (covers all data origins in system) ──────────────
 const SOURCES = [
@@ -665,29 +666,14 @@ export default function RevenuePage() {
             </div>
           )}
 
-          {/* Source Breakdown */}
-          <div className="card">
-            <div className="card-title"><span className="card-title-ic">🥧</span>Revenue by Source</div>
-            {sourceBreakdown.length === 0 && (
-              <div style={{ color: 'var(--muted)', fontSize: 12, padding: '12px 0' }}>No data yet</div>
-            )}
-            {sourceBreakdown.map(s => (
-              <div key={s.value} style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>{s.label}</span>
-                  <span style={{ color: s.color, fontWeight: 700 }}>
-                    {fmt(s.total)}{' '}
-                    <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 10.5 }}>
-                      ({total > 0 ? (s.total / total * 100).toFixed(1) : 0}%)
-                    </span>
-                  </span>
-                </div>
-                <div className="prog-bar" style={{ height: 8 }}>
-                  <div className="prog-fill" style={{ width: `${total > 0 ? s.total / total * 100 : 0}%`, background: s.color }} />
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* Source Breakdown — pie chart */}
+          <PieChartCard
+            title="Revenue by Source"
+            icon={<span style={{ fontSize: 15 }}>🥧</span>}
+            fmt={fmt}
+            emptyText="No revenue recorded yet"
+            data={sourceBreakdown.map(s => ({ label: s.label, value: s.total, color: s.color }))}
+          />
         </div>
 
         {/* ── Right: History Table ── */}
