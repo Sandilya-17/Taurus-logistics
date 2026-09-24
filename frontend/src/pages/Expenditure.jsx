@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useBranch, useCurrency } from '../App';
 import api, { fmtDate, todayGH } from '../utils/api';
 import toast from 'react-hot-toast';
+import PieChartCard from '../components/PieChartCard';
 
 const DEFAULT_CATEGORIES = ['FUEL', 'MAINTENANCE', 'TYRE', 'SPARE_PART', 'DRIVER_WAGE', 'TOLL', 'ADMIN', 'OTHER'];
 
@@ -447,37 +448,19 @@ export default function ExpenditurePage() {
             </form>
           </div>
 
-          {/* Spend by Category */}
-          <div className="card mb16">
-            <div className="card-title"><span className="card-title-ic">📊</span>Spend by Category</div>
-            {Object.entries(byCategory)
-              .filter(([, v]) => v > 0)
-              .sort(([, a], [, b]) => b - a)
-              .map(([key, val]) => (
-                <div key={key} style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, alignItems: 'center' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span>{getIcon(key)}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--gray-700)' }}>{key.replace(/_/g, ' ')}</span>
-                    </span>
-                    <span>
-                      <span style={{ color: getColor(key), fontWeight: 700 }}>{fmt(val)}</span>
-                      <span style={{ color: 'var(--muted)', fontSize: 10.5, marginLeft: 5 }}>
-                        ({total > 0 ? (val / total * 100).toFixed(1) : 0}%)
-                      </span>
-                    </span>
-                  </div>
-                  <div className="prog-bar" style={{ height: 8 }}>
-                    <div className="prog-fill" style={{ width: `${(val / maxCat) * 100}%`, background: getColor(key) }} />
-                  </div>
-                </div>
-              ))
-            }
-            {Object.values(byCategory).every(v => v === 0) && (
-              <div style={{ color: 'var(--muted)', fontSize: 12.5, textAlign: 'center', padding: '20px 0' }}>
-                No expenditure recorded yet
-              </div>
-            )}
+          {/* Spend by Category — pie chart */}
+          <div className="mb16">
+            <PieChartCard
+              title="Spend by Category"
+              icon={<span style={{ fontSize: 15 }}>📊</span>}
+              fmt={fmt}
+              emptyText="No expenditure recorded yet"
+              data={Object.entries(byCategory).map(([key, val]) => ({
+                label: `${getIcon(key)} ${key.replace(/_/g, ' ')}`,
+                value: val,
+                color: getColor(key),
+              }))}
+            />
           </div>
 
           {/* Monthly Trend */}
