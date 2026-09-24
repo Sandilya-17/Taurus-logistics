@@ -62,7 +62,6 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     doFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchKey]);
 
   // Other pages dispatch this after create/update/delete — silently refresh.
@@ -70,7 +69,6 @@ export default function AnalysisPage() {
     const handler = () => { if (data) doFetch({ silent: true }); };
     window.addEventListener('taurus:dashboard:refresh', handler);
     return () => window.removeEventListener('taurus:dashboard:refresh', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, dateFrom, dateTo, branchKey]);
 
   const doDownload = async (fmt) => {
