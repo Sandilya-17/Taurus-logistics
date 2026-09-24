@@ -269,10 +269,44 @@ function CommandPalette({ open, onClose }) {
   );
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────── */
+/* ── Sidebar (collapsible accordion sections) ──────────────────── */
 function Sidebar({ open, onClose }) {
   const { user } = useAuth();
+  const location = useLocation();
   const canSee = (item) => !item.roles || item.roles.includes(user?.role);
+
+  // Which section label currently contains the active route
+  const activeSectionLabel = (() => {
+    for (const section of NAV) {
+      if (section.items.some(i => (i.to === '/' ? location.pathname === '/' : location.pathname.startsWith(i.to)))) {
+        return section.label;
+      }
+    }
+    return NAV[0]?.label;
+  })();
+
+  // Track which sections are expanded. Defaults: all open on first render
+  // (so nothing looks "hidden" before the person interacts), but once they
+  // click a header themselves it becomes explicit accordion behaviour.
+  const [openLabels, setOpenLabels] = useState(() => new Set(NAV.map(s => s.label)));
+
+  // Keep the section holding the active route expanded whenever the route changes.
+  useEffect(() => {
+    setOpenLabels(prev => {
+      if (prev.has(activeSectionLabel)) return prev;
+      const next = new Set(prev);
+      next.add(activeSectionLabel);
+      return next;
+    });
+  }, [activeSectionLabel]);
+
+  const toggleSection = (label) => {
+    setOpenLabels(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  };
 
   return (
     <>
@@ -292,21 +326,32 @@ function Sidebar({ open, onClose }) {
           {NAV.map((section) => {
             const items = section.items.filter(canSee);
             if (!items.length) return null;
+            const isOpen = openLabels.has(section.label);
             return (
-              <div key={section.label} className="sidebar-section">
-                <div className="sidebar-section-label">{section.label}</div>
-                {items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    onClick={onClose}
-                    className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                  >
-                    <span className="nav-icon">{item.icon}</span>
-                    {item.label}
-                  </NavLink>
-                ))}
+              <div key={section.label} className={`sidebar-section${isOpen ? ' is-open' : ''}`}>
+                <button
+                  type="button"
+                  className="sidebar-section-header"
+                  onClick={() => toggleSection(section.label)}
+                  aria-expanded={isOpen}
+                >
+                  <span className="sidebar-section-label">{section.label}</span>
+                  <span className="sidebar-section-chevron">{Icons.ChevronRight}</span>
+                </button>
+                <div className="sidebar-subnav" style={{ maxHeight: isOpen ? items.length * 42 + 8 : 0 }}>
+                  {items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === '/'}
+                      onClick={onClose}
+                      className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                    >
+                      <span className="nav-icon">{item.icon}</span>
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
               </div>
             );
           })}
@@ -382,6 +427,66 @@ function NotifPanel({ open, onClose }) {
   );
 }
 
+/* ── Inline Topbar Search (with live dropdown) ─────────────────── */
+function TopSearch({ onOpenPalette }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const wrapRef = useRef(null);
+  const canSee = (item) => !item.roles || item.roles.includes(user?.role);
+
+  const allItems = NAV.flatMap(s => s.items.filter(canSee).map(i => ({ ...i, section: s.label })));
+  const results = query.trim()
+    ? allItems.filter(i =>
+        i.label.toLowerCase().includes(query.toLowerCase()) ||
+        i.section.toLowerCase().includes(query.toLowerCase()))
+    : allItems;
+
+  useEffect(() => {
+    const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setFocused(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const go = (to) => { navigate(to); setQuery(''); setFocused(false); };
+
+  return (
+    <div className="topbar-search" ref={wrapRef}>
+      <span className="topbar-search-icon">{Icons.Search}</span>
+      <input
+        className="topbar-search-input"
+        placeholder="Search…(Beta version)"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && results.length > 0) go(results[0].to);
+          if (e.key === 'Escape') { setQuery(''); setFocused(false); e.currentTarget.blur(); }
+        }}
+      />
+      <span className="topbar-search-key">⌘K</span>
+
+      {focused && (
+        <div className="topbar-search-dropdown">
+          {results.length === 0 ? (
+            <div className="cmd-empty">No results for "{query}"</div>
+          ) : results.slice(0, 8).map(item => (
+            <div key={item.to} className="cmd-item" onMouseDown={() => go(item.to)}>
+              <span style={{ color: 'var(--text-3)', display: 'flex' }}>{item.icon}</span>
+              <span>{item.label}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{item.section}</span>
+            </div>
+          ))}
+          {query.trim() === '' && (
+            <div className="topbar-search-hint">Type to search, or press <span className="cmd-key">⌘K</span> for the full command palette</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Topbar ──────────────────────────────────────────────────── */
 function Topbar({ onMenu, onCmd }) {
   const { dark, toggle } = useTheme();
@@ -411,26 +516,8 @@ function Topbar({ onMenu, onCmd }) {
       </div>
 
       <div className="topbar-right">
-        {/* Search / Command palette trigger */}
-        <button
-          onClick={onCmd}
-          title="Search (⌘K)"
-          aria-label="Open search"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            height: 34, padding: '0 11px',
-            borderRadius: 8, border: '1px solid var(--border)',
-            background: 'var(--bg-card)', color: 'var(--text-3)',
-            cursor: 'pointer', fontSize: 12, fontWeight: 500,
-            transition: 'all var(--t)',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)'; }}
-        >
-          {Icons.Search}
-          <span style={{ display: 'none', '@media(minWidth:640px)': { display: 'inline' } }}>Search</span>
-          <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 2, opacity: .6 }}>⌘K</span>
-        </button>
+        {/* Inline live search */}
+        <TopSearch onOpenPalette={onCmd} />
 
         {/* Branch selector — SUPER_ADMIN only */}
         <BranchSelector />
