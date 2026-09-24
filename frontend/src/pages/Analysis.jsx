@@ -100,8 +100,12 @@ export default function AnalysisPage() {
   };
 
   const monthly = data?.monthly || [];
-  const incomeSlices = withColors(data?.income_by_area_total);
-  const expenseSlices = withColors(data?.expense_by_area_total);
+  const incomeByArea = data?.income_by_area_total || [];
+  const expenseByArea = data?.expense_by_area_total || [];
+  const incomeSlices = withColors(incomeByArea);
+  const expenseSlices = withColors(expenseByArea);
+  const incomePivot = data?.income_pivot;
+  const expensePivot = data?.expense_pivot;
 
   return (
     <div>
@@ -188,6 +192,163 @@ export default function AnalysisPage() {
             fmt={fmtCur}
             emptyText="No expense recorded for this period"
           />
+        </div>
+      )}
+
+      {/* Detailed area breakdown — exact amount, share % and transaction count
+          per area, for the whole selected period. This answers "which area
+          did the money come from / go to" precisely, not just visually. */}
+      {(incomeByArea.length > 0 || expenseByArea.length > 0) && (
+        <div className="mb16" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: 16 }}>
+          <div className="card">
+            <div className="card-title">💰 Income Received — By Area</div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Area (Source)</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th style={{ textAlign: 'right' }}>% of Total</th>
+                    <th style={{ textAlign: 'right' }}>Txns</th>
+                    <th style={{ textAlign: 'right' }}>Avg / Txn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {incomeByArea.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>No income for selected period</td></tr>
+                  )}
+                  {incomeByArea.map((a) => (
+                    <tr key={a.label}>
+                      <td>{a.label}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--green)' }}>{fmtCur(a.amount)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{a.pct}%</td>
+                      <td style={{ textAlign: 'right' }}>{a.count}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtCur(a.avg)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {incomeByArea.length > 0 && (
+                  <tfoot>
+                    <tr style={{ fontWeight: 700 }}>
+                      <td>Total</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--green)' }}>
+                        {fmtCur(incomeByArea.reduce((s, a) => s + a.amount, 0))}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>100%</td>
+                      <td style={{ textAlign: 'right' }}>{incomeByArea.reduce((s, a) => s + a.count, 0)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-title">🧾 Money Spent — By Area</div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Area (Category)</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th style={{ textAlign: 'right' }}>% of Total</th>
+                    <th style={{ textAlign: 'right' }}>Txns</th>
+                    <th style={{ textAlign: 'right' }}>Avg / Txn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseByArea.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>No expense for selected period</td></tr>
+                  )}
+                  {expenseByArea.map((a) => (
+                    <tr key={a.label}>
+                      <td>{a.label}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--amber, #d97706)' }}>{fmtCur(a.amount)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{a.pct}%</td>
+                      <td style={{ textAlign: 'right' }}>{a.count}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtCur(a.avg)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {expenseByArea.length > 0 && (
+                  <tfoot>
+                    <tr style={{ fontWeight: 700 }}>
+                      <td>Total</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--amber, #d97706)' }}>
+                        {fmtCur(expenseByArea.reduce((s, a) => s + a.amount, 0))}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>100%</td>
+                      <td style={{ textAlign: 'right' }}>{expenseByArea.reduce((s, a) => s + a.count, 0)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Area × Month pivot — exactly how much each area brought in / cost,
+          month by month, side by side. */}
+      {incomePivot?.rows?.length > 0 && (
+        <div className="card mb16">
+          <div className="card-title">📆 Income by Area — Month by Month</div>
+          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ position: 'sticky', left: 0, background: 'var(--surface)' }}>Area</th>
+                  {incomePivot.months.map((m) => (
+                    <th key={m} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m}</th>
+                  ))}
+                  <th style={{ textAlign: 'right', fontWeight: 700 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incomePivot.rows.map((row) => (
+                  <tr key={row.area}>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>{row.area}</td>
+                    {row.by_month.map((v, i) => (
+                      <td key={i} style={{ textAlign: 'right', fontFamily: 'monospace' }}>{v ? fmtCur(v) : '—'}</td>
+                    ))}
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--green)' }}>{fmtCur(row.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {expensePivot?.rows?.length > 0 && (
+        <div className="card mb16">
+          <div className="card-title">📆 Expense by Area — Month by Month</div>
+          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ position: 'sticky', left: 0, background: 'var(--surface)' }}>Area</th>
+                  {expensePivot.months.map((m) => (
+                    <th key={m} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{m}</th>
+                  ))}
+                  <th style={{ textAlign: 'right', fontWeight: 700 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expensePivot.rows.map((row) => (
+                  <tr key={row.area}>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>{row.area}</td>
+                    {row.by_month.map((v, i) => (
+                      <td key={i} style={{ textAlign: 'right', fontFamily: 'monospace' }}>{v ? fmtCur(v) : '—'}</td>
+                    ))}
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--amber, #d97706)' }}>{fmtCur(row.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
