@@ -9,6 +9,7 @@ const REPORTS = [
   { key: 'trip-pl',             label: 'Trip P&L Report',        icon: '💹', color: '#0694a2',         colorHex: '#0694a2', desc: 'Per-trip revenue, fuel cost, spare parts and net profit',  hasTruckFilter: true },
   { key: 'revenue-expenditure', label: 'Revenue vs Expenditure', icon: '💰', color: 'var(--green)',     colorHex: '#0e9f6e', desc: 'Full financial P&L — all revenue sources vs all expenditure' },
   { key: 'trips',               label: 'Trip Report',            icon: '🗺️', color: '#0694a2',         colorHex: '#0694a2', desc: 'Trip records with revenue, qty (tons) and delivery data' },
+  { key: 'rake-tonnage',        label: 'Rake Tonnage Report',    icon: '🚂', color: '#f0b429',          colorHex: '#f0b429', desc: 'Wagon/rake-wise Coal, Gypsum, Clinker vs Dolomite vs Total Tonnage' },
   { key: 'fuel',                label: 'Fuel Report',            icon: '⛽', color: '#d97706',          colorHex: '#d97706', desc: 'Fuel consumption, costs and excess incidents' },
   { key: 'stock',               label: 'Stock Report',           icon: '📦', color: 'var(--primary)',  colorHex: '#1a56db', desc: 'Full inventory stock levels and valuations' },
   { key: 'spare-parts',         label: 'Spare Parts',            icon: '🔧', color: '#475569',          colorHex: '#475569', desc: 'Purchases and issues of spare parts' },
@@ -18,6 +19,92 @@ const REPORTS = [
   { key: 'vat',                 label: 'VAT Report',             icon: '🧮', color: 'var(--red)',       colorHex: '#e02424', desc: 'VAT charged and applicable transactions' },
   { key: 'maintenance',         label: 'Maintenance Report',     icon: '🛠️', color: '#0369a1',         colorHex: '#0369a1', desc: 'Service history and maintenance costs' },
 ];
+
+// Grouped bar chart for the Rake Tonnage Report (Coal/Gypsum/Clinker vs
+// Dolomite vs Total Tonnage, per wagon/rake). Plain inline SVG — no chart
+// library dependency — styled to match the source rake-dispatch dashboard.
+function RakeTonnageChart({ chart }) {
+  if (!chart?.labels?.length) return null;
+  const COLORS = ['#4f81bd', '#ed8b36', '#ffc845'];
+  const labels = chart.labels;
+  const series = chart.series || [];
+  const maxVal = Math.max(1, ...series.flatMap(s => s.data));
+  const niceMax = Math.ceil(maxVal / 100) * 100 || 100;
+
+  const groupW   = Math.max(70, series.length * 26);
+  const barW     = 18;
+  const gapY     = 40;   // top padding for value labels
+  const chartH   = 300;
+  const axisPad  = 50;   // left padding for y-axis labels
+  const bottomPad = 70;  // room for rotated x-axis labels
+  const width  = axisPad + labels.length * groupW + 20;
+  const height = gapY + chartH + bottomPad;
+  const steps = 7;
+
+  return (
+    <div className="card mb16">
+      <div className="card-title">
+        <span className="card-title-ic">🚂</span>
+        Tonnage by Rake/Wagon
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={width} height={height} style={{ display: 'block', minWidth: '100%' }}>
+          {/* gridlines + y-axis labels */}
+          {Array.from({ length: steps + 1 }).map((_, i) => {
+            const v = Math.round((niceMax / steps) * i);
+            const y = gapY + chartH - (v / niceMax) * chartH;
+            return (
+              <g key={i}>
+                <line x1={axisPad} y1={y} x2={width - 10} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+                <text x={axisPad - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#6b7280">{v.toLocaleString()}</text>
+              </g>
+            );
+          })}
+          {/* bars */}
+          {labels.map((label, gi) => {
+            const gx = axisPad + gi * groupW;
+            return (
+              <g key={label}>
+                {series.map((s, si) => {
+                  const val = s.data[gi] || 0;
+                  const barH = (val / niceMax) * chartH;
+                  const x = gx + si * (barW + 4) + 6;
+                  const y = gapY + chartH - barH;
+                  return (
+                    <g key={si}>
+                      <rect x={x} y={y} width={barW} height={barH} fill={COLORS[si % COLORS.length]} rx="1" />
+                      {val > 0 && (
+                        <text x={x + barW / 2} y={gapY + chartH - 4} textAnchor="start" fontSize="8.5"
+                          fill="#1f2937" fontWeight="600"
+                          transform={`rotate(-90 ${x + barW / 2} ${gapY + chartH - 4})`}>
+                          {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                <text x={gx + groupW / 2} y={gapY + chartH + 14} textAnchor="end" fontSize="10" fill="#374151"
+                  transform={`rotate(-40 ${gx + groupW / 2} ${gapY + chartH + 14})`}>
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+          {/* baseline */}
+          <line x1={axisPad} y1={gapY + chartH} x2={width - 10} y2={gapY + chartH} stroke="#9ca3af" strokeWidth="1" />
+        </svg>
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+        {series.map((s, i) => (
+          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ width: 10, height: 10, background: COLORS[i % COLORS.length], display: 'inline-block', borderRadius: 2 }} />
+            {s.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ReportsPage() {
   const branchCtx = useBranch();
@@ -216,6 +303,9 @@ export default function ReportsPage() {
           </button>
         </div>
       </div>
+
+      {/* Rake Tonnage grouped bar chart */}
+      {active === 'rake-tonnage' && data?.chart && <RakeTonnageChart chart={data.chart} />}
 
       {/* Summary cards */}
       {data?.summary && (
