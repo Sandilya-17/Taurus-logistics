@@ -144,13 +144,16 @@ def _export_pdf(headers, rows, title='Report'):
         return HttpResponse('reportlab not installed', status=500)
 
 
-def _respond(request, headers, rows, summary=None, sheet_name='Report'):
+def _respond(request, headers, rows, summary=None, sheet_name='Report', chart=None):
     export = request.query_params.get('export', 'json')
     if export == 'excel':
         return _export_excel(headers, rows, sheet_name)
     if export == 'pdf':
         return _export_pdf(headers, rows, sheet_name)
-    return Response({'headers': headers, 'rows': rows, 'summary': summary or {}})
+    payload = {'headers': headers, 'rows': rows, 'summary': summary or {}}
+    if chart is not None:
+        payload['chart'] = chart
+    return Response(payload)
 
 
 class DashboardSummaryView(BranchFilterMixin, APIView):
@@ -642,6 +645,74 @@ class TruckWiseSummaryView(BranchFilterMixin, APIView):
             'Net Profit':        round(sum(float(r[15]) for r in rows), 2),
         }
         return _respond(request, headers, rows, summary, 'Truck-wise Summary')
+
+
+class RakeTonnageReportView(BranchFilterMixin, APIView):
+    """Wagon / Rake-wise tonnage report.
+
+    Mirrors the classic 'Coal, Gypsum, Clinker vs Dolomite vs Total Tonnage'
+    rake-dispatch dashboard: groups Trip records by waybill_no (used here as
+    the Rake/Wagon number) over the selected period, and splits each trip's
+    loaded_qty into a Dolomite bucket vs a Coal/Gypsum/Clinker ("other")
+    bucket based on material_type. Rows are sorted ascending by total
+    tonnage, same ordering as the source dashboard. Returns a `chart` block
+    alongside headers/rows/summary so the frontend can render a grouped bar
+    chart without a second request.
+    """
+    DOLOMITE_KEYWORDS = ['dolomite']
+
+    def get(self, request):
+        date_from, date_to = _parse_dates(request)
+        truck_id = request.query_params.get('truck')
+        qs = _apply_branch(Trip.objects.filter(
+            loading_time__date__gte=date_from,
+            loading_time__date__lte=date_to,
+        ), request).select_related('truck')
+        if truck_id:
+            qs = qs.filter(truck_id=truck_id)
+
+        buckets = {}
+        for t in qs:
+            key = t.waybill_no
+            b = buckets.setdefault(key, {
+                'other': Decimal('0'), 'dolomite': Decimal('0'),
+                'date': t.loading_time.date(),
+            })
+            qty = t.loaded_qty or Decimal('0')
+            mat = (t.material_type or '').lower()
+            if any(k in mat for k in self.DOLOMITE_KEYWORDS):
+                b['dolomite'] += qty
+            else:
+                b['other'] += qty
+            if t.loading_time.date() < b['date']:
+                b['date'] = t.loading_time.date()
+
+        rows_raw = []
+        for wb, b in buckets.items():
+            total = b['other'] + b['dolomite']
+            rows_raw.append((wb, b['other'], b['dolomite'], total, b['date']))
+        rows_raw.sort(key=lambda r: r[3])
+
+        headers = ['Rake/Wagon No', 'Coal, Gypsum, Clinker (t)', 'Dolomite (t)', 'Total Tonnage (t)', 'Date']
+        rows = [[wb, _fmt(other), _fmt(dol), _fmt(total), str(d)] for wb, other, dol, total, d in rows_raw]
+
+        total_other = sum((r[1] for r in rows_raw), Decimal('0'))
+        total_dol   = sum((r[2] for r in rows_raw), Decimal('0'))
+        total_all   = total_other + total_dol
+        summary = {
+            'Total Coal, Gypsum, Clinker (t)': _fmt(total_other),
+            'Total Dolomite (t)': _fmt(total_dol),
+            'Total Tonnage (t)': _fmt(total_all),
+        }
+        chart = {
+            'labels': [r[0] for r in rows_raw],
+            'series': [
+                {'name': 'Coal, Clinker, Gypsum (t)', 'data': [_fmt(r[1]) for r in rows_raw]},
+                {'name': 'Dolomite (t)',               'data': [_fmt(r[2]) for r in rows_raw]},
+                {'name': 'Total Tonnage',              'data': [_fmt(r[3]) for r in rows_raw]},
+            ],
+        }
+        return _respond(request, headers, rows, summary, 'Rake Tonnage Report', chart=chart)
 
 
 class StockReportView(BranchFilterMixin, APIView):
