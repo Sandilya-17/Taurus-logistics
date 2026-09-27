@@ -27,6 +27,7 @@ from .serializers import (ItemSerializer, LocationSerializer, StockLedgerSeriali
 from .services import PurchaseService, IssueService, StockService
 from apps.core.models import Supplier
 from apps.core.branch_mixin import BranchScopedQuerysetMixin
+from apps.core.permissions import HasModulePermission
 from apps.core.serializers import SupplierSerializer
 
 logger = logging.getLogger(__name__)
@@ -334,7 +335,7 @@ class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
 class PurchaseDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset           = Purchase.objects.all()
     serializer_class   = PurchaseSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly, HasModulePermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -381,7 +382,7 @@ class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
 class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset           = IssueItem.objects.all()
     serializer_class   = IssueItemSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly, HasModulePermission]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
