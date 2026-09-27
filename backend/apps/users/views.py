@@ -75,7 +75,12 @@ class BranchScopedUserMixin:
             return qs  # all branches for super admin
         if user.role == User.ADMIN:
             if user.branch_id:
-                return qs.filter(branch=user.branch)
+                # FIX: exclude SUPER_ADMIN rows. A Super Admin is commonly
+                # assigned a "home" branch (see create_default_admin) purely
+                # for informational purposes but still has all-branch access
+                # — an ADMIN filtered to that same branch must never see or
+                # reach that Super Admin's account.
+                return qs.filter(branch=user.branch).exclude(role=User.SUPER_ADMIN)
             return qs.none()
         # Managers/Employees: only see themselves
         return qs.filter(pk=user.pk)
