@@ -129,9 +129,15 @@ class AuditLogListView(generics.ListAPIView):
                     pass
             # else: return all audit logs across all branches
         else:
-            # ADMIN: strictly scoped to their own branch
+            # ADMIN: strictly scoped to their own branch.
+            # FIX: exclude actions performed BY a Super Admin — a Super
+            # Admin acts across every branch, so an action they took on
+            # another branch's data would otherwise leak into this
+            # branch's audit log purely because the Super Admin's own
+            # `branch` field happens to match (see create_default_admin,
+            # which assigns superadmin@taurus.com to Branch 1).
             if req_user.branch_id:
-                qs = qs.filter(user__branch=req_user.branch)
+                qs = qs.filter(user__branch=req_user.branch).exclude(user__role=User.SUPER_ADMIN)
             else:
                 qs = qs.none()
 
