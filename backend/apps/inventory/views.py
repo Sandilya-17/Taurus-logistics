@@ -1,827 +1,261 @@
-"""apps/inventory/views.py
+"""apps/users/views.py – Branch-isolated, role-based user management.
 
-FIX SUMMARY
------------
-1. StockLedgerList  – now filters by branch directly on the ledger row
-                      (old code joined via purchases which leaked cross-branch).
-2. StockLedgerList  – SUPER_ADMIN sees all branches unless ?branch_id= is given.
-3. ItemListCreate   – opening stock ledger entry now tagged with user's branch.
-4. post_opening_stock – tagged with user's branch.
-5. PurchaseService / IssueService calls in create() – branch is now passed through.
-6. ClosingStockView – respects branch filtering.
-7. available_stock  – respects branch filtering.
+ACCESS RULES:
+  SUPER_ADMIN:
+    - Can see users from ALL branches (or filter to one with ?branch_id=)
+    - Can create users in any branch
+    - Can update/delete any user (except other super admins)
+    - Can manage branches (create/update/delete)
+
+  ADMIN (branch-scoped):
+    - Can ONLY see users in their own branch
+    - Can create MANAGER or EMPLOYEE users in their own branch only
+    - Cannot create or promote to ADMIN / SUPER_ADMIN
+    - Cannot view, edit, or delete users from other branches
+
+  MANAGER / EMPLOYEE:
+    - Read-only access to their own profile (via /me/)
+    - Cannot access the Users management page
 """
 import logging
-from io import BytesIO
-from decimal import Decimal, InvalidOperation
-from django.db import transaction as db_transaction
-from django.db.models import Sum
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status, permissions, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.decorators import api_view, permission_classes
-from .models import Item, Location, StockLedger, Purchase, IssueItem
-from .serializers import (ItemSerializer, LocationSerializer, StockLedgerSerializer,
-                           PurchaseSerializer, IssueItemSerializer, PurchasePreviewSerializer)
-from .services import PurchaseService, IssueService, StockService
-from apps.core.models import Supplier
-from apps.core.branch_mixin import BranchScopedQuerysetMixin
-from apps.core.permissions import HasModulePermission
-from apps.core.serializers import SupplierSerializer
+from rest_framework.throttling import AnonRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import User, Branch
+from .serializers import (
+    UserSerializer, UserCreateSerializer, UserUpdateSerializer,
+    LoginSerializer, BranchSerializer,
+)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('apps.users')
 
 
-# ── Permissions ────────────────────────────────────────────────────────────────
+class LoginThrottle(AnonRateThrottle):
+    rate  = '10/min'
+    scope = 'auth'
 
-class IsAdminOrReadOnly(permissions.BasePermission):
-    """Read for all authenticated; write/delete for ADMIN or SUPER_ADMIN."""
+
+class IsSuperAdmin(permissions.BasePermission):
+    """Only SUPER_ADMIN may pass."""
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN')
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role == User.SUPER_ADMIN)
 
 
-class IsAdmin(permissions.BasePermission):
+class IsAdminOrAbove(permissions.BasePermission):
+    """ADMIN or SUPER_ADMIN may pass."""
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and
-                    getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'))
+        return bool(request.user and request.user.is_authenticated
+                    and request.user.role in (User.ADMIN, User.SUPER_ADMIN))
 
 
-# ── Helper: resolve the acting branch ─────────────────────────────────────────
+class IsManagerOrAbove(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_manager)
 
-def _resolve_branch(user, request_data=None, query_params=None):
+
+class BranchScopedUserMixin:
     """
-    Return the Branch object to tag a new record with.
-    - SUPER_ADMIN: uses branch_id from POST body or ?branch_id= param; falls
-                   back to their own branch.
-    - Everyone else: always their own branch.
+    Scopes user querysets:
+    - SUPER_ADMIN: all users, optionally filtered by ?branch_id=
+    - ADMIN: only users in their own branch
+    - Others: only themselves
     """
-    if getattr(user, 'role', None) == 'SUPER_ADMIN':
-        branch_id = None
-        if request_data:
-            branch_id = request_data.get('branch_id')
-        if not branch_id and query_params:
-            branch_id = query_params.get('branch_id')
-        if branch_id:
-            from apps.users.models import Branch
-            try:
-                return Branch.objects.get(pk=branch_id)
-            except Branch.DoesNotExist:
-                pass
-    return user.branch if user.branch_id else None
-
-
-# ── Suppliers ──────────────────────────────────────────────────────────────────
-
-class SupplierListCreate(generics.ListCreateAPIView):
-    queryset         = Supplier.objects.all()
-    serializer_class = SupplierSerializer
-    search_fields    = ('name',)
-
-    def get_permissions(self):
-        if self.request.method in permissions.SAFE_METHODS:
-            return [permissions.IsAuthenticated()]
-        return [IsAdmin()]
-
-
-class SupplierDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset           = Supplier.objects.all()
-    serializer_class   = SupplierSerializer
-    permission_classes = [IsAdmin]
-
-
-# ── Locations (global – shared across branches intentionally) ──────────────────
-
-class LocationListCreate(generics.ListCreateAPIView):
-    queryset         = Location.objects.all()
-    serializer_class = LocationSerializer
-
-
-class LocationDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset         = Location.objects.all()
-    serializer_class = LocationSerializer
-
-
-# ── Items (global catalogue – branch isolation is at ledger level) ─────────────
-
-class ItemListCreate(generics.ListCreateAPIView):
-    queryset         = Item.objects.all()
-    serializer_class = ItemSerializer
-    search_fields    = ('name', 'item_type')
-    filterset_fields = ('item_type',)
-
-    def get_permissions(self):
-        if self.request.method in permissions.SAFE_METHODS:
-            return [permissions.IsAuthenticated()]
-        return [IsAdmin()]
-
-    def create(self, request, *args, **kwargs):
-        import logging
-        from django.db import transaction as db_transaction
-        logger = logging.getLogger(__name__)
-
-        data = request.data.copy()
-        if hasattr(data, 'dict'):
-            data = data.dict()
-
-        opening_qty_raw = data.pop('opening_qty', None)
-        unit_price_raw  = data.pop('unit_price',  None)
-        location_id     = data.pop('location_id', None)
-        data.pop('quantity', None)
-
-        def _scalar(v):
-            if isinstance(v, (list, tuple)):
-                v = v[0] if v else None
-            return v
-
-        opening_qty_raw = _scalar(opening_qty_raw)
-        unit_price_raw  = _scalar(unit_price_raw)
-        location_id     = _scalar(location_id)
-
-        try:
-            opening_qty = Decimal(str(opening_qty_raw)) if opening_qty_raw not in (None, '', '0', 0, '0.0') else None
-        except (InvalidOperation, TypeError):
-            opening_qty = None
-        try:
-            unit_price = Decimal(str(unit_price_raw)) if unit_price_raw not in (None, '', '0', 0, '0.0') else None
-        except (InvalidOperation, TypeError):
-            unit_price = None
-
-        if 'reorder_level' not in data or data.get('reorder_level') in (None, ''):
-            data['reorder_level'] = 0
-
-        try:
-            with db_transaction.atomic():
-                item_name = data.get('name', '').strip()
-                existing_item = Item.objects.filter(name=item_name).first()
-                if existing_item:
-                    item = existing_item
-                else:
-                    serializer = self.get_serializer(data=data)
-                    if not serializer.is_valid():
-                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-                    item = serializer.save()
-
-                if opening_qty and opening_qty > 0 and unit_price and unit_price > 0:
-                    loc = None
-                    if location_id:
-                        loc = Location.objects.filter(id=location_id).first()
-                    if loc is None:
-                        loc = Location.objects.filter(deleted_at__isnull=True).first()
-                    if loc is None:
-                        loc, _ = Location.objects.get_or_create(
-                            name='Main Store',
-                            defaults={'location_type': 'STORE', 'address': ''}
-                        )
-
-                    branch = _resolve_branch(request.user, request.data, request.query_params)
-
-                    already_has_opening = StockLedger.objects.filter(
-                        item=item,
-                        transaction_type=StockLedger.OPENING,
-                        branch=branch,
-                    ).exists()
-
-                    if not already_has_opening:
-                        StockLedger.objects.create(
-                            item=item,
-                            location=loc,
-                            branch=branch,
-                            transaction_type=StockLedger.OPENING,
-                            quantity=opening_qty,
-                            unit_price=unit_price,
-                            created_by=request.user if request.user.is_authenticated else None,
-                            remark='Initial Opening Stock',
-                        )
-
-        except Exception as ex:
-            logger.exception("Failed to create inventory item: %s", ex)
-            return Response(
-                {'error': f'Failed to save item: {str(ex)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        headers = self.get_success_headers(ItemSerializer(item).data)
-        return Response(ItemSerializer(item).data, status=status.HTTP_201_CREATED, headers=headers)
-
-
-
-class ItemDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset           = Item.objects.all()
-    serializer_class   = ItemSerializer
-    permission_classes = [IsAdminOrReadOnly]
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        StockLedger.objects.filter(item=instance).delete()
-        return super().destroy(request, *args, **kwargs)
-
-
-# ── Stock Ledger ───────────────────────────────────────────────────────────────
-
-class StockLedgerList(generics.ListAPIView):
-    """
-    FIX: Now filters directly on StockLedger.branch instead of the broken
-    join-via-purchases approach that leaked cross-branch data.
-
-    SUPER_ADMIN sees all branches unless ?branch_id= is supplied.
-    """
-    serializer_class = StockLedgerSerializer
-    filterset_fields = ('item', 'location', 'transaction_type')
-    search_fields    = ('item__name', 'reference_type')
-    ordering_fields  = ('created_at',)
-
-    def get_queryset(self):
+    def get_branch_queryset(self, qs):
         user = self.request.user
-        qs   = StockLedger.objects.select_related('item', 'location', 'created_by', 'branch')
-        if not user.is_authenticated:
-            return qs.none()
-
-        # SUPER_ADMIN: all branches (or narrowed by ?branch_id=)
-        if getattr(user, 'role', None) == 'SUPER_ADMIN':
+        if getattr(user, 'role', None) == User.SUPER_ADMIN:
             branch_id = self.request.query_params.get('branch_id')
             if branch_id:
-                return qs.filter(branch_id=branch_id)
-            return qs  # all data
+                try:
+                    return qs.filter(branch_id=int(branch_id))
+                except (ValueError, TypeError):
+                    pass
+            return qs  # all branches for super admin
+        if user.role == User.ADMIN:
+            if user.branch_id:
+                # FIX: exclude SUPER_ADMIN rows. A Super Admin is commonly
+                # assigned a "home" branch (see create_default_admin) purely
+                # for informational purposes but still has all-branch access
+                # — an ADMIN filtered to that same branch must never see or
+                # reach that Super Admin's account.
+                return qs.filter(branch=user.branch).exclude(role=User.SUPER_ADMIN)
+            return qs.none()
+        # Managers/Employees: only see themselves
+        return qs.filter(pk=user.pk)
 
-        # Everyone else: strictly their own branch
-        if user.branch_id:
-            return qs.filter(branch_id=user.branch_id)
-        return qs.none()
+
+class LoginView(APIView):
+    permission_classes = (permissions.AllowAny,)
+    throttle_classes   = (LoginThrottle,)
+
+    def post(self, request):
+        s = LoginSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user_data = s.validated_data.get('user', {})
+        logger.info('User login: %s from %s', user_data.get('email', '?'), self._get_ip(request))
+        return Response(s.validated_data)
+
+    @staticmethod
+    def _get_ip(request):
+        xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+        return xff.split(',')[0].strip() if xff else request.META.get('REMOTE_ADDR')
 
 
-class StockLedgerDetail(generics.RetrieveUpdateAPIView):
-    queryset          = StockLedger.objects.all()
-    serializer_class  = StockLedgerSerializer
-    http_method_names = ['get', 'patch', 'head', 'options']
-
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.transaction_type != StockLedger.OPENING:
-            return Response({'error': 'Only OPENING entries can be edited.'}, status=status.HTTP_400_BAD_REQUEST)
-        qty_raw   = request.data.get('quantity')
-        price_raw = request.data.get('unit_price')
+class LogoutView(APIView):
+    def post(self, request):
         try:
-            if qty_raw is not None:
-                qty = Decimal(str(qty_raw))
-                if qty <= 0:
-                    return Response({'error': 'Quantity must be > 0'}, status=400)
-                instance.quantity = qty
-            if price_raw is not None:
-                price = Decimal(str(price_raw))
-                if price <= 0:
-                    return Response({'error': 'Unit price must be > 0'}, status=400)
-                instance.unit_price = price
-            instance.save()
-        except (InvalidOperation, TypeError, ValueError):
-            return Response({'error': 'Invalid quantity or unit_price'}, status=400)
-        return Response(StockLedgerSerializer(instance).data)
+            token = RefreshToken(request.data['refresh'])
+            token.blacklist()
+            logger.info('User logout: %s', getattr(request.user, 'email', '?'))
+        except Exception:
+            pass
+        return Response({'detail': 'Logged out.'})
 
 
-class ClosingStockView(APIView):
-    """
-    FIX: Respects branch isolation.
-    SUPER_ADMIN can pass ?branch_id= to narrow; otherwise sees all.
-    Other roles are restricted to their branch automatically.
-    """
-    def get(self, request):
-        user        = request.user
-        item_id     = request.query_params.get('item')
-        location_id = request.query_params.get('location')
-        as_of       = request.query_params.get('as_of')
+class UserListCreateView(BranchScopedUserMixin, generics.ListCreateAPIView):
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields   = ['email', 'first_name', 'last_name']
+    ordering_fields = ['role', 'first_name', 'created_at']
 
-        # Determine branch scope
-        branch_id = None
-        if getattr(user, 'role', None) == 'SUPER_ADMIN':
-            branch_id = request.query_params.get('branch_id')  # optional for super admin
-        else:
-            branch_id = user.branch_id  # mandatory for all others
+    def get_queryset(self):
+        qs = User.objects.all().order_by('role', 'first_name')
+        return self.get_branch_queryset(qs)
 
-        data = StockService.get_closing_stock(item_id, location_id, as_of, branch_id=branch_id)
-        return Response(list(data))
+    def get_serializer_class(self):
+        return UserCreateSerializer if self.request.method == 'POST' else UserSerializer
 
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdminOrAbove()]
+        return [IsAdminOrAbove()]  # Only admins+ can list all users
 
-# ── Purchases ──────────────────────────────────────────────────────────────────
-
-class PurchaseListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
-    queryset         = Purchase.objects.select_related('supplier', 'item', 'location', 'branch')
-    serializer_class = PurchaseSerializer
-    filterset_fields = ('supplier', 'item', 'location', 'purchase_date')
-    search_fields    = ('invoice_number', 'item__name', 'supplier__name')
-
-    def create(self, request, *args, **kwargs):
-        try:
-            data = request.data.copy()
-            supplier_name = data.get('supplier_name', '').strip()
-            if supplier_name and not data.get('supplier_id'):
-                supplier, _ = Supplier.objects.get_or_create(
-                    name__iexact=supplier_name,
-                    defaults={'name': supplier_name}
-                )
-                data['supplier_id'] = supplier.pk
-
-            # ── FIX: resolve branch and pass to service ──
-            branch = _resolve_branch(request.user, request.data, request.query_params)
-            purchase = PurchaseService.create_purchase(data, user=request.user, branch=branch)
-            return Response(PurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
 
 
-class PurchaseDetail(BranchScopedQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
-    queryset           = Purchase.objects.all()
-    serializer_class   = PurchaseSerializer
-    permission_classes = [IsAdminOrReadOnly, HasModulePermission]
+class UserDetailView(BranchScopedUserMixin, generics.RetrieveUpdateDestroyAPIView):
+    def get_queryset(self):
+        qs = User.objects.all()
+        return self.get_branch_queryset(qs)
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.ledger_entry_id:
-            StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
-        return super().destroy(request, *args, **kwargs)
+    def get_serializer_class(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return UserUpdateSerializer
+        return UserSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAdminOrAbove()]
+        return [IsAdminOrAbove()]
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
 
     def partial_update(self, request, *args, **kwargs):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
 
-
-class PurchasePreviewView(APIView):
-    def post(self, request):
-        s = PurchasePreviewSerializer(data=request.data)
-        s.is_valid(raise_exception=True)
-        return Response(s.validated_data)
-
-
-# ── Issues ────────────────────────────────────────────────────────────────────
-
-class IssueListCreate(BranchScopedQuerysetMixin, generics.ListCreateAPIView):
-    queryset         = IssueItem.objects.select_related('item', 'location', 'truck', 'trip', 'branch')
-    serializer_class = IssueItemSerializer
-    filterset_fields = ('item', 'location', 'issue_type', 'truck', 'trip')
-
-    def create(self, request, *args, **kwargs):
-        import logging
-        logger = logging.getLogger(__name__)
-        try:
-            # ── FIX: resolve branch and pass to service ──
-            branch = _resolve_branch(request.user, request.data, request.query_params)
-            issue = IssueService.create_issue(request.data, user=request.user, branch=branch)
-            return Response(IssueItemSerializer(issue).data, status=status.HTTP_201_CREATED)
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except KeyError as e:
-            return Response({'error': f'Missing required field: {e}'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.exception("Failed to record issue: %s", e)
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class IssueDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset           = IssueItem.objects.all()
-    serializer_class   = IssueItemSerializer
-    permission_classes = [IsAdminOrReadOnly, HasModulePermission]
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        trip = instance.trip
-        if instance.ledger_entry_id:
-            StockLedger.objects.filter(id=instance.ledger_entry_id).delete()
-        result = super().destroy(request, *args, **kwargs)
-        if trip:
-            trip.recalculate_costs()
-        return result
 
-
-# ── Utility endpoints ─────────────────────────────────────────────────────────
-
-@api_view(['GET'])
-def available_stock(request):
-    """
-    FIX: Scopes available stock to the caller's branch.
-    SUPER_ADMIN can pass ?branch_id= to query a specific branch.
-    """
-    user        = request.user
-    item_id     = request.query_params.get('item')
-    location_id = request.query_params.get('location')
-    if not item_id:
-        return Response({'error': 'item param required'}, status=400)
-
-    # Resolve branch scope
-    branch_id = None
-    if getattr(user, 'role', None) == 'SUPER_ADMIN':
-        branch_id = request.query_params.get('branch_id')
-    else:
-        branch_id = user.branch_id
-
-    qty = StockService.get_available_qty(item_id, location_id, branch_id=branch_id)
-    return Response({'available_qty': float(qty)})
-
-
-@api_view(['GET'])
-def fifo_stock_breakdown(request):
-    item_id     = request.query_params.get('item')
-    location_id = request.query_params.get('location')
-    if not item_id:
-        return Response({'error': 'item param required'}, status=400)
-
-    user      = request.user
-    branch_id = None
-    if getattr(user, 'role', None) == 'SUPER_ADMIN':
-        branch_id = request.query_params.get('branch_id')
-    else:
-        branch_id = user.branch_id
-
-    batches = StockService.get_fifo_batches(item_id, location_id, branch_id=branch_id)
-    total_available = sum(b['remaining'] for b in batches)
-    return Response({
-        'total_available': float(total_available),
-        'batches': [
-            {'ledger_id': b['ledger_id'], 'unit_price': float(b['unit_price']), 'remaining': float(b['remaining'])}
-            for b in batches
-        ],
-    })
-
-
-@api_view(['POST'])
-def post_opening_stock(request):
-    """FIX: Tags the opening stock ledger entry with the user's branch."""
-    item_id     = request.data.get('item_id')
-    qty_raw     = request.data.get('quantity')
-    price_raw   = request.data.get('unit_price')
-    location_id = request.data.get('location_id')
-    if not item_id:
-        return Response({'error': 'item_id is required'}, status=400)
-    try:
-        qty   = Decimal(str(qty_raw))
-        price = Decimal(str(price_raw))
-    except (InvalidOperation, TypeError, ValueError):
-        return Response({'error': 'Invalid quantity or unit_price'}, status=400)
-    if qty <= 0:
-        return Response({'error': 'Quantity must be greater than 0'}, status=400)
-    if price <= 0:
-        return Response({'error': 'Unit price must be greater than 0'}, status=400)
-    try:
-        item = Item.objects.get(pk=item_id)
-    except Item.DoesNotExist:
-        return Response({'error': 'Item not found'}, status=404)
-    if location_id:
-        try:
-            loc = Location.objects.get(pk=location_id)
-        except Location.DoesNotExist:
-            loc = None
-    else:
-        loc = None
-
-    # Always guarantee a location exists
-    if loc is None:
-        loc = Location.objects.filter(deleted_at__isnull=True).first()
-    if loc is None:
-        loc, _ = Location.objects.get_or_create(
-            name='Main Store',
-            defaults={'location_type': 'STORE', 'address': ''}
-        )
-
-    # ── FIX: tag with branch ──
-    branch = _resolve_branch(request.user, request.data, request.query_params)
-
-    entry = StockLedger.objects.create(
-        item=item, location=loc,
-        branch=branch,          # ← NEW
-        transaction_type=StockLedger.OPENING,
-        quantity=qty, unit_price=price,
-        created_by=request.user if request.user.is_authenticated else None,
-        remark='Opening Stock',
-    )
-    return Response({
-        'id': entry.pk,
-        'item': item.name,
-        'location': loc.name,
-        'branch': branch.name if branch else None,
-        'quantity': float(qty),
-        'unit_price': float(price),
-        'final_amount': float(entry.final_amount),
-        'message': f'Opening stock of {qty} units posted for {item.name}',
-    }, status=201)
-
-
-# ── Bulk Excel Import (Opening Stock) ───────────────────────────────────────────
-
-class ImportOpeningStockView(APIView):
-    """
-    Bulk-import Items + Opening Stock from an uploaded .xlsx workbook.
-
-    Expected header row (any column order, case-insensitive), matching the
-    standard "opening_stock_with_unit_price.xlsx" export:
-
-        S/N | ITEM DESCRIPTION | OPENING STOCK | UNIT PRICE
-
-    Optional columns also honoured if present: ITEM TYPE, UNIT.
-
-    Behaviour
-    ---------
-    - Item matched by name (case-insensitive). If missing, it's created.
-    - If the item already has an OPENING ledger entry for this branch, that
-      entry is UPDATED with the new qty/unit price (safe to re-import the
-      same sheet after edits — no duplicate opening rows are ever created).
-    - Rows with zero/blank qty or price still create the Item (so it shows
-      up in the Stock Ledger with "No Stock") but post no ledger entry.
-    - Because this writes directly to the same Item / StockLedger tables
-      used everywhere else (Purchases, Issues, Closing Stock, Dashboard,
-      Reports/Exports), every imported row is immediately reflected across
-      the whole app — no extra wiring needed downstream.
-    """
-    parser_classes     = [MultiPartParser, FormParser]
-    permission_classes = [IsAdmin]
-
-    def post(self, request):
-        file_obj = request.FILES.get('file')
-        if not file_obj:
+        # Cannot delete yourself
+        if instance == request.user:
             return Response(
-                {'error': 'No file uploaded. Attach an .xlsx file under the "file" field.'},
+                {'error': True, 'message': 'You cannot delete your own account.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not file_obj.name.lower().endswith(('.xlsx', '.xlsm')):
-            return Response({'error': 'Only .xlsx / .xlsm files are supported.'}, status=400)
-
-        item_type_default = str(request.data.get('item_type', Item.SPARE_PART)).upper()
-        if item_type_default not in dict(Item.TYPE_CHOICES):
-            item_type_default = Item.SPARE_PART
-
-        location_id = request.data.get('location_id')
-        loc = None
-        if location_id:
-            loc = Location.objects.filter(id=location_id).first()
-        if loc is None:
-            loc = Location.objects.filter(deleted_at__isnull=True).first()
-        if loc is None:
-            loc, _ = Location.objects.get_or_create(
-                name='Main Store', defaults={'location_type': 'STORE', 'address': ''}
-            )
-
-        branch = _resolve_branch(request.user, request.data, request.query_params)
-
-        try:
-            import openpyxl
-            wb = openpyxl.load_workbook(BytesIO(file_obj.read()), data_only=True, read_only=True)
-            ws = wb.active
-        except Exception as ex:
-            logger.exception('Failed to read uploaded stock workbook: %s', ex)
-            return Response({'error': f'Could not read Excel file: {ex}'}, status=400)
-
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return Response({'error': 'The sheet is empty.'}, status=400)
-
-        header = [str(c).strip().upper() if c is not None else '' for c in rows[0]]
-
-        def find_col(*keywords):
-            for i, h in enumerate(header):
-                if any(k in h for k in keywords):
-                    return i
-            return None
-
-        col_name  = find_col('ITEM DESCRIPTION', 'ITEM NAME', 'DESCRIPTION', 'NAME')
-        col_qty   = find_col('OPENING STOCK', 'OPENING QTY', 'QUANTITY', 'QTY')
-        col_price = find_col('UNIT PRICE', 'PRICE', 'RATE', 'COST')
-        col_unit  = find_col('UNIT OF MEASURE', 'UOM', 'UNIT')
-        col_type  = find_col('ITEM TYPE', 'TYPE')
-
-        if col_name is None:
+        # ADMIN cannot delete other admins or super admins
+        if request.user.role == User.ADMIN and instance.role in (User.ADMIN, User.SUPER_ADMIN):
             return Response(
-                {'error': 'Could not find an "ITEM DESCRIPTION" / "Item Name" column in row 1 of the sheet.'},
-                status=400
+                {'error': True, 'message': 'You do not have permission to delete this user.'},
+                status=status.HTTP_403_FORBIDDEN
             )
 
-        created, updated, skipped_no_stock, errors = 0, 0, 0, []
-        data_rows = rows[1:]
+        # ADMIN can only delete users in their own branch
+        if request.user.role == User.ADMIN and instance.branch != request.user.branch:
+            return Response(
+                {'error': True, 'message': 'You can only manage users in your own branch.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        for idx, row in enumerate(data_rows, start=2):  # Excel row numbers start at 2 for data
-            name = '?'
-            try:
-                # Each row gets its OWN transaction/savepoint. If this row
-                # fails (e.g. a duplicate-name race, bad data, etc.) only
-                # this row is rolled back — it can no longer poison every
-                # row that comes after it.
-                with db_transaction.atomic():
-                    raw_name = row[col_name] if col_name < len(row) else None
-                    name = str(raw_name).strip() if raw_name is not None else ''
-                    if not name:
-                        continue  # blank row, silently skip
-
-                    qty_raw   = row[col_qty]   if (col_qty   is not None and col_qty   < len(row)) else None
-                    price_raw = row[col_price] if (col_price is not None and col_price < len(row)) else None
-                    unit_raw  = row[col_unit]  if (col_unit  is not None and col_unit  < len(row)) else None
-                    type_raw  = row[col_type]  if (col_type  is not None and col_type  < len(row)) else None
-
-                    try:
-                        qty = Decimal(str(qty_raw)) if qty_raw not in (None, '') else Decimal('0')
-                    except (InvalidOperation, TypeError):
-                        qty = Decimal('0')
-                    try:
-                        price = Decimal(str(price_raw)) if price_raw not in (None, '') else Decimal('0')
-                    except (InvalidOperation, TypeError):
-                        price = Decimal('0')
-
-                    item_type = item_type_default
-                    if type_raw:
-                        candidate = str(type_raw).strip().upper().replace(' ', '_')
-                        if candidate in dict(Item.TYPE_CHOICES):
-                            item_type = candidate
-
-                    unit = str(unit_raw).strip() if unit_raw else ('litres' if item_type == Item.LUBRICANT else 'pcs')
-
-                    # Look up INCLUDING soft-deleted items, not just Item.objects
-                    # (which silently hides deleted rows). Otherwise a
-                    # previously-deleted item with the same name causes a
-                    # real database duplicate-key error on .create().
-                    item = Item.objects.all_with_deleted().filter(name__iexact=name).first()
-                    if item is None:
-                        item = Item.objects.create(name=name, item_type=item_type, unit=unit)
-                        created += 1
-                    elif item.is_deleted:
-                        item.deleted_at = None
-                        item.save(update_fields=['deleted_at'])
-                        created += 1
-
-                    if qty > 0 and price > 0:
-                        existing = StockLedger.objects.filter(
-                            item=item, transaction_type=StockLedger.OPENING, branch=branch,
-                        ).first()
-                        if existing:
-                            existing.quantity   = qty
-                            existing.unit_price = price
-                            existing.save()
-                        else:
-                            StockLedger.objects.create(
-                                item=item, location=loc, branch=branch,
-                                transaction_type=StockLedger.OPENING,
-                                quantity=qty, unit_price=price,
-                                created_by=request.user if request.user.is_authenticated else None,
-                                remark=f'Imported from {file_obj.name}',
-                            )
-                        updated += 1
-                    else:
-                        skipped_no_stock += 1
-
-            except Exception as row_ex:
-                logger.exception('Import row %s failed: %s', idx, row_ex)
-                errors.append(f'Row {idx} ("{name}"): {row_ex}')
-
-        total_rows = len(data_rows)
-        return Response({
-            'message': (
-                f'Import complete — {created} new item(s) created, '
-                f'{updated} opening stock entr{"y" if updated == 1 else "ies"} posted, '
-                f'{skipped_no_stock} row(s) skipped (no qty/price).'
-            ),
-            'created':          created,
-            'opening_posted':   updated,
-            'skipped_no_stock': skipped_no_stock,
-            'errors':           errors,
-            'total_rows':       total_rows,
-            'branch':           branch.name if branch else None,
-        }, status=status.HTTP_200_OK)
+        logger.warning('User deleted: %s by %s', instance.email, request.user.email)
+        return super().destroy(request, *args, **kwargs)
 
 
-# ── Zero Closing Stock (bulk balancing adjustment) ─────────────────────────────
+class MeView(APIView):
+    """Current user profile — accessible to all authenticated users."""
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
 
-class ZeroClosingStockView(APIView):
-    """
-    Sets every item's Closing Qty AND Closing Value to 0 for the caller's
-    branch, WITHOUT deleting any existing history.
+    def patch(self, request):
+        allowed_fields = {'first_name', 'last_name', 'phone'}
+        data = {k: v for k, v in request.data.items() if k in allowed_fields}
+        serializer = UserSerializer(request.user, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
-    Closing Qty   = SUM(quantity)     across all StockLedger rows for the item+branch
-    Closing Value = SUM(final_amount) across the same rows
-
-    For every item where either total isn't already 0, posts TWO balancing
-    StockLedger rows (transaction_type=ADJUSTMENT):
-        leg 1: quantity = -total_qty + 1,  unit_price = 0
-        leg 2: quantity = -1,               unit_price = total_value
-    These two legs always net to  quantity = -total_qty  and
-    final_amount = -total_value  in combination — regardless of whether
-    quantity, value, both, or neither were already at 0 — so this is safe
-    to call repeatedly (e.g. if a previous run only zeroed quantity but
-    left value behind, the next run cleans that up too).
-
-    Opening Qty / Purchased Qty / Issued Qty (each computed by filtering on
-    their own transaction_type in the UI) are left completely untouched —
-    only the aggregate Closing Qty/Value become 0.
-    """
-    permission_classes = [IsAdmin]
-
-    def post(self, request):
-        branch = _resolve_branch(request.user, request.data, request.query_params)
-
-        totals = (
-            StockLedger.objects
-            .filter(branch=branch)
-            .values('item_id')
-            .annotate(total_qty=Sum('quantity'), total_value=Sum('final_amount'))
-        )
-        # Only touch items where qty OR value still has something to clear.
-        totals = [r for r in totals if r['total_qty'] != 0 or r['total_value'] != 0]
-
-        if not totals:
-            return Response({
-                'message': 'Every item already has Closing Qty and Value = 0 — nothing to do.',
-                'adjusted': 0,
-                'branch': branch.name if branch else None,
-            }, status=status.HTTP_200_OK)
-
-        default_location = Location.objects.filter(deleted_at__isnull=True).first()
-
-        adjusted, errors = 0, []
-        for row in totals:
-            item_id     = row['item_id']
-            total_qty   = row['total_qty']   or Decimal('0')
-            total_value = row['total_value'] or Decimal('0')
-            try:
-                with db_transaction.atomic():
-                    last_entry = (
-                        StockLedger.objects
-                        .filter(branch=branch, item_id=item_id)
-                        .order_by('-created_at')
-                        .first()
-                    )
-                    location = last_entry.location if last_entry else default_location
-                    if location is None:
-                        raise ValueError('No Location exists in the system.')
-
-                    common = dict(
-                        branch=branch, item_id=item_id, location=location,
-                        transaction_type=StockLedger.ADJUSTMENT,
-                        created_by=request.user if request.user.is_authenticated else None,
-                        remark='Closing stock reset to 0 (qty + value) — history preserved.',
-                    )
-                    # Leg 1: clears quantity, contributes 0 value.
-                    StockLedger.objects.create(
-                        quantity=-total_qty + 1, unit_price=0, **common
-                    )
-                    # Leg 2: carries the value cancellation, net qty impact 0
-                    # when combined with the "+1" above.
-                    StockLedger.objects.create(
-                        quantity=-1, unit_price=total_value, **common
-                    )
-                    adjusted += 1
-            except Exception as ex:
-                logger.exception('Zero-closing-stock failed for item %s: %s', item_id, ex)
-                errors.append(f'Item {item_id}: {ex}')
-
-        return Response({
-            'message': (
-                f'Closing stock reset — {adjusted} item(s) adjusted to 0'
-                + (f', {len(errors)} error(s).' if errors else '.')
-            ),
-            'adjusted': adjusted,
-            'errors':   errors,
-            'branch':   branch.name if branch else None,
-        }, status=status.HTTP_200_OK)
+    def put(self, request):
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+        if not old_password or not new_password:
+            return Response(
+                {'error': True, 'message': 'old_password and new_password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not request.user.check_password(old_password):
+            return Response(
+                {'error': True, 'message': 'Current password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if len(new_password) < 8:
+            return Response(
+                {'error': True, 'message': 'New password must be at least 8 characters.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        logger.info('Password changed for user: %s', request.user.email)
+        return Response({'detail': 'Password updated successfully.'})
 
 
-# ── Undo Zero Closing Stock (reverses the balancing adjustment above) ─────────
+class BranchListCreateView(generics.ListCreateAPIView):
+    serializer_class = BranchSerializer
 
-class UndoZeroClosingStockView(APIView):
-    """
-    Deletes the ADJUSTMENT rows that ZeroClosingStockView previously posted
-    for the caller's branch, so Closing Qty / Closing Value go back to being
-    computed purely from OPENING + PURCHASE + ISSUE + TRANSFER history —
-    i.e. reverses a "Zero Closing Stock" click without touching any real
-    transaction (opening, purchase, issue, transfer) history.
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(user, 'role', None) == User.SUPER_ADMIN:
+            return Branch.objects.all().order_by('name')
+        # ADMIN: only their own branch (for dropdowns etc.)
+        if user.branch_id:
+            return Branch.objects.filter(id=user.branch_id)
+        return Branch.objects.none()
 
-    NOTE: transaction_type=ADJUSTMENT is written ONLY by ZeroClosingStockView
-    anywhere in this codebase (nothing else creates ADJUSTMENT rows), so it's
-    safe and sufficient to match on transaction_type alone — we deliberately
-    do NOT also require an exact remark string match, since that proved
-    fragile (e.g. dash/encoding differences) and silently left the paired
-    "leg" row of a zero-closing pair undeleted, which under-restored the
-    Closing Qty while Closing Value looked fine.
-    """
-    permission_classes = [IsAdmin]
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsSuperAdmin()]
+        return [IsAdminOrAbove()]
 
-    def post(self, request):
-        branch = _resolve_branch(request.user, request.data, request.query_params)
 
-        qs = StockLedger.objects.filter(
-            branch=branch,
-            transaction_type=StockLedger.ADJUSTMENT,
-        )
-        count = qs.count()
-        if not count:
-            return Response({
-                'message': 'No "Zero Closing Stock" adjustments found to undo for this branch.',
-                'removed': 0,
-                'branch': branch.name if branch else None,
-            }, status=status.HTTP_200_OK)
+class BranchDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class   = BranchSerializer
+    permission_classes = [IsSuperAdmin]
 
-        with db_transaction.atomic():
-            qs.delete()
+    def get_queryset(self):
+        return Branch.objects.all()
 
-        return Response({
-            'message': f'Removed {count} balancing adjustment row(s). Closing stock now reflects real history again.',
-            'removed': count,
-            'branch': branch.name if branch else None,
-        }, status=status.HTTP_200_OK)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.users.filter(is_active=True).exists():
+            return Response(
+                {'error': True, 'message': 'Cannot delete a branch that has active users.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
