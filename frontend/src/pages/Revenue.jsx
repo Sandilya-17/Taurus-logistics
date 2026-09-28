@@ -104,18 +104,20 @@ export default function RevenuePage() {
     try {
       let results = [];
       let nextUrl = '/finance/revenue/';
+      let params  = branchQS;
       while (nextUrl) {
-        const r    = await api.get(nextUrl);
+        const r    = await api.get(nextUrl, { params });
         const data = r.data;
         if (Array.isArray(data)) { results = data; break; }
         results = results.concat(data.results || []);
         nextUrl = data.next
           ? data.next.replace(/^https?:\/\/[^/]+\/api/, '')
           : null;
+        params  = undefined; // next link already carries the full query string
       }
       setItems(results);
     } catch { /* silently ignore */ }
-  }, [branchCtx?.activeBranchId]);
+  }, [branchCtx?.activeBranchId, branchQS]);
 
   useEffect(() => { loadRevenue(); }, [loadRevenue]);
 
